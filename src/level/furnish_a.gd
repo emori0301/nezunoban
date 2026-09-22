@@ -73,7 +73,7 @@ static func _genkan(b: Building) -> void:
 
 	# スポーン
 	b.add_anchor(R, "Spawn_Player", Vector3(-9.5, 0.0, 0.0), -90.0)
-	b.add_anchor(R, "Spawn_Boss", Vector3(-8.0, 0.0, -3.7), 180.0)
+	b.add_anchor(R, "Spawn_Boss", Vector3(-8.0, 0.0, -2.2), 90.0)
 
 	# 玄関の自動ドア風(引き分け戸・ガラス)。施錠可。
 	b.add_door(R, "Door_Genkan", Vector3(-11.0, 0.0, 0.0), 90.0, {

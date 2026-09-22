@@ -187,7 +187,7 @@ func _check(b: Node3D) -> void:
 	# 経路自体は猫(nav agent r=0.2)の通り道なので、経路追従の判定は細めのカプセルで見る。
 	# プレイヤーが通れるかは後段の「戸口の有効幅」が正。
 	var navshape := CapsuleShape3D.new()
-	navshape.radius = 0.22
+	navshape.radius = 0.20   # navmesh の agent_radius と同じ。これ以上太い体は角で擦る
 	navshape.height = 1.4
 	var navparams := PhysicsShapeQueryParameters3D.new()
 	navparams.shape = navshape
@@ -262,6 +262,43 @@ func _check(b: Node3D) -> void:
 		var clear := left + right + 0.64
 		var ok: bool = thru == 0 and clear >= 0.75
 		print("  [%s] %-20s 有効幅 %.2f m  通り抜け詰まり %d" % ["OK " if ok else "NG ", dw[0], clear, thru])
+
+	# NPC のスポーンがナビメッシュから出られるか(director からの指摘で追加)
+	print("--- NPC spawn reachability ---")
+	for np in [["Spawn_Boss → Anchor_BossDesk", &"Spawn_Boss", &"Anchor_BossDesk"],
+			["Spawn_Boss → Anchor_Altar", &"Spawn_Boss", &"Anchor_Altar"],
+			["Spawn_Granddaughter → Anchor_Coffin", &"Spawn_Granddaughter", &"Anchor_Coffin"],
+			["Spawn_Son → Spawn_Player", &"Spawn_Son", &"Spawn_Player"],
+			["Spawn_Kasha → Anchor_Coffin", &"Spawn_Kasha", &"Anchor_Coffin"]]:
+		var a: Node3D = b.get_anchor(np[1])
+		var c: Node3D = b.get_anchor(np[2])
+		if a == null or c == null:
+			print("  [NG] %-36s アンカーが無い" % np[0])
+			continue
+		var pth := NavigationServer3D.map_get_path(map, a.global_position, c.global_position, true)
+		var dd := 0.0
+		for i in range(1, pth.size()):
+			dd += pth[i].distance_to(pth[i - 1])
+		# 経路の始点がスポーン位置から離れていたら、ナビメッシュの外に立っている
+		var off := 99.0 if pth.size() == 0 else pth[0].distance_to(a.global_position)
+		# 経路上を実際に体が通れるか。終点の 0.6m は「物の手前で止まる」ので除く。
+		var hit := 0
+		var travelled := 0.0
+		for i in range(1, pth.size()):
+			var seg := pth[i] - pth[i - 1]
+			var steps := maxi(1, int(seg.length() / 0.25))
+			for k in steps + 1:
+				var at := travelled + seg.length() * (float(k) / steps)
+				if dd - at < 0.6:
+					continue
+				navparams.transform = Transform3D(Basis(),
+					pth[i - 1] + seg * (float(k) / steps) + Vector3(0, 0.78, 0))
+				if space.intersect_shape(navparams, 1).size() > 0:
+					hit += 1
+			travelled += seg.length()
+		var ok: bool = pth.size() >= 2 and off < 0.6 and hit == 0
+		print("  [%s] %-36s %5.1f m  投影ずれ %.2f m  家具に当たる点 %d" % [
+			"OK " if ok else "NG ", np[0], dd, off, hit])
 
 	# 距離の実測(式場 <-> 事務所 / 式場 <-> バックヤード)
 	print("--- distances ---")

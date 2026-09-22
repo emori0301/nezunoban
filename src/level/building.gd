@@ -578,7 +578,12 @@ func _build_nav() -> void:
 	nm.agent_max_slope = 40.0
 	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	nm.geometry_collision_mask = 1
-	nm.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN
+	# 壁・床に加えて家具も障害物にする。扉だけは doors_root にあり、グループに入れていないので
+	# 開閉に関係なく経路が通る(仕様どおり)。これを入れないと NPC が受付台や椅子を突き抜ける。
+	nm.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	nm.geometry_source_group_name = &"navsource"
+	shell.add_to_group(&"navsource")
+	rooms_root.add_to_group(&"navsource")
 	# 壁の上面や屋根に歩ける島ができないよう、ベイクを腰から下の高さに絞る。
 	nm.filter_baking_aabb = AABB(Vector3(-34.0, -1.0, -32.0), Vector3(70.0, 3.0, 60.0))
 	nm.filter_low_hanging_obstacles = true
