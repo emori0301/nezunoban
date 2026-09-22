@@ -28,10 +28,10 @@ signal fell_asleep
 @export var sleep_yaw_deg: float = 90.0
 ## 寝息のアニメをゆっくり回す。
 @export var sleep_anim_speed: float = 0.55
-## いびき。audio に専用の音が無いので breath_close を低いピッチで流している。
-@export var snore_sound: StringName = &"breath_close"
+## いびき。audio の snore_1 / snore_2 を交互に鳴らす。
+@export var snore_sounds: Array[StringName] = [&"snore_1", &"snore_2"]
 @export var snore_interval: float = 4.0
-@export var snore_pitch: float = 0.72
+@export var snore_pitch: float = 1.0
 
 var is_sleeping: bool = false
 var is_drinking: bool = false
@@ -97,6 +97,10 @@ func wake() -> void:
 
 
 func _snore_loop(g: int) -> void:
+	var i := 0
 	while is_sleeping and _snore_gen == g and is_inside_tree() and is_active:
-		Audio.play_at(snore_sound, head_position(), -4.0, snore_pitch, 9.0)
+		if not snore_sounds.is_empty():
+			Audio.play_at(snore_sounds[i % snore_sounds.size()], head_position(),
+				-2.0, snore_pitch, 9.0)
+			i += 1
 		await get_tree().create_timer(snore_interval).timeout

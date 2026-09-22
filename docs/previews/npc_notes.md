@@ -28,8 +28,9 @@
   体の中心に `CrossMarker`(Area3D, layer 8, monitorable)を持つ。
 - グループ: 全員 `npc`。加えて `npc_boss` / `npc_granddaughter` / `npc_son` / `npc_cat` / `npc_kasha`。
   猫は `cat`、火車は `kasha`、人物は `npc_human` にも入る。
-- 正面は **-Z**。ただし `cat.glb` だけ頭が +Z 側なので、`Cat` は `model_yaw_offset_deg = 180` で
-  **見た目だけ**回している(当たり判定とナビはノード本体のまま)。
+- 正面は **-Z**。キャラ 6 体は models の `ea8bd75` で -Z 正面に統一済みなので、
+  `model_yaw_offset_deg` は全員 0。ずれたモデルが来たときだけこれで**見た目だけ**回す
+  (当たり判定とナビはノード本体のまま)。
 
 ---
 
@@ -177,7 +178,7 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 | `is_sleeping` / `is_drinking` | |
 | `drunk = true` | 歩行がわずかに蛇行する(`NpcBase.drunk`) |
 
-いびきは `breath_close` をピッチ 0.72 で 4 秒周期。`snore_sound` で差し替えられる。
+いびきは `snore_1` / `snore_2` を 4 秒周期で交互に鳴らす(`snore_sounds` で差し替えられる)。
 
 ### `BodyRisen`
 
@@ -301,6 +302,10 @@ godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
 | `07_son_05_granddaughter_sit.png` | 孫娘がパイプ椅子に座っている |
 | `01_api_01_cats_vending.png` | 猫 5 匹が自販機の前に並び、目が光っている |
 | `02_api_02_kasha_takes_son.png` | 火車が寝ている息子の上に立っている |
+| `01_api_00_body_risen.png` | 故人が棺から上体を起こしている |
+| `03_facing_boss_from_minus_x.png` `05_facing_others_from_plus_x.png` | 社長・孫娘・息子・猫に「+X を向け」と指示し、-X から背中・+X から顔が見えることを確認 |
+
+`BodyRisen` は棺と同じ向き(yaw 90)だと祭壇のほうを向くので、部屋側へ向けるなら yaw -90 にしてください。
 
 `godot --headless --path . --import` ×2 と `--quit` はエラーなし。
 `--quit` に残る `ObjectDB 2 件` の警告は npc を作る前から出ているもの(models 申し送り 2 番)。
@@ -309,16 +314,17 @@ godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
 
 ## 他担当への依頼
 
-1. **models**: `cat.glb` だけ頭が **+Z** 側で、ほかのキャラ(-Z 正面)と逆向きです。
-   `--scenario=facing` で「+X を向け」と指示して両側から撮り、確定しました。
-   いまは `Cat._init` の `model_yaw_offset_deg = 180` で見た目だけ回しています。
-   glb を直すなら、この 1 行を消してください。
+すべて対応済みなので記録だけ残します。
 
-2. **audio**: いびきの音がありません。`breath_close` をピッチ 0.72 で代用しています。
-   専用の `snore`(2〜3 秒・ループ可)があれば `NpcSon.snore_sound` を差し替えるだけです。
+1. **models**(`ea8bd75` で対応済み): キャラ 6 体が +Z 正面だったのを -Z 正面に統一して
+   いただきました。npc 側の `model_yaw_offset_deg` は全員 0 に戻し、`--scenario=facing` と
+   `boss_leave` / `kasha_chase` / `son_sleep` で顔と進行方向を撮って確認しています。
 
-3. **level**(対応済みなので記録のみ): 受付台の内側に居た社長のスポーンと、ナビメッシュが
-   家具を迂回しない件は `40b9d0b` で直していただきました。
+2. **audio**(`ea8bd75` で対応済み): `snore_1` / `snore_2` を `NpcSon` のいびきに、
+   `cat_jump` を猫が棺へ飛び乗る瞬間に使っています。
+
+3. **level**(`40b9d0b` で対応済み): 受付台の内側に居た社長のスポーンと、ナビメッシュが
+   家具を迂回しない件。
 
 ---
 

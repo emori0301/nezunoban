@@ -57,8 +57,6 @@ func _init() -> void:
 	start_active = false
 	loop_anims = [&"idle", &"walk", &"sit"]
 	anim_sit = &"sit"
-	# cat.glb は頭が +Z 側。ほかのキャラ(-Z 正面)と揃えるため見た目だけ 180 度回す。
-	model_yaw_offset_deg = 180.0
 
 
 func _ready() -> void:
@@ -352,6 +350,7 @@ func _state_on_coffin(g: int) -> void:
 	set_scripted(true)
 	_free_anim = true
 	play_anim(anim_walk, 1.8)
+	Audio.play_at(&"cat_jump", global_position, 0.0, 1.0, 18.0)
 	var from := global_position
 	var tw := create_tween()
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

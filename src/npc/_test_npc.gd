@@ -266,8 +266,10 @@ func _api() -> void:
 	var br: BodyRisen = load("res://src/npc/body_risen.tscn").instantiate()
 	add_child(br)
 	br.global_position = Vector3(16.9, 0.9, -0.5)
+	br.rotation_degrees.y = 90.0      # 棺と同じ向き(頭側 +X)
 	await br.rise()
-	print("  body_risen.rise() 完了")
+	print("  body_risen.rise() 完了 pos=%v" % br.global_position)
+	await _shot("api_00_body_risen", Vector3(13.6, 1.55, -2.6), Vector3(16.9, 1.2, -0.5))
 
 	# 演出 API: 猫 5 匹を自販機(-11.5, 6.2)の前に並べて座らせる
 	var cats := NpcInstaller.find_all(&"cat")
@@ -311,6 +313,18 @@ func _facing() -> void:
 		rad_to_deg(cat.rotation.y), rad_to_deg(boss.rotation.y)])
 	await _shot("facing_cat_from_minus_x", Vector3(10.6, 0.35, -0.5), Vector3(12.0, 0.2, -0.5))
 	await _shot("facing_cat_from_plus_x", Vector3(13.4, 0.35, -0.5), Vector3(12.0, 0.2, -0.5))
+	await _shot("facing_boss_from_minus_x", Vector3(9.6, 1.35, 0.6), Vector3(12.0, 1.25, 0.6))
+	await _shot("facing_boss_from_plus_x", Vector3(14.4, 1.35, 0.6), Vector3(12.0, 1.25, 0.6))
+	# 孫娘と息子も同じ指示で向かせて一枚ずつ
+	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
+	gd.teleport_to(Vector3(12.0, 0.0, 2.4))
+	gd.face_now(Vector3(19.0, 0.0, 2.4))
+	var son := NpcInstaller.find(&"son") as NpcSon
+	son.set_active(true)
+	son.teleport_to(Vector3(12.0, 0.0, -2.6))
+	son.face_now(Vector3(19.0, 0.0, -2.6))
+	await get_tree().create_timer(0.6).timeout
+	await _shot("facing_others_from_plus_x", Vector3(15.2, 1.35, -0.1), Vector3(12.0, 1.10, -0.1))
 
 
 # ==================================================================== 補助

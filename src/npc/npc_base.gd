@@ -3,7 +3,8 @@ extends CharacterBody3D
 ## NPC(社長/息子/孫娘)・猫・火車の共通の土台。
 ##
 ## 当たり判定: layer 4 (npc) / mask 1 (world)。正面は -Z(models_notes.md)。
-## ただし cat.glb だけ頭が +Z 側なので、Cat は model_yaw_offset_deg = 180 で見た目だけ回している。
+## (キャラ 6 体は models の ea8bd75 で -Z 正面に統一済み。ずれたモデルが来たときだけ
+##  model_yaw_offset_deg で見た目を回す。当たり判定とナビはノード本体のまま。)
 ##
 ## glb は子の Prop が読み、その中の AnimationPlayer で idle / walk を速度に応じて切り替える。
 ## walk はその場歩きなので、移動は NavigationAgent3D + move_and_slide() で自前で行う。
