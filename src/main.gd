@@ -89,6 +89,12 @@ func start_game() -> void:
 	if not ResourceLoader.exists(DIRECTOR_PATH):
 		Clock.start()
 	# CLI hooks
+	if args.has("qa-restart") and Game.boot_count == 1:
+		# 再開の検証: 数秒遊んでからタイトルへ戻るのと同じ経路(reload)で夜をやり直す
+		await get_tree().create_timer(float(args.get("qa-restart-after", "4"))).timeout
+		print("qa-restart: reloading scene (boot_count=%d, clock=%s)" % [Game.boot_count, Clock.hhmm()])
+		get_tree().reload_current_scene()
+		return
 	if args.has("screenshot"):
 		_do_screenshot(String(args["screenshot"]))
 	elif args.has("tour"):
