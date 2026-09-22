@@ -42,6 +42,7 @@ signal installed(count: int)
 
 var placed: Dictionary = {}      # anchor 名 -> Node
 var missing: PackedStringArray = []
+var _placeholders_to_hide: PackedStringArray = []
 
 func _ready() -> void:
 	_install()
@@ -62,10 +63,12 @@ func _install() -> void:
 		var node := _place(String(anchor_name), String(MAP[anchor_name]), anchor)
 		if node != null:
 			n += 1
+			_placeholders_to_hide.append(String(anchor_name))
 	if verbose and missing.size() > 0:
 		push_warning("SystemsInstaller: アンカーが無い(level 未実装なら正常): %s" % ", ".join(missing))
 	if verbose:
 		print("[systems] %d 個を配置" % n)
+	call_deferred(&"_hide_level_placeholders")
 	installed.emit(n)
 	if _has_cli_flag("systems-demo"):
 		call_deferred(&"_demo_state")
@@ -94,6 +97,28 @@ static func _has_cli_flag(name: String) -> bool:
 		if a == "--" + name or a.begins_with("--" + name + "="):
 			return true
 	return false
+
+## level は同じアンカーに仮のプレースホルダ Prop を置いている。
+## systems が実物を置いたらそちらは消してもらう(消さないと祭壇などが二重に見える)。
+## 描画中に見えているメッシュを消すとレンダラが material の null 参照を出すので、
+## 配置が全部終わった次のフレームでまとめて消す。
+func _hide_level_placeholders() -> void:
+	# 描画が一巡してから消す。追加された直後のフレームで消すと、
+	# レンダラが解放済みマテリアルを参照して "Parameter material is null" を出す。
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var root: Node = Game.level
+	if root == null:
+		root = get_tree().current_scene
+	if root == null or not root.has_method(&"hide_anchor_prop"):
+		if verbose and not _placeholders_to_hide.is_empty():
+			push_warning("SystemsInstaller: level に hide_anchor_prop が無いのでプレースホルダが二重に見える")
+		return
+	for a in _placeholders_to_hide:
+		root.call(&"hide_anchor_prop", StringName(a))
+	if verbose:
+		print("[systems] level のプレースホルダ %d 個を消した" % _placeholders_to_hide.size())
+	_placeholders_to_hide.clear()
 
 func _place(anchor_name: String, prefab: String, anchor: Node) -> Node:
 	var path := PREFAB_DIR + prefab + ".tscn"
