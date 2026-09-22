@@ -48,6 +48,7 @@ func run() -> int:
 	await t_note_pages()
 	await t_clock_events()
 	await t_installer_find()
+	await t_moving_parts()
 
 	print("")
 	if failures.is_empty():
@@ -311,6 +312,68 @@ func t_clock_events() -> void:
 	ok(fired[0], "Clock.skip_to で 23:00 のイベントが出る")
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
+
+## models が入れた Lid / Window / Door / Lever が実際に動くか。
+func t_moving_parts() -> void:
+	print("\n-- 可動部: Lid / Window / Door / Lever")
+
+	var cof := spawn("res://src/systems/coffin.tscn") as Coffin
+	ok(cof._lid_node != null, "coffin.glb の Lid を拾えている")
+	ok(cof._window_node != null, "coffin.glb の Window を拾えている")
+	ok(cof._face_prop != null, "body_face.glb を小窓の下に置けている")
+	if cof._face_prop:
+		eq(cof._face_prop.position, cof.face_model_offset, "顔の位置は棺ローカル (0.64, 0.275, 0)")
+	if cof._window_node:
+		ok(cof._window_node.visible, "最初は小窓が閉じている")
+		cof.set_window_open(true)
+		ok(not cof._window_node.visible, "set_window_open(true) で小窓が開く")
+		cof.set_window_open(false)
+		ok(cof._window_node.visible, "閉じられる")
+	if cof._lid_node:
+		var rest: Vector3 = cof._lid_node.position
+		cof.set_lid_ajar(true)
+		await wait(1.6)
+		ok(cof._lid_node.position.x > rest.x + 0.08, "set_lid_ajar で Lid が 10cm ずれる")
+		cof.set_open(true)
+		await wait(2.0)
+		ok(cof._lid_node.rotation_degrees.x > 50.0, "set_open で Lid が起き上がる")
+	cof.queue_free()
+
+	var fz := spawn("res://src/systems/freezer.tscn") as Freezer
+	ok(fz._lid_node != null, "freezer_chest.glb の Lid を拾えている")
+	ok(fz._ice != null, "庫内にドライアイスの箱がある")
+	fz.set_lid_open(true)
+	await wait(0.7)
+	if fz._lid_pivot:
+		ok(fz._lid_pivot.rotation_degrees.x < -60.0, "蓋が開く")
+	fz.set_empty(true)
+	if fz._ice:
+		ok(not fz._ice.visible, "空にするとドライアイスが消える")
+	fz.queue_free()
+
+	var sf := spawn("res://src/systems/safe.tscn") as Safe
+	ok(sf._door_node != null, "safe.glb の Door を拾えている")
+	ok(sf.get_note() != null, "台帳が庫内にある")
+	ok(not sf.get_note().enabled, "開ける前は台帳を読めない")
+	sf.open()
+	await wait(2.2)
+	ok(sf.is_open, "金庫が開く")
+	if sf._door_node:
+		ok(absf(sf._door_node.rotation_degrees.y) > 90.0, "扉が回る")
+	ok(sf.get_note().enabled, "開けたら台帳を読める")
+	sf.queue_free()
+
+	var br := spawn("res://src/systems/breaker.tscn") as Breaker
+	ok(br._model_lever != null, "breaker_box.glb の Lever を拾えている")
+	br.trip()
+	await wait(0.4)
+	if br._model_lever:
+		ok(br._model_lever.rotation_degrees.x > 20.0, "落とすとレバーが倒れる")
+	br.restore()
+	await wait(0.4)
+	if br._model_lever:
+		ok(absf(br._model_lever.rotation_degrees.x) < 1.0, "上げると戻る")
+	br.queue_free()
 
 func t_installer_find() -> void:
 	print("\n-- 取り出し: SystemsInstaller.find")

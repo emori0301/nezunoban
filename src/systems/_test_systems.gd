@@ -15,6 +15,7 @@ extends Node3D
 ##   --lit           起動時に火を点ける(既定で on)
 ##   --face=<0..3>   棺の顔の状態
 ##   --faceview      起動直後に棺の顔ビューを出す
+##   --open          金庫を開け、ブレーカーを落とし、棺の蓋を開ける
 ##
 ## 手動操作: WASD 移動 / マウス視点 / Shift 速く / Esc でマウス解放 / P でスクショ
 
@@ -244,6 +245,16 @@ func _setup_state() -> void:
 	var fl := nodes.get("flower_stand") as FlowerStand
 	if fl and args.has("fresh"):
 		fl.set_wilted(false)
+	if args.has("open"):
+		var sf := nodes.get("safe") as Safe
+		if sf:
+			sf.open()
+		var br := nodes.get("breaker") as Breaker
+		if br:
+			br.trip()
+		var cof2 := nodes.get("coffin") as Coffin
+		if cof2:
+			cof2.set_open(true)
 	var nt := nodes.get("note") as Note
 	if nt:
 		nt.title = "日記 1"

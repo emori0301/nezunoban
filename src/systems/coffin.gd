@@ -41,9 +41,9 @@ signal cat_crossed
 ## 故人の顔(body_face.glb)を置く位置。棺ローカル。小窓の真下。
 @export var face_model_offset: Vector3 = Vector3(0.64, 0.275, 0.0)
 ## 顔のわずかな自発光。暗い式場でも小窓を覗けば顔が読めるようにするため。
-@export var face_emission: float = 0.12
+@export var face_emission: float = 0.04
 ## 小窓の中のごく弱い光。
-@export var window_light_energy: float = 0.35
+@export var window_light_energy: float = 0.14
 
 ## モデルが無いとき用のフォールバック寸法。glb があれば Window の実寸で上書きする。
 @export var lid_top_y: float = 0.436
@@ -354,7 +354,7 @@ func show_face(seconds: float = -1.0, reason: String = "peek") -> void:
 	_prev_cam = get_viewport().get_camera_3d() if is_inside_tree() else null
 	_face_cam.global_position = target + Vector3(0, 0.95, 0.02)
 	# 故人は棺の長辺に沿って寝ているので、画面の上を棺の -X(頭側)に合わせる
-	_face_cam.look_at(target, -global_transform.basis.x)
+	_face_cam.look_at(target, global_transform.basis.x)
 	_face_cam.current = true
 
 	var tw := create_tween()

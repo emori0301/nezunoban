@@ -49,20 +49,25 @@ API と使い方の例はスクリプト冒頭の doc コメントに書いて�
 - 確認用に `godot --path . -- --skip-title --systems-demo` を用意した。
   線香とロウソクを点け、TV をつけ、`set_all_lights(true)` を呼ぶ。director ができたら不要。
 
-## models への依頼(優先度順)
+## models との取り決め(2026-09-23 の追加分その3 で対応済み)
 
-1. **`coffin.glb` の蓋に小窓の穴が無い。** `Window` は枠メッシュだけで、その下は蓋の板が塞いでいる。
-   そのため `body_face.glb` を棺の中に置いても見えない。いまは顔を**薄い板**として
-   小窓のガラス面のすぐ上(`Coffin.face_lift = 0.0012`)に重ねて代用している。
-   穴を開けてもらえれば `Coffin.use_face_model = true` で立体の `body_face.glb` に切り替えられる
-   (コードは残してある)。
-2. **蓋・扉の独立ノードが無い。** `coffin.glb` / `freezer_chest.glb` / `safe.glb` に
-   名前へ `Lid` / `Door` を含む Node3D を切ってほしい。あれば `Coffin.set_lid_ajar()`、
-   `Freezer` の開閉、`Safe.open()` の扉アニメが見た目にも出せる(名前で自動的に拾う実装済み)。
-   いまは音と状態だけ変わって見た目は動かない。
-3. `breaker_box.glb` に `Lever` ノードがあるとブレーカーの上下を見た目で出せる。
-   いまはモデルがある場合、自前の仮レバーを非表示にしている。
-4. マテリアル名で拾っている箇所があるので、名前は変えないでほしい。
+依頼した可動部はすべて入った。systems 側は名前で拾って動かしている。**名前を変えないでほしい。**
+
+| モデル | ノード | systems 側の使い道 |
+|---|---|---|
+| `coffin` | `Lid` | `set_lid_ajar()` は `position.x += 0.10`、`set_open()` は X 回転 62 度 |
+| 同上 | `Window`(Lid の子) | `set_window_open()` / `show_face()` で `visible = false` にして小窓を開ける |
+| `freezer_chest` | `Lid` | X 回転 -74 度で開く |
+| `safe` | `Door` | Y 回転 -108 度で開く |
+| `breaker_box` | `Lever` | `trip()` で X 回転 38 度に倒す |
+| `phone` | `Handset` | 受話器を取ると持ち上がる |
+
+`body_face.glb` は棺ローカル (0.64, 0.275, 0) に立体のまま置いている(`Coffin.face_model_offset`)。
+庫内が空洞になったので、冷凍庫には `dry_ice_box.glb` を (0, 0.30, 0) に置き、
+`set_empty(true)` で消えるようにした。金庫の台帳は棚板の上 (0, 0.315, 0)。
+`coffin_lid_open.glb` は `Lid` を回せるようになったので使っていない。
+
+マテリアル名でも拾っているので、こちらも変えないでほしい。
    `Screen`(monitor_crt / tv_crt)`Flame`(candle_stand)`Ember`(incense_stand)
    `Photo`(iei_frame)`Face`(body_face)`Flower` / `Leaf`(flower_stand)。
 
@@ -86,8 +91,10 @@ API と使い方の例はスクリプト冒頭の doc コメントに書いて�
    置いた物の数が増えると出るので、式場の照明のシャドウマップ(positional shadow atlas)の
    解像度不足を疑っている。project.godot の `lights_and_shadows/*` か、
    式場のライト構成の見直しで直る可能性が高い。level と監督で確認してほしい。
-2. **棺の小窓に穴が無い件**(models 依頼 1)。回避策で成立しているが、
-   浅い角度から見ると顔が平面だとわかる。
+2. **金庫が in-game では暗くて見えない。** 事務所奥の隅に照明が届いておらず、
+   `--systems-demo`(全照明 on)でも扉が開いたかどうか画面では判別できない。
+   動作自体はロジックテストで確認済み。照明は level の担当なので確認してほしい。
+   再現: `godot --path . -- --skip-title --systems-demo --pos=-9.7,0.75,8.5 --yaw=142 --pitch=-19`
 3. `godot --headless --path . --quit` が終了時に `1 resources still in use at exit` を出す。
    `src/systems/installer.tscn` を外しても同じメッセージが出るので systems 由来ではない。
 
