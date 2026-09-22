@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/systems/note.gd" id="1_scr"]
+
+[sub_resource type="BoxShape3D" id="Box_1"]
+size = Vector3(0.28, 0.14, 0.36)
+
+[node name="Note" type="Area3D"]
+collision_layer = 2
+collision_mask = 0
+monitorable = true
+monitoring = false
+script = ExtResource("1_scr")
+title = "メモ"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+shape = SubResource("Box_1")

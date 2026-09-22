@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/systems/iei.gd" id="1_scr"]
+[ext_resource type="Script" path="res://src/level/prop.gd" id="2_prop"]
+
+[sub_resource type="BoxShape3D" id="Box_1"]
+size = Vector3(0.4, 0.58, 0.24)
+
+[node name="Iei" type="Area3D"]
+collision_layer = 2
+collision_mask = 0
+monitorable = true
+monitoring = false
+script = ExtResource("1_scr")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, 0)
+shape = SubResource("Box_1")
+
+[node name="Prop" type="Node3D" parent="."]
+script = ExtResource("2_prop")
+model_name = "iei_frame"
+placeholder_size = Vector3(0.26, 0.34, 0.05)
+placeholder_color = Color(0.12, 0.11, 0.1, 1)
+add_collision = false

@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/systems/flower_stand.gd" id="1_scr"]
+[ext_resource type="Script" path="res://src/level/prop.gd" id="2_prop"]
+
+[sub_resource type="BoxShape3D" id="Box_1"]
+size = Vector3(0.95, 1.9, 0.55)
+
+[node name="FlowerStand" type="Area3D"]
+collision_layer = 2
+collision_mask = 0
+monitorable = true
+monitoring = false
+script = ExtResource("1_scr")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0)
+shape = SubResource("Box_1")
+
+[node name="Prop" type="Node3D" parent="."]
+script = ExtResource("2_prop")
+model_name = "flower_stand"
+placeholder_size = Vector3(0.4, 0.75, 0.35)
+placeholder_color = Color(0.42, 0.4, 0.36, 1)
+add_collision = true
