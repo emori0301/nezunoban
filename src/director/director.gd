@@ -90,6 +90,10 @@ func _boot() -> void:
 	if args.has("dread"):
 		Dread.add(int(String(args["dread"])), &"debug")
 	apply_state_for_time(start_minutes)
+	# QA 用: --cctv-shot=out/x.png で監視モニターの映像そのものを保存する
+	# (モニターの画面は小さくて、ゲーム画面のスクショでは人影が判別できないため)
+	if args.has("cctv-shot"):
+		_grab_cctv(String(args["cctv-shot"]), float(args.get("wait", "5")))
 	# QA 用: --ending=morning|kasha|substitute|portrait でエンディング画面だけ出す
 	if args.has("ending"):
 		var id := StringName(String(args["ending"]))
@@ -117,6 +121,23 @@ func _boot() -> void:
 	else:
 		await play_intro()
 		Clock.start()
+
+
+## 監視モニターの SubViewport をそのまま PNG に落とす(QA 専用)
+func _grab_cctv(path: String, wait: float) -> void:
+	await get_tree().create_timer(maxf(wait, 0.5)).timeout
+	var mon := sys(&"monitor")
+	if mon == null or not mon.has_method(&"get_viewport_node"):
+		printerr("CCTV: モニターが見つからない")
+		get_tree().quit(1)
+		return
+	var vp: SubViewport = mon.call(&"get_viewport_node")
+	await RenderingServer.frame_post_draw
+	var img := vp.get_texture().get_image()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	img.save_png(path)
+	print("CCTV saved: %s (feed=%d)" % [path, int(mon.get(&"feed_index"))])
+	get_tree().quit()
 
 
 func _parse_args() -> Dictionary:

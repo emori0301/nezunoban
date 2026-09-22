@@ -180,12 +180,12 @@ var _monitor_ghost: Node3D = null
 func ev_monitor_figure() -> void:
 	dir.log_event("ev_monitor_figure")
 	# 後列の椅子に座る人影。render layer 10 なので CCTV にだけ映る。
-	_monitor_ghost = scares.spawn_figure("npc_son", Vector3(12.9, 0.0, 1.1), -90.0, true)
+	_monitor_ghost = scares.spawn_figure("npc_son", Vector3(12.9, 0.0, 0.2), -90.0, true, &"sit")
 	var mon: Node = dir.sys(&"monitor")
 	if mon:
 		mon.set(&"auto_switch", false)
 		mon.call(&"switch_feed", 0)
-		mon.call(&"set_static", 0.3)
+		mon.call(&"set_static", 0.16)
 		mon.call(&"glitch", 0.8)
 	Audio.play(&"vhs_tracking", -8.0)
 	dir.pending_shikijo_reveal = true

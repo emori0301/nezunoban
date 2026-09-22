@@ -158,7 +158,7 @@ func _blacken(root: Node, brightness: float = 0.015) -> void:
 			if brightness > 0.05:
 				mat.emission_enabled = true
 				mat.emission = col
-				mat.emission_energy_multiplier = 1.2
+				mat.emission_energy_multiplier = 0.55
 			mi.set_surface_override_material(i, mat)
 
 

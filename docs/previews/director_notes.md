@@ -80,6 +80,7 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--ending=morning\|kasha\|substitute\|portrait` | 前口上を飛ばしてエンディング画面だけ出す |
 | `--autoplay=<mode>` `--speed=N` | 自動プレイ |
 | `--shots=<dir>` `--shot-interval=<sec>` | 自動プレイ中、既定 20 秒おきに `<dir>/HHMM_<n>.png` を保存。夜全体の目視用。**`--headless` では撮れない** |
+| `--cctv-shot=<path>` | 監視モニターの SubViewport(256x192)をそのまま PNG に保存して終了。画面内のモニターは小さすぎて人影が判別できないため |
 
 夜を通しで目で見るとき:
 
@@ -183,13 +184,24 @@ autoplay(speed 8)で測った実際の距離:
 状態変更(消灯・マッチ・火車の起動)を全部済ませてから独白を流す順に直した。
 他のイベントを足すときも同じ注意が要る。イベントの結果を独白の後ろに置かないこと。
 
-### CCTV 限定の人影は未検証
+### CCTV 限定の人影(検証済み)
 
 23:00 の「後列の椅子に座る人影」は render layer 10(`SystemUtil.LAYER_CCTV_ONLY`)に置いてある。
-式場へ行っても見えないことは確認したが、**モニターに映っているかは確認できていない**。
-`src/player/player.tscn` の `cull_mask` が layer 11 も落としており、
-`src/systems/monitor.gd` がモニター本体を layer 11 に置くので、
-CRT モニターそのものがプレイヤーから見えないため(下の「他担当への依頼」1 を参照)。
+systems の b5db815(`hide_from_cctv` を既定 false にした)でモニター本体が見えるようになり、
+**モニターに人影が映ることを確認した**。
+
+- `out/director/18_cctv_feed.png` … `--cctv-shot` で撮った監視映像そのもの。
+  灯明に照らされた祭壇の右手前に、椅子に座った人影が写っている。
+- `out/director/03_2300_monitor.png` … 事務所から見たゲーム画面。CRT に映像が出ている。
+  画面が小さいので人影の判別には上のフィードを使うこと。
+
+調整したこと:
+
+- 人影は `npc_son.glb` の `sit` アニメで座らせ、`Chair_2_3` の席(12.9, 0.2)に置いた。
+  あとで引き出される椅子と同じ席なので話がつながる。
+- 完全な黒だと灯明だけの式場で消えるので albedo 0.16 + 自発光 0.55 にした
+  (`Scares.spawn_figure` の `brightness`)。白く光りすぎないところに合わせてある。
+- `Monitor.set_static` を 0.3 から 0.16 に下げた。ノイズが強いと人影が埋もれる。
 
 ### そのほか
 
@@ -215,37 +227,23 @@ CRT モニターそのものがプレイヤーから見えないため(下の「
 遺影の写真(白髪の女性)が見える。`out/director/02_2130_shikijo.png` の引きの画では
 遺影が 10px ほどにしかならないので暗い矩形に見えるが、これは 640x360 の解像度の話で不具合ではない。
 
-### 1. player(至急) — モニターが見えない
+### 1. player / systems — モニターが見えない(解決済み)
 
-`src/player/player.tscn:24` の `cull_mask = 1047039` が layer 10(`cctv_only`)と
-**layer 11(`player_hidden`)の両方**を落としている。
-`src/systems/monitor.gd` はモニター本体と画面を layer 11 に置く仕様なので、
-**事務所の CRT モニターがプレイヤーの目に映らない**。`1047551`(layer 10 だけ落とす)が正しい。
+プレイヤーのカメラが layer 10 と 11 を見ないのは仕様で、原因は systems がモニター本体を
+layer 11 に置いていたことだった。systems の b5db815 で `hide_from_cctv` が既定 false になり解決。
 
-再現:
+### 2. npc / level — 社長が受付台の裏から出られない(解決済み)
 
-```bash
-godot --path . -- --skip-title --time=23:00 --screenshot=out/x.png \
-  --pos=-6.4,1.35,7.1 --yaw=0 --pitch=-16 --wait=5
-```
+`Spawn_Boss` が受付台と壁の 0.74m の隙間にあり `NavigationAgent3D` が経路を作れなかった。
+level の 40b9d0b でスポーンを受付台の手前へ移し、ナビメッシュが家具を迂回するようになった。
+director 側の保険(`_walk` / `face_off` の `teleport_to` フォールバック)はそのまま残してある。
 
-机の上にモニターが写らない。これが直ると 23:00 の人影も確認できる。
+### 3. 監督 — `docs/script.md` への追記(対応済み)
 
-### 2. npc / level — 社長が受付台の裏から出られない
+社長の 1 行は 0ebc634 で script.md に追記された。
 
-`Spawn_Boss (-8.0, 0, -3.7)` が受付台(z = -2.95、奥行 0.62)と壁(z = -4)のあいだの
-0.74m の隙間にある。`NavigationAgent3D` が経路を作れず、導入で一歩も動かない。
+### 4. level — 非常灯が入ったら月明かりを下げる
 
-```
-[npc] Boss が (-7, 0.2, 5.2) へ到達できないので打ち切り(残り 10.96m)
-[npc] Boss が (15.2, 0.2, -1.9) へ到達できないので打ち切り(残り 22.35m)
-[npc] Boss が (-9.6, 0.2, 0) へ到達できないので打ち切り(残り 4.52m)
-```
-
-`(-8.0, 0, -2.2)` あたり(受付台の手前)へ移すか、ナビメッシュを隙間まで通してほしい。
-director 側は `Director._walk` に「到達できなければ `teleport_to` で位置だけ合わせる」保険を入れてあるが、
-社長が瞬間移動するので本来は直したい。
-
-### 3. 監督 — `docs/script.md` への追記
-
-上に書いた社長の 1 行を script.md に足してほしい。
+971f77c で非常口サインの緑灯が第 3 系統として入った。director は 04:00 で
+`set_emergency_lights(true)` を呼ぶようにしてある(`has_method` で守ってある)。
+月明かりは現在 energy 0.55。非常灯と合わせて明るすぎるようなら `Scares.MOONLIGHT` を下げる。
