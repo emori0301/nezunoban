@@ -145,7 +145,25 @@ static func _office(b: Building) -> void:
 		{"pane_width": 1.7, "pane_height": 1.15})
 
 	b.add_fluorescent(R, Vector3(-9.0, 2.44, 5.7), 1.25, COOL, 1.0, 6.0, true)
-	b.add_fluorescent(R, Vector3(-6.2, 2.44, 8.4), 1.25, COOL, 1.0, 6.0, true)
+	b.add_fluorescent(R, Vector3(-8.2, 2.44, 8.7), 1.25, COOL, 1.15, 7.0, true)
+
+	# 社長の机のデスクライト。金庫の隅(-10.4, 9.4)まで薄く届かせる。
+	# 部屋の照明と同じ系統なので、分電盤を落とせば一緒に消える。
+	LevelBuild.box(node, Vector3(-9.95, 0.88, 6.62), Vector3(0.05, 0.32, 0.05),
+		LevelMaterials.plain(Color(0.25, 0.25, 0.26)), false, "", false)
+	LevelBuild.box(node, Vector3(-9.95, 1.05, 6.62), Vector3(0.22, 0.09, 0.18),
+		LevelMaterials.emissive(Color(1.0, 0.90, 0.72), 1.1), false, "", false)
+	var desk_lamp := OmniLight3D.new()
+	desk_lamp.name = "Light_DeskLamp"
+	desk_lamp.position = Vector3(-9.95, 0.98, 6.62)
+	desk_lamp.light_color = Color(1.0, 0.89, 0.70)
+	desk_lamp.light_energy = 1.45
+	desk_lamp.omni_range = 6.0
+	desk_lamp.omni_attenuation = 1.1
+	desk_lamp.shadow_enabled = false
+	desk_lamp.light_specular = 0.0
+	node.add_child(desk_lamp)
+	b.add_light(R, desk_lamp)
 
 	b.add_door(R, "Door_Office", Vector3(-8.0, 0.0, 4.0), 0.0, {
 		"kind": Door.Kind.SWING, "door_width": 0.92, "door_height": 2.0,
