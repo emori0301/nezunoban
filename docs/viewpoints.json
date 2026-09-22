@@ -1,0 +1,22 @@
+[
+  {"name": "01_parking",        "pos": [-21.0, 1.70, 3.0],   "yaw": -72,  "pitch": -2, "time": "23:00", "wait": 0.8},
+  {"name": "02_vending",        "pos": [-14.2, 1.60, 6.4],   "yaw": -88,  "pitch": -3, "time": "23:00", "wait": 0.6},
+  {"name": "03_entrance_out",   "pos": [-15.5, 1.60, 0.6],   "yaw": -95,  "pitch": -3, "time": "23:00", "wait": 0.6},
+  {"name": "04_genkan",         "pos": [-10.2, 1.60, 0.2],   "yaw": -85,  "pitch": -3, "time": "23:00", "wait": 0.6},
+  {"name": "05_reception",      "pos": [-8.6,  1.60, 1.0],   "yaw": -20,  "pitch": -6, "time": "23:00", "wait": 0.6},
+  {"name": "06_office",         "pos": [-7.0,  1.60, 4.8],   "yaw": 123,  "pitch": -8, "time": "23:00", "wait": 0.6},
+  {"name": "07_hall_west",      "pos": [-3.4,  1.60, 0.0],   "yaw": -90,  "pitch": -2, "time": "23:00", "wait": 0.6},
+  {"name": "08_hall_east",      "pos": [7.0,   1.60, 0.0],   "yaw": 90,   "pitch": -2, "time": "23:00", "wait": 0.6},
+  {"name": "09_hall_deadend",   "pos": [6.4,   1.60, -1.8],  "yaw": 0,    "pitch": -3, "time": "23:00", "wait": 0.6},
+  {"name": "10_shikijo_door",   "pos": [8.6,   1.60, 0.0],   "yaw": -90,  "pitch": -2, "time": "23:00", "wait": 0.8},
+  {"name": "11_shikijo_altar",  "pos": [18.0,  1.60, -0.5],  "yaw": 90,   "pitch": -5, "time": "23:00", "wait": 0.8},
+  {"name": "12_incense",        "pos": [14.1,  1.60, -0.5],  "yaw": -90,  "pitch": -8, "time": "23:00", "wait": 0.8},
+  {"name": "13_coffin_window",  "pos": [16.9,  1.35, 0.45],  "yaw": 0,    "pitch": -38, "time": "23:00", "wait": 0.6},
+  {"name": "14_shikijo_chairs", "pos": [10.2,  1.60, -0.5],  "yaw": -90,  "pitch": -4, "time": "23:00", "wait": 0.6},
+  {"name": "15_hikaeshitsu",    "pos": [-0.9,  1.55, 2.0],   "yaw": 125,  "pitch": -10, "time": "23:00", "wait": 0.6},
+  {"name": "16_toilet",         "pos": [0.0,   1.60, 1.6],   "yaw": -137, "pitch": -8, "time": "23:00", "wait": 0.6},
+  {"name": "17_backyard",       "pos": [0.5,   1.60, -3.5],  "yaw": -48,  "pitch": -6, "time": "23:00", "wait": 0.6},
+  {"name": "18_yukan",          "pos": [6.6,   1.60, -8.4],  "yaw": -44,  "pitch": -5, "time": "23:00", "wait": 0.6},
+  {"name": "19_backdoor_out",   "pos": [0.0,   1.60, -9.6],  "yaw": 180,  "pitch": -3, "time": "23:00", "wait": 0.6},
+  {"name": "20_shikijo_window", "pos": [13.0,  1.60, 6.4],   "yaw": 0,    "pitch": -2, "time": "23:00", "wait": 0.6}
+]

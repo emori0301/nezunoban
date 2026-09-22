@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/level/_test_tour.gd" id="1_tour"]
+
+[node name="TestTour" type="Node3D"]
+script = ExtResource("1_tour")
