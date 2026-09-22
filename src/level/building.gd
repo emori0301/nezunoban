@@ -70,6 +70,7 @@ var _light_on: Dictionary = {}       # StringName -> bool
 var _aux_lights: Dictionary = {}     # StringName -> Array[Light3D]
 var _aux_energy: Dictionary = {}     # StringName -> Array[float]
 var _aux_on: Dictionary = {}         # StringName -> bool
+var _aux_mats: Dictionary = {}       # StringName -> Array[Dictionary]  glb 内の発光マテリアル
 # 非常灯(第3系統)。set_all_lights(false) でも消えず、set_emergency_lights() だけが切れる。
 var _emg_lights: Array[Light3D] = []
 var _emg_energy: Array[float] = []
@@ -115,6 +116,7 @@ func _ready() -> void:
 		_lamp_energy[r] = []
 		_aux_lights[r] = []
 		_aux_energy[r] = []
+		_aux_mats[r] = []
 		_aux_on[r] = true
 	var out := Node3D.new()
 	out.name = String(OUTSIDE)
@@ -126,6 +128,7 @@ func _ready() -> void:
 	_lamp_energy[OUTSIDE] = []
 	_aux_lights[OUTSIDE] = []
 	_aux_energy[OUTSIDE] = []
+	_aux_mats[OUTSIDE] = []
 	_aux_on[OUTSIDE] = true
 
 	_build_floors_and_ceilings()
@@ -309,6 +312,19 @@ func add_aux_light(room: StringName, light: Light3D) -> void:
 	_aux_energy[room].append(light.light_energy)
 
 
+## glb の中の発光マテリアルを aux 系統に載せる(回転灯籠の紙など)。
+## 光源を消しても紙が光ったままにならないようにするため。
+func add_aux_material(room: StringName, mat: BaseMaterial3D) -> void:
+	if mat == null:
+		return
+	_aux_mats[room].append({
+		"mat": mat,
+		"energy": mat.emission_energy_multiplier,
+		"on": mat.albedo_color,
+		"off": mat.albedo_color.darkened(0.7),
+	})
+
+
 func add_light(room: StringName, light: Light3D, mat: StandardMaterial3D = null) -> void:
 	_lights[room].append(light)
 	_lamp_energy[room].append(light.light_energy)
@@ -392,6 +408,12 @@ func _apply_aux(room: StringName, on: bool) -> void:
 			continue
 		l.light_energy = float(energies[i]) * light_scale if on else 0.0
 		l.visible = on
+	for e in _aux_mats.get(room, []):
+		var m: BaseMaterial3D = e["mat"]
+		if m == null:
+			continue
+		m.emission_energy_multiplier = float(e["energy"]) if on else 0.0
+		m.albedo_color = e["on"] if on else e["off"]
 
 
 func _build_environment() -> void:

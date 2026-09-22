@@ -37,6 +37,12 @@ func _ready() -> void:
 		return
 	if args.has("dark"):
 		b.set_all_lights(false)
+	# CCTV の見え方確認: --camanchor=Anchor_Cam_Genkan でそのアンカーの視点から撮る
+	if args.has("camanchor"):
+		var an: Node3D = b.get_anchor(StringName(String(args["camanchor"])))
+		if an:
+			cam.global_transform = an.global_transform
+			cam.fov = 70.0
 	if args.has("emgoff"):
 		b.set_emergency_lights(false)
 	if args.has("roomoff"):

@@ -29,6 +29,45 @@ static func _tune_emission(p: Prop, mat_name: String, energy: float) -> void:
 				bm.emission_energy_multiplier = energy
 
 
+## glb の中の特定マテリアル(複製された override)を集める。
+static func _find_materials(p: Prop, mat_name: String) -> Array:
+	var out: Array = []
+	var inst := p.get_instance()
+	if inst == null:
+		return out
+	for n in inst.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		for i in mi.get_surface_override_material_count():
+			var m := mi.get_surface_override_material(i)
+			if m is BaseMaterial3D and String(m.resource_name).findn(mat_name) >= 0:
+				out.append(m)
+	return out
+
+
+## glb に入っているアニメをループ再生する(回転灯籠の spin など)。
+static func _play_loop(p: Prop, anim: String) -> void:
+	var inst := p.get_instance()
+	if inst == null:
+		return
+	for n in inst.find_children("*", "AnimationPlayer", true, false):
+		var ap := n as AnimationPlayer
+		var name_found := ""
+		if ap.has_animation(anim):
+			name_found = anim
+		else:
+			for candidate in ap.get_animation_list():
+				if String(candidate).ends_with(anim):
+					name_found = String(candidate)
+					break
+		if name_found == "":
+			continue
+		var a := ap.get_animation(name_found)
+		if a:
+			a.loop_mode = Animation.LOOP_LINEAR
+		ap.play(name_found)
+		return
+
+
 static func _aim(m: Node3D, target: Vector3) -> void:
 	if m.is_inside_tree():
 		m.look_at(target, Vector3.UP)
@@ -146,6 +185,28 @@ static func _shikijo(b: Building) -> void:
 		node.add_child(spot)
 		spot.look_at(cfg["aim"], Vector3.UP)
 		b.add_aux_light(R, spot)
+
+	# 回転灯籠。祭壇の左右、供花スタンドの手前。祭壇スポットと同じ aux 系統で、
+	# set_room_lights では消えず set_all_lights(false) で落ちる。
+	for lz in [-3.3, 2.3]:
+		var lan := b.add_prop(R, "Lantern_%d" % int(lz * 10), "lantern_rotating",
+			Vector3(18.3, 0.0, lz), 0.0, Vector3(0.36, 0.96, 0.36), Color(0.78, 0.62, 0.32), false)
+		var ll := OmniLight3D.new()
+		ll.name = "Light"
+		ll.position = Vector3(0, 0.62, 0)
+		ll.light_color = Color(1.0, 0.80, 0.50)
+		ll.light_energy = 0.6
+		ll.omni_range = 3.0
+		ll.omni_attenuation = 1.4
+		ll.shadow_enabled = false
+		ll.light_specular = 0.0
+		lan.add_child(ll)
+		b.add_aux_light(R, ll)
+		# 紙と火袋は glb 側が光っているので、こちらも aux 系統に載せて一緒に落とす
+		for mn in ["Paper", "LanternInner"]:
+			for m in _find_materials(lan, mn):
+				b.add_aux_material(R, m)
+		_play_loop(lan, "spin")
 
 	# 非常口サイン(入口の引き分け戸の上、室内から見える向き)
 	b.add_exit_sign(R, Vector3(7.72, 2.55, 0.0), 90.0)
@@ -269,7 +330,9 @@ static func _outside(b: Building) -> void:
 	LevelBuild.box(node, Vector3(-12.6, 2.28, 0.0), Vector3(3.45, 0.16, 4.2), conc, false, "", true)
 	for pz in [-1.85, 1.85]:
 		LevelBuild.box(node, Vector3(-14.15, 1.1, pz), Vector3(0.18, 2.2, 0.18), conc)
-	b.add_bulb(R, Vector3(-12.6, 2.14, 0.0), Color(1.0, 0.88, 0.68), 1.5, 7.0, true)
+	b.add_bulb(R, Vector3(-12.6, 2.14, 0.0), Color(1.0, 0.88, 0.68), 2.1, 9.5, true)
+	# 玄関口の灯り。CCTV に外に立つ人影が映るよう、ポーチの床まで届かせる。
+	b.add_bulb(R, Vector3(-11.7, 2.12, 0.0), Color(1.0, 0.86, 0.64), 1.2, 6.5, false)
 
 	# 看板「やすらぎ会館」
 	LevelBuild.box(node, Vector3(-11.1, 2.62, 0.0), Vector3(0.07, 0.52, 3.0),
@@ -326,11 +389,11 @@ static func _outside(b: Building) -> void:
 		LevelMaterials.plain(Color(0.25, 0.25, 0.24)), false, "", false)
 	b.add_bulb(R, Vector3(-4.35, 2.42, -6.0), Color(1.0, 0.86, 0.62), 0.9, 6.0, true)
 
-	# CCTV(玄関の外側上から)
-	LevelBuild.box(node, Vector3(-11.3, 2.58, 2.45), Vector3(0.3, 0.16, 0.24),
+	# CCTV(玄関の外側)。庇(下端 y=2.20)より下に潜らせないと、画が庇で黒く潰れる。
+	LevelBuild.box(node, Vector3(-11.18, 2.12, 1.72), Vector3(0.3, 0.16, 0.24),
 		LevelMaterials.plain(Color(0.18, 0.18, 0.19)), false, "", false)
-	var cam := b.add_anchor(R, "Anchor_Cam_Genkan", Vector3(-11.4, 2.56, 2.4), 0.0)
-	_aim(cam, Vector3(-12.4, 0.9, -0.6))
+	var cam := b.add_anchor(R, "Anchor_Cam_Genkan", Vector3(-11.24, 2.08, 1.66), 0.0)
+	_aim(cam, Vector3(-13.9, 0.75, -0.35))
 
 	# スポーン(息子は玄関の外、猫は外周の各所)
 	b.add_anchor(R, "Spawn_Son", Vector3(-13.2, 0.0, 0.0), -90.0)
