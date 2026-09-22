@@ -2,6 +2,12 @@ class_name Coffin
 extends Interactable
 ## 棺。式場の中心。小窓・ドライアイス・猫のまたぎ判定・蓋のずれ・顔の状態を持つ。
 ##
+## ■ coffin.glb の可動部(models 担当が用意した名前で拾う)
+##   Lid    … 原点 (0, 0.340, 0.300)。足側の長辺が蝶番。X 回転 + で開く。
+##            position.x を +0.10 すると「蓋がずれた」状態になる。
+##   Window … Lid の子。visible = false で小窓が開き、中の body_face が見える。
+## 小窓は本当に貫通しているので、body_face.glb を棺ローカル (0.64, 0.275, 0) に置く。
+##
 ## ■ 小窓について
 ## 掟4「棺の小窓を開けぬこと」があるので allow_open_window は既定で false。
 ## ドライアイス交換のときだけ、仕事として小窓越しに顔が見える(design.md「顔を見る唯一の機会」)。
@@ -14,8 +20,9 @@ extends Interactable
 ##     cof.set_lid_ajar(true)          # 蓋が 10cm ずれる
 ##     cof.set_face_state(2)           # 目が開いている
 ##     cof.set_handprint(true)         # 小窓の内側に手形
-##     cof.set_open(true)              # 04:00 以降、棺が開いている
-##     await cof.show_face(3.0)        # 顔ビューを見せる(プレイヤーは固定される)
+##     cof.set_open(true)              # 04:00 以降、棺の蓋が開いている
+##     cof.set_window_open(true)       # 小窓だけ開ける
+##     await cof.show_face(3.0)        # 小窓を開けて顔を見せる(プレイヤーは固定される)
 ##     Events.on(&"cat_crossed_coffin", func(_d): ...)   # 猫がまたいだ = 異変度 +3
 
 signal face_shown
@@ -31,26 +38,21 @@ signal cat_crossed
 @export var cat_dread: int = 3
 @export var face_view_seconds: float = 3.0
 
-## 蓋の上面の高さと小窓の位置。coffin.glb に "Window" メッシュがあれば
-## 起動時にその実寸で上書きするので、通常はいじらなくてよい。
-@export var lid_top_y: float = 0.444
+## 故人の顔(body_face.glb)を置く位置。棺ローカル。小窓の真下。
+@export var face_model_offset: Vector3 = Vector3(0.64, 0.275, 0.0)
+## 顔のわずかな自発光。暗い式場でも小窓を覗けば顔が読めるようにするため。
+@export var face_emission: float = 0.12
+## 小窓の中のごく弱い光。
+@export var window_light_energy: float = 0.35
+
+## モデルが無いとき用のフォールバック寸法。glb があれば Window の実寸で上書きする。
+@export var lid_top_y: float = 0.436
 @export var window_offset: Vector3 = Vector3(0.64, 0.0, 0.0)
 @export var window_size: Vector2 = Vector2(0.26, 0.20)
+## 蓋をずらす距離(m)と、全開にするときの角度。
 @export var lid_slide: float = 0.10
+@export var lid_open_degrees: float = 62.0
 @export var body_length: float = 1.98
-## coffin.glb の小窓は「枠」だけで蓋に穴が開いていないため、顔は薄い板として
-## 小窓のガラス面のすぐ上に重ねる。ここはその持ち上げ量(m)。
-## ごく薄いので蓋から飛び出しては見えない。
-@export var face_lift: float = 0.0012
-## 蓋に小窓の穴が開いたら true にすると、body_face.glb を立体で中に置く。
-## 現状の coffin.glb には穴が無いので既定は false。
-@export var use_face_model: bool = false
-## use_face_model のときの、小窓から顔までの深さ。
-@export var face_model_depth: float = 0.11
-## 顔のわずかな自発光。暗い式場でも小窓を覗けば顔が読めるようにするため。
-@export var face_emission: float = 0.10
-## 小窓の中のごく弱い光。
-@export var window_light_energy: float = 0.10
 
 ## face_state 0..3 に対応するテクスチャ名(assets/textures/)
 const FACE_TEXTURES := ["body_face_calm", "body_face_mouth", "body_face_eyes", "body_face_turned"]
@@ -60,6 +62,7 @@ var face_state: int = 0:
 
 var is_lid_ajar: bool = false
 var is_open: bool = false
+var is_window_open: bool = false
 var has_handprint: bool = false
 var cat_has_crossed: bool = false
 var is_showing_face: bool = false
@@ -68,10 +71,9 @@ var _prop: Prop
 var _lid_placeholder: MeshInstance3D
 var _lid_node: Node3D
 var _lid_rest: Vector3 = Vector3.ZERO
-var _window_root: Node3D
-var _glass: MeshInstance3D
-var _face: MeshInstance3D
+var _window_node: MeshInstance3D
 var _face_prop: Prop
+var _face_quad: MeshInstance3D          # glb が無いとき用
 var _handprint: MeshInstance3D
 var _window_light: OmniLight3D
 var _face_cam: Camera3D
@@ -84,8 +86,11 @@ func _ready() -> void:
 	prompt = peek_prompt
 	_prop = get_node_or_null(^"Prop") as Prop
 	_cat_zone = get_node_or_null(^"CatZone") as Area3D
-	_build_lid()
-	_build_window()
+	_resolve_model_parts()
+	_build_lid_fallback()
+	_build_face()
+	_build_handprint()
+	_build_window_light()
 	_build_face_camera()
 	_connect_cat_zone()
 	set_face_state(face_state)
@@ -95,9 +100,28 @@ func _ready() -> void:
 # 組み立て
 # --------------------------------------------------------------------------
 
-func _build_lid() -> void:
-	# glb があれば蓋のノードを探す。無ければ箱の蓋を自前で作る。
-	_lid_node = _find_lid_in_model()
+## coffin.glb の Lid / Window を名前で拾い、小窓の実寸を取り込む。
+func _resolve_model_parts() -> void:
+	if _prop == null:
+		return
+	var inst := _prop.get_instance()
+	if inst == null:
+		return
+	for n in inst.find_children("*", "Node3D", true, false):
+		var nm := String(n.name).to_lower()
+		if nm == "lid" or (_lid_node == null and nm.contains("lid")):
+			_lid_node = n as Node3D
+		elif nm == "window":
+			_window_node = n as MeshInstance3D
+	if _window_node:
+		var wb := SystemUtil.part_bounds(inst, "Window", self)
+		if wb.size.x > 0.01:
+			window_offset = Vector3(wb.get_center().x, 0.0, wb.get_center().z)
+			lid_top_y = wb.position.y + wb.size.y
+			window_size = Vector2(wb.size.x, wb.size.z)
+
+## glb が無いときだけ、箱の蓋を自前で作る。
+func _build_lid_fallback() -> void:
 	if _lid_node == null:
 		_lid_placeholder = MeshInstance3D.new()
 		_lid_placeholder.name = "LidPlaceholder"
@@ -111,133 +135,61 @@ func _build_lid() -> void:
 		_lid_node = _lid_placeholder
 	_lid_rest = _lid_node.position
 
-func _find_lid_in_model() -> Node3D:
-	if _prop == null:
-		return null
-	var inst := _prop.get_instance()
-	if inst == null:
-		return null
-	for n in inst.find_children("*", "Node3D", true, false):
-		if String(n.name).to_lower().contains("lid"):
-			return n as Node3D
-	return null
-
-func _build_window() -> void:
-	# coffin.glb に "Window"(小窓の枠)があれば、その実寸に合わせる
-	var model_window := false
-	if _prop:
-		var wb := SystemUtil.part_bounds(_prop.get_instance(), "Window", self)
-		if wb.size.x > 0.01:
-			var c := wb.get_center()
-			window_offset = Vector3(c.x, 0.0, c.z)
-			lid_top_y = wb.position.y + wb.size.y
-			window_size = Vector2(wb.size.x * 0.74, wb.size.z * 0.74)
-			model_window = true
-
-	_window_root = Node3D.new()
-	_window_root.name = "SmallWindow"
-	_window_root.position = Vector3(window_offset.x, lid_top_y + 0.001, window_offset.z)
-	add_child(_window_root)
-
-	if not model_window:
-		# モデルが無いときだけ、自前で窓枠を作る
-		var frame_mat := SystemUtil.flat_material(Color(0.16, 0.13, 0.11))
-		var t := 0.018
-		var fw := window_size.x
-		var fh := window_size.y
-		for spec in [
-			[Vector3(0, 0, -fh * 0.5 - t * 0.5), Vector3(fw + t * 2.0, 0.012, t)],
-			[Vector3(0, 0, fh * 0.5 + t * 0.5), Vector3(fw + t * 2.0, 0.012, t)],
-			[Vector3(-fw * 0.5 - t * 0.5, 0, 0), Vector3(t, 0.012, fh)],
-			[Vector3(fw * 0.5 + t * 0.5, 0, 0), Vector3(t, 0.012, fh)],
-		]:
-			var mi := MeshInstance3D.new()
-			var bm := BoxMesh.new()
-			bm.size = spec[1]
-			mi.mesh = bm
-			mi.position = spec[0] + Vector3(0, 0.006, 0)
-			mi.material_override = frame_mat
-			_window_root.add_child(mi)
-
-	# 小窓の奥(暗い内側)
-	var inner := MeshInstance3D.new()
-	inner.name = "Inner"
-	var iq := QuadMesh.new()
-	iq.size = window_size * 1.05
-	inner.mesh = iq
-	inner.rotation_degrees = Vector3(-90, 0, 0)     # 上(+Y)を向く
-	inner.position = Vector3(0, face_lift - 0.0006, 0)
-	inner.material_override = SystemUtil.flat_material(Color(0.015, 0.015, 0.02))
-	inner.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_window_root.add_child(inner)
-
-	# body_face.glb を立体で置けるのは、蓋に小窓の穴が開いてから。
-	if use_face_model and SystemUtil.has_model("body_face"):
+## 故人の顔。body_face.glb があれば小窓の真下に立体で置く。
+func _build_face() -> void:
+	if SystemUtil.has_model("body_face"):
 		_face_prop = Prop.new()
 		_face_prop.name = "FaceModel"
 		_face_prop.add_collision = false
 		_face_prop.cast_shadow = false
-		_face_prop.position = Vector3(0, -face_model_depth, 0)
-		var fit: float = minf(window_size.x / 0.40, window_size.y / 0.30)
-		_face_prop.scale = Vector3(fit, 1.0, fit)
+		_face_prop.position = face_model_offset
 		_face_prop.model_name = "body_face"
-		_window_root.add_child(_face_prop)
-
-	# 顔(薄い板。枠のくぼみに収まるので蓋から飛び出さない)
-	_face = MeshInstance3D.new()
-	_face.name = "Face"
+		add_child(_face_prop)
+		return
+	# フォールバック: テクスチャを貼った薄い板
+	_face_quad = MeshInstance3D.new()
+	_face_quad.name = "FaceQuad"
 	var fq := QuadMesh.new()
-	# 面内で 90 度回すので、幅と奥行きを入れ替えて小窓にぴったり収める
-	fq.size = Vector2(window_size.y * 0.99, window_size.x * 0.99)
-	_face.mesh = fq
-	# 上向きにして、さらに面内で 90 度回す。こうすると画像の上が棺の -X(頭側)を向き、
-	# 顔ビュー(カメラの上 = -X)で顔が正しい向きに見える。
-	_face.rotation_degrees = Vector3(-90, 0, 90)
-	_face.position = Vector3(0, face_lift, 0)
-	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_face.visible = _face_prop == null
-	_window_root.add_child(_face)
+	fq.size = Vector2(window_size.y * 0.95, window_size.x * 0.95)
+	_face_quad.mesh = fq
+	_face_quad.rotation_degrees = Vector3(-90, 0, 90)
+	_face_quad.position = Vector3(window_offset.x, lid_top_y - 0.16, window_offset.z)
+	_face_quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_face_quad)
 
-	# 内側からの手形
+## 小窓の内側についた手の跡。Window の子にして、小窓を開けたら一緒に消えるようにする。
+func _build_handprint() -> void:
 	_handprint = MeshInstance3D.new()
 	_handprint.name = "Handprint"
 	var hq := QuadMesh.new()
 	hq.size = Vector2(window_size.x * 0.46, window_size.x * 0.46)
 	_handprint.mesh = hq
 	_handprint.rotation_degrees = Vector3(-90, 0, 90)
-	_handprint.position = Vector3(window_size.x * 0.22, face_lift + 0.0008, -window_size.y * 0.18)
 	var hm := SystemUtil.alpha_material(SystemUtil.handprint_texture(), Color(0.34, 0.40, 0.48, 1.0), false, true)
-	hm.render_priority = 2   # 顔より後に描く
+	hm.render_priority = 2
 	_handprint.material_override = hm
 	_handprint.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_handprint.visible = false
-	_window_root.add_child(_handprint)
+	if _window_node:
+		# Window のメッシュ上面のすぐ上(Window ローカル)
+		var top := _window_node.get_aabb().position.y + _window_node.get_aabb().size.y
+		_handprint.position = Vector3(window_size.x * 0.20, top + 0.002, -window_size.y * 0.16)
+		_window_node.add_child(_handprint)
+	else:
+		_handprint.position = Vector3(window_offset.x, lid_top_y + 0.003, window_offset.z)
+		add_child(_handprint)
 
-	# ガラス(うっすら反射)
-	_glass = MeshInstance3D.new()
-	_glass.name = "Glass"
-	var gq := QuadMesh.new()
-	gq.size = window_size
-	_glass.mesh = gq
-	_glass.rotation_degrees = Vector3(-90, 0, 0)
-	_glass.position = Vector3(0, face_lift + 0.0016, 0)
-	var gm := SystemUtil.alpha_material(null, Color(0.55, 0.60, 0.62, 0.16), false, false)
-	gm.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
-	gm.render_priority = 3   # 一番手前
-	_glass.material_override = gm
-	_glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_window_root.add_child(_glass)
-
-	# 小窓の中は真っ暗なので、顔が見える程度のごく弱い光を入れる
+## 小窓の中は真っ暗なので、顔が読める程度のごく弱い光を入れる。
+func _build_window_light() -> void:
 	_window_light = OmniLight3D.new()
 	_window_light.name = "WindowLight"
 	_window_light.light_color = Color(0.80, 0.82, 0.88)
 	_window_light.light_energy = window_light_energy
-	_window_light.omni_range = 0.7
-	_window_light.omni_attenuation = 1.2
+	_window_light.omni_range = 0.55
+	_window_light.omni_attenuation = 1.3
 	_window_light.shadow_enabled = false
-	_window_light.position = Vector3(0, 0.30, 0)
-	_window_root.add_child(_window_light)
+	_window_light.position = Vector3(window_offset.x, lid_top_y - 0.05, window_offset.z)
+	add_child(_window_light)
 
 func _build_face_camera() -> void:
 	_face_cam = Camera3D.new()
@@ -298,9 +250,10 @@ func scratch() -> void:
 func _shake(amount: float, duration: float) -> void:
 	if _lid_node == null:
 		return
+	var base := _lid_rest + _lid_offset()
 	var tw := create_tween()
-	tw.tween_property(_lid_node, "position", _lid_rest + _lid_offset() + Vector3(0, amount, 0), duration * 0.3)
-	tw.tween_property(_lid_node, "position", _lid_rest + _lid_offset(), duration * 0.7)
+	tw.tween_property(_lid_node, "position", base + Vector3(0, amount, 0), duration * 0.3)
+	tw.tween_property(_lid_node, "position", base, duration * 0.7)
 
 func _lid_offset() -> Vector3:
 	return Vector3(lid_slide, 0, 0) if is_lid_ajar else Vector3.ZERO
@@ -312,23 +265,34 @@ func set_lid_ajar(ajar: bool) -> void:
 	is_lid_ajar = ajar
 	Audio.play_at(&"coffin_lid_slide", global_position)
 	if _lid_node == null:
-		push_warning("Coffin: 蓋のノードが無いので見た目は変わらない(glb の蓋は名前に Lid を含めてほしい)")
 		return
 	var tw := create_tween()
 	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(_lid_node, "position", _lid_rest + _lid_offset(), 1.4)
 
-## 棺が開いている状態にする(終盤)。glb があれば coffin_lid_open に差し替える。
+## 棺の蓋を開ける/閉じる(終盤)。Lid を足側の蝶番で回す。
 func set_open(open: bool) -> void:
+	if is_open == open:
+		return
 	is_open = open
-	if _prop:
+	Audio.play_at(&"coffin_lid_slide", global_position)
+	if _lid_node:
+		var tw := create_tween()
+		tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(_lid_node, "rotation_degrees:x", lid_open_degrees if open else 0.0, 1.8)
+	elif _prop:
 		_prop.model_name = "coffin_lid_open" if open else "coffin"
-	if _lid_placeholder:
-		_lid_placeholder.visible = (not open) and (not SystemUtil.has_model("coffin"))
-	if _window_root:
-		_window_root.visible = not open
 	if open:
-		Audio.play_at(&"coffin_lid_slide", global_position)
+		set_window_open(false)
+
+## 小窓だけ開ける/閉じる。開くと中の顔が見える。
+func set_window_open(open: bool) -> void:
+	if is_window_open == open:
+		return
+	is_window_open = open
+	if _window_node:
+		_window_node.visible = not open
+	Audio.play_at(&"coffin_lid_slide", global_position, -8.0, 1.35)
 
 ## 小窓の内側についた手形。
 func set_handprint(on: bool) -> void:
@@ -341,27 +305,25 @@ func set_face_state(state: int) -> void:
 	face_state = clampi(state, 0, 3)
 	var tex := _face_texture(face_state)
 	if _face_prop:
-		# body_face.glb の "Face" サーフェスを差し替える
 		var inst := _face_prop.get_instance()
-		var n := SystemUtil.set_surface_texture(inst, "Face", tex)
-		if n == 0:
+		if SystemUtil.set_surface_texture(inst, "Face", tex) == 0:
 			push_warning("Coffin: body_face.glb に Face サーフェスが無い")
-		for s2 in SystemUtil.find_surfaces(inst, "Face"):
-			var m2 := SystemUtil.surface_material(s2["mi"], s2["index"])
-			m2.emission_enabled = face_emission > 0.0
-			m2.emission = Color(1, 1, 1)
-			m2.emission_texture = tex
-			m2.emission_energy_multiplier = face_emission
+		for s in SystemUtil.find_surfaces(inst, "Face"):
+			var m := SystemUtil.surface_material(s["mi"], s["index"])
+			m.emission_enabled = face_emission > 0.0
+			m.emission = Color(1, 1, 1)
+			m.emission_texture = tex
+			m.emission_energy_multiplier = face_emission
 		# 「こちらを向く」は少し回転も足す
 		_face_prop.rotation_degrees.y = 8.0 if face_state >= 3 else 0.0
-	if _face:
+	if _face_quad:
 		var mat := SystemUtil.alpha_material(tex, Color(1, 1, 1, 1), false, false)
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
 		mat.emission_enabled = face_emission > 0.0
 		mat.emission = Color(1, 1, 1)
 		mat.emission_texture = tex
 		mat.emission_energy_multiplier = face_emission
-		_face.material_override = mat
+		_face_quad.material_override = mat
 
 func _face_texture(state: int) -> Texture2D:
 	var tex := SystemUtil.load_texture(FACE_TEXTURES[clampi(state, 0, 3)])
@@ -375,7 +337,7 @@ func _face_texture(state: int) -> Texture2D:
 # 顔ビュー
 # --------------------------------------------------------------------------
 
-## 小窓の真上にカメラをゆっくり寄せて顔を見せる。見ている間は息の音がする。
+## 小窓を開け、その真上にカメラをゆっくり寄せて顔を見せる。見ている間は息の音がする。
 func show_face(seconds: float = -1.0, reason: String = "peek") -> void:
 	if is_showing_face:
 		return
@@ -384,28 +346,37 @@ func show_face(seconds: float = -1.0, reason: String = "peek") -> void:
 	is_showing_face = true
 	var p := Game.player
 	SystemUtil.set_locked(p, true)
+	set_window_open(true)
 	Events.emit_event(&"coffin_window_opened", {"reason": reason})
 	face_shown.emit()
 
-	var target := _window_root.global_position
+	var target := _window_point()
 	_prev_cam = get_viewport().get_camera_3d() if is_inside_tree() else null
 	_face_cam.global_position = target + Vector3(0, 0.95, 0.02)
-	# 故人は棺の長辺に沿って寝ているので、画面の上を棺の +X(頭側)に合わせる
+	# 故人は棺の長辺に沿って寝ているので、画面の上を棺の -X(頭側)に合わせる
 	_face_cam.look_at(target, -global_transform.basis.x)
 	_face_cam.current = true
 
 	var tw := create_tween()
 	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
-	tw.tween_property(_face_cam, "global_position", target + Vector3(0, 0.34, 0.01), minf(seconds * 0.6, 1.6))
+	tw.tween_property(_face_cam, "global_position", target + Vector3(0, 0.30, 0.01), minf(seconds * 0.6, 1.6))
 	_breath_timer = 0.0
 	await get_tree().create_timer(seconds).timeout
 
 	_face_cam.current = false
 	if _prev_cam != null and is_instance_valid(_prev_cam):
 		_prev_cam.make_current()
+	set_window_open(false)
 	SystemUtil.set_locked(p, false)
 	is_showing_face = false
 	face_hidden.emit()
+
+## 小窓の中心のワールド座標。
+func _window_point() -> Vector3:
+	if _window_node and _window_node.is_inside_tree():
+		var a := _window_node.get_aabb()
+		return _window_node.global_transform * a.get_center()
+	return global_transform * Vector3(window_offset.x, lid_top_y, window_offset.z)
 
 func _process(delta: float) -> void:
 	if not is_showing_face:
@@ -446,8 +417,5 @@ func _replace_dry_ice(player: Node3D) -> void:
 	show_face(face_view_seconds, "dry_ice")
 
 ## hold 時間はドライアイスを持っているかで変える。
-func _process_prompt_hold() -> void:
-	hold_time = dry_ice_hold_time if _has_dry_ice() else 0.0
-
 func _physics_process(_delta: float) -> void:
-	_process_prompt_hold()
+	hold_time = dry_ice_hold_time if _has_dry_ice() else 0.0

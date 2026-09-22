@@ -18,9 +18,12 @@ signal restored
 @export var restore_hold_time: float = 1.0
 @export var panel_size: Vector3 = Vector3(0.30, 0.40, 0.12)
 ## レバーの位置(breaker_box.glb の前面に合わせてある)
+## モデルの主幹ブレーカーのレバーを倒す角度(X 回転)
+@export var lever_down_degrees: float = 38.0
 @export var lever_offset: Vector3 = Vector3(-0.263, 0.188, 0.045)
 @export var lever_size: Vector3 = Vector3(0.030, 0.050, 0.022)
 
+var _model_lever: Node3D
 var _lever: MeshInstance3D
 
 func _ready() -> void:
@@ -31,6 +34,14 @@ func _ready() -> void:
 	_apply()
 
 func _build() -> void:
+	# breaker_box.glb の "Lever"(原点 (-0.140, 0.210, 0.006)、X 回転で上下に倒れる)
+	var prop := get_node_or_null(^"Prop") as Prop
+	if prop:
+		var inst := prop.get_instance()
+		if inst:
+			_model_lever = inst.find_child("Lever", true, false) as Node3D
+	if _model_lever:
+		return
 	_lever = MeshInstance3D.new()
 	_lever.name = "Lever"
 	var bm := BoxMesh.new()
@@ -43,7 +54,15 @@ func _build() -> void:
 	_lever.visible = not SystemUtil.has_model("breaker_box")
 	add_child(_lever)
 
-func _apply() -> void:
+func _apply(animate: bool = false) -> void:
+	if _model_lever:
+		if animate:
+			var tw := create_tween()
+			tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+			tw.tween_property(_model_lever, "rotation_degrees:x", 0.0 if is_on else lever_down_degrees, 0.18)
+		else:
+			_model_lever.rotation_degrees.x = 0.0 if is_on else lever_down_degrees
+		return
 	if _lever:
 		_lever.rotation_degrees.x = 0.0 if is_on else 34.0
 		(_lever.material_override as StandardMaterial3D).albedo_color = (
@@ -58,7 +77,7 @@ func trip() -> void:
 	if not is_on:
 		return
 	is_on = false
-	_apply()
+	_apply(true)
 	Audio.play_at(&"breaker_click", global_position)
 	Audio.play_at(&"lights_off", global_position, -4.0)
 	Events.emit_event(&"breaker_off")
@@ -69,7 +88,7 @@ func restore() -> void:
 	if is_on:
 		return
 	is_on = true
-	_apply()
+	_apply(true)
 	Audio.play_at(&"breaker_click", global_position)
 	Audio.play_at(&"lights_on", global_position, -4.0)
 	Events.emit_event(&"breaker_on")

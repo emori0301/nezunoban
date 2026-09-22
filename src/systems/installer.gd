@@ -86,11 +86,32 @@ func _demo_state() -> void:
 	var tv := find(&"tv")
 	if tv:
 		tv.call(&"turn_on")
+	# 蓋・扉を開けた状態を確認できるようにする
+	var fz := find(&"freezer") as Freezer
+	if fz:
+		fz.keep_open = true
+		fz.set_lid_open(true)
+	var sf := find(&"safe") as Safe
+	if sf:
+		sf.open()
+	var br := find(&"breaker") as Breaker
+	if br and _has_cli_flag("systems-tripped"):
+		br.trip()
+	var cof := find(&"coffin") as Coffin
+	if cof and _has_cli_flag("systems-face"):
+		cof.set_face_state(int(_cli_value("systems-face", "2")))
+		cof.show_face(120.0, "demo")
 	# 確認用なので館内の照明も点ける(本番では director が制御する)
 	var lvl: Node = Game.level
 	if lvl and lvl.has_method(&"set_all_lights"):
 		lvl.call(&"set_all_lights", true)
 	print("[systems] demo: 線香とロウソクを点け、TV をつけ、照明を点けた")
+
+static func _cli_value(name: String, fallback: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--" + name + "="):
+			return a.substr(name.length() + 3)
+	return fallback
 
 static func _has_cli_flag(name: String) -> bool:
 	for a in OS.get_cmdline_user_args():

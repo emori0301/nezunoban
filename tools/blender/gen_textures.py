@@ -733,95 +733,298 @@ def t_iei_photo_player():
 
 # ---------------------------------------------------------------- 顔(NPC)
 
-def _npc_face(base_skin, hair, seed, age="old", ruddy=0.0, female=False):
-    """頭部用の 1 枚もの。左半分(u=0..0.5)が顔、右半分は髪/後頭部。"""
-    img = rgb(S, hair)
-    img = mul_gray(img, 0.80 + norm(fbm(S, 18, 3, seed)) * 0.34)
+def _degrade(img, seed, out=128, fade=0.18, grain=0.085, block=0.13):
+    """写真を劣化させたような仕上げ。256 で描いて out へ落とす。
+    ぼかし → 縮小 → 粒子 → 色ノイズ → ブロックノイズ → 退色 → 減色。"""
+    R = img.shape[0]
+    img = blur(img, 1)
+    f = R // out
+    small = img.reshape(out, f, out, f, 3).mean(axis=(1, 3))
+    small = mul_gray(small, 1.0 - grain * 0.5 + white(out, seed + 21) * grain)
+    for c in range(3):
+        small[..., c] = small[..., c] * (0.985 + white(out, seed + 30 + c) * 0.030)
+    nb = out // 8
+    blk = small.reshape(nb, 8, nb, 8, 3).mean(axis=(1, 3))
+    blk = np.repeat(np.repeat(blk, 8, axis=0), 8, axis=1)
+    small = mix(small, blk, block)
+    lum = small.mean(axis=2, keepdims=True)
+    small = mix(small, np.repeat(lum, 3, axis=2), fade)
+    small = np.clip((small - 0.5) * 0.94 + 0.5, 0, 1)
+    return posterize(small, 28)
 
-    face = rgb(S, base_skin)
-    face = mul_gray(face, 0.93 + norm(fbm(S, 40, 3, seed + 1)) * 0.14)
-    img[:, :128] = face[:, :128]
 
-    cx, cy, sc = 140, 64, 100
-    skin = base_skin
-    sh = tuple(c * 0.74 for c in base_skin)
+def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
+                female=False, lips=None):
+    """人物の顔。1 枚で頭の正面だけに貼る(128x128)。
+    アニメ絵にならないよう、輪郭線を引かず、面の明暗と皺で作る。"""
+    R = 256
+    rng = np.random.default_rng(seed)
+    sh = tuple(c * 0.70 for c in skin)
+    dk = tuple(c * 0.44 for c in skin)
+    hl = tuple(min(1.0, c * 1.14) for c in skin)
+    lips = lips or (min(1.0, skin[0] * 1.02), skin[1] * 0.70, skin[2] * 0.70)
+
+    img = rgb(R, skin)
+    # 肌のムラ(血色と日焼けの斑)
+    img = mul_gray(img, 0.92 + norm(fbm(R, 7, 4, seed + 1)) * 0.16)
+    img = mix(img, rgb(R, tuple(c * 0.88 for c in skin)), norm(fbm(R, 16, 3, seed + 2)) * 0.20)
+    img = mix(img, rgb(R, hl), norm(fbm(R, 4, 3, seed + 3)) * 0.12)
+
+    # --- 面の明暗(立体感) ---
+    for sgn in (-1, 1):
+        ellipse(img, 140, 128 + sgn * 120, 150, 62, sh, 0.58, soft=72)   # 側面を落とす
+        ellipse(img, 118, 128 + sgn * 96, 46, 26, sh, 0.30, soft=36)     # こめかみ
+        ellipse(img, 134, 128 + sgn * 62, 30, 34, hl, 0.26, soft=42)     # 頬骨
+    ellipse(img, 60, 128, 40, 72, hl, 0.32, soft=48)                     # 額
+    ellipse(img, 88, 128, 15, 88, sh, 0.20, soft=32)                     # 眉の張り出し
+    ellipse(img, 130, 128, 50, 13, hl, 0.30, soft=22)                    # 鼻筋
+    for sgn in (-1, 1):
+        ellipse(img, 146, 128 + sgn * 27, 36, 12, sh, 0.34, soft=20)     # 鼻の脇
+        ellipse(img, 158, 128 + sgn * 22, 12, 13, sh, 0.42, soft=8)      # 小鼻
+        ellipse(img, 161, 128 + sgn * 20, 6, 7, dk, 0.50, soft=5)        # 鼻孔
+    ellipse(img, 152, 128, 12, 16, hl, 0.22, soft=10)                    # 鼻頭
+    ellipse(img, 170, 128, 9, 20, sh, 0.28, soft=11)                     # 鼻の下
+    ellipse(img, 236, 128, 28, 62, sh, 0.34, soft=32)                    # 顎の下
+    ellipse(img, 214, 128, 18, 34, hl, 0.20, soft=22)                    # 顎の先
+
+    # --- 眉 ---
+    for sgn in (-1, 1):
+        bx = 128 + sgn * 46
+        ellipse(img, 86, bx, 7, 29, brow, 0.45, soft=8)
+        for _ in range(30):
+            t = rng.random()
+            r0 = 86 + rng.normal(0, 3.0)
+            c0 = bx - 27 + t * 54
+            stroke(img, (r0, c0), (r0 - 3 - rng.random() * 4, c0 + sgn * 5),
+                   1.6, brow, 0.40, soft=1.6)
+
+    # --- 目 ---
+    for i, sgn in enumerate((-1, 1)):
+        ex = 128 + sgn * 46 + (2 if i else -1)        # 少し非対称にする
+        ey = 112 + (1 if i else 0)
+        ellipse(img, ey, ex, 21, 33, sh, 0.28, soft=17)                  # 眼窩
+        ellipse(img, ey, ex, 11, 22, (0.78, 0.76, 0.72), 0.90, soft=3)   # 白目
+        ellipse(img, ey - 9, ex, 10, 24, sh, 0.60, soft=6)               # 上まぶたの影
+        ellipse(img, ey + 1, ex, 9.5, 9.5, (0.25, 0.17, 0.11), 0.94, soft=2.6)
+        ellipse(img, ey + 1, ex, 5.0, 5.0, (0.07, 0.05, 0.04), 0.95, soft=2.0)
+        ellipse(img, ey - 3, ex - 4, 2.6, 2.6, (0.94, 0.93, 0.90), 0.75, soft=1.4)
+        stroke(img, (ey - 10, ex - 20), (ey - 11, ex + 20), 3.2,
+               (0.20, 0.15, 0.12), 0.65, soft=2.6)                       # 睫毛
+        stroke(img, (ey + 11, ex - 17), (ey + 12, ex + 17), 2.4, sh, 0.42, soft=3.0)
+        ellipse(img, ey + 21, ex, 13, 25, (0.44, 0.34, 0.38), bags * 0.40, soft=15)
+        ellipse(img, ey + 15, ex, 5, 22, sh, bags * 0.30, soft=5)        # 涙袋の影
+
+    # --- 口 ---
+    my = 194
+    ellipse(img, my, 128, 13, 35, lips, 0.42, soft=10)
+    ellipse(img, my - 6, 128, 5, 30, lips, 0.28, soft=7)
+    stroke(img, (my, 128 - 31), (my, 128 + 31), 2.6, (0.30, 0.18, 0.16), 0.62, soft=2.6)
+    ellipse(img, my + 9, 128, 5, 20, hl, 0.18, soft=9)
+    for sgn in (-1, 1):
+        ellipse(img, my + 2, 128 + sgn * 33, 5, 7, sh, 0.42, soft=5)
+
+    # --- 皺 ---
+    for k in range(3):
+        y = 52 + k * 14
+        stroke(img, (y, 128 - 60), (y + 2, 128 + 60), 2.4, sh, 0.16 * age, soft=4.5)
+    for sgn in (-1, 1):
+        stroke(img, (152, 128 + sgn * 33), (190, 128 + sgn * 48), 5.0, sh,
+               0.26 * age + 0.10, soft=7)                                # 法令線
+        for k in range(3):
+            stroke(img, (104 + k * 8, 128 + sgn * 70), (98 + k * 10, 128 + sgn * 86),
+                   1.8, sh, 0.22 * age, soft=2.6)                        # 目尻
+        ellipse(img, 206, 128 + sgn * 40, 14, 10, sh, 0.16 * age, soft=10)
+
+    # --- 赤ら顔・毛細血管 ---
     if ruddy > 0:
-        sh = (min(1.0, sh[0] + ruddy * 0.22), sh[1] * 0.90, sh[2] * 0.90)
-
-    # 頬の丸み(左右を落として面に立体感)
-    for sgn in (-1, 1):
-        ellipse(img, cx, cy + sgn * sc * 0.62, sc * 0.95, sc * 0.30, sh, 0.45, soft=16)
-    ellipse(img, cx + sc * 0.95, cy, sc * 0.30, sc * 0.60, sh, 0.40, soft=14)   # 顎下
-
-    # 髪(生え際を丸く)
-    ellipse(img, cx - sc * 0.98, cy, sc * 0.52, sc * 0.68, hair, 1.0, soft=5)
-    ellipse(img, cx - sc * 0.62, cy, sc * 0.18, sc * 0.50, hair, 0.55, soft=9)
-    if female:
         for sgn in (-1, 1):
-            ellipse(img, cx - sc * 0.10, cy + sgn * sc * 0.62, sc * 1.10, sc * 0.20, hair, 1.0, soft=5)
-    else:
-        for sgn in (-1, 1):
-            ellipse(img, cx - sc * 0.72, cy + sgn * sc * 0.58, sc * 0.34, sc * 0.16, hair, 0.85, soft=6)
-    # 髪の影
-    ellipse(img, cx - sc * 0.52, cy, sc * 0.10, sc * 0.56, sh, 0.35, soft=7)
+            ellipse(img, 148, 128 + sgn * 60, 28, 32, (0.78, 0.34, 0.28),
+                    ruddy * 0.34, soft=28)
+        ellipse(img, 152, 128, 19, 17, (0.80, 0.36, 0.30), ruddy * 0.40, soft=17)
+        veins = np.clip((norm(fbm(R, 30, 3, seed + 11)) - 0.68) * 4.0, 0, 1)
+        img = mix(img, rgb(R, (0.74, 0.30, 0.26)), veins * ruddy * 0.26)
 
-    # 眉
-    for sgn in (-1, 1):
-        ellipse(img, cx - sc * 0.28, cy + sgn * sc * 0.30, sc * 0.045, sc * 0.19,
-                (0.18, 0.14, 0.12), 0.85, soft=2.5)
-    # 目
-    for sgn in (-1, 1):
-        ex = cy + sgn * sc * 0.30
-        ellipse(img, cx - sc * 0.10, ex, sc * 0.085, sc * 0.165, (0.86, 0.85, 0.82), 1.0, soft=1.4)
-        ellipse(img, cx - sc * 0.09, ex, sc * 0.062, sc * 0.062, (0.16, 0.12, 0.09), 1.0, soft=1.2)
-        ellipse(img, cx - sc * 0.09, ex, sc * 0.026, sc * 0.026, (0.03, 0.03, 0.03), 1.0, soft=1.0)
-        ellipse(img, cx - sc * 0.19, ex, sc * 0.05, sc * 0.17, sh, 0.55, soft=2.5)   # 上まぶた
-        ellipse(img, cx + sc * 0.01, ex, sc * 0.035, sc * 0.15, sh, 0.30, soft=3)    # 下まぶた
-    # 鼻
-    ellipse(img, cx + sc * 0.14, cy, sc * 0.22, sc * 0.075, sh, 0.35, soft=5)
-    ellipse(img, cx + sc * 0.30, cy, sc * 0.055, sc * 0.10, sh, 0.45, soft=3)
-    for sgn in (-1, 1):
-        ellipse(img, cx + sc * 0.31, cy + sgn * sc * 0.075, sc * 0.022, sc * 0.022,
-                (0.24, 0.17, 0.15), 0.7, soft=1.2)
-    # 口
-    my = cx + sc * 0.56
-    ellipse(img, my, cy, sc * 0.045, sc * 0.17, (0.42, 0.24, 0.22), 0.85, soft=2)
-    ellipse(img, my - sc * 0.035, cy, sc * 0.02, sc * 0.15, (0.30, 0.16, 0.15), 0.6, soft=1.6)
-    ellipse(img, my + sc * 0.09, cy, sc * 0.05, sc * 0.13, sh, 0.30, soft=4)
-    # 耳
-    for sgn in (-1, 1):
-        ellipse(img, cx + sc * 0.02, cy + sgn * sc * 0.60, sc * 0.17, sc * 0.06, skin, 0.9, soft=3)
-        ellipse(img, cx + sc * 0.02, cy + sgn * sc * 0.60, sc * 0.10, sc * 0.03, sh, 0.5, soft=2)
+    # --- 無精髭 ---
+    if stubble > 0:
+        m = np.zeros((R, R, 3))
+        ellipse(m, 206, 128, 46, 74, (1, 1, 1), 1.0, soft=26)
+        ellipse(m, 176, 128, 22, 44, (1, 1, 1), 1.0, soft=18)
+        ellipse(m, 186, 128, 16, 26, (0, 0, 0), 1.0, soft=10)            # 口の部分は抜く
+        msk = np.clip(m[..., 0], 0, 1)
+        n = (white(R, seed + 9) > 0.52).astype(float)
+        img = mix(img, rgb(R, (0.30, 0.28, 0.28)), msk * n * stubble * 0.40)
 
-    if age == "old":
-        for k in (-0.44, -0.34, -0.24):
-            ellipse(img, cx + k * sc, cy, sc * 0.014, sc * 0.44, sh, 0.32, soft=2.5)
-        for sgn in (-1, 1):
-            ellipse(img, cx + sc * 0.40, cy + sgn * sc * 0.24, sc * 0.17, sc * 0.022, sh, 0.45, soft=3)
-            ellipse(img, cx - sc * 0.06, cy + sgn * sc * 0.50, sc * 0.075, sc * 0.03, sh, 0.40, soft=2.5)
-        ellipse(img, cx + sc * 0.78, cy, sc * 0.16, sc * 0.34, sh, 0.28, soft=8)   # たるみ
-    if ruddy > 0:
-        for sgn in (-1, 1):
-            ellipse(img, cx + sc * 0.16, cy + sgn * sc * 0.40, sc * 0.20, sc * 0.16,
-                    (0.76, 0.34, 0.27), ruddy * 0.55, soft=10)
-        ellipse(img, cx + sc * 0.20, cy, sc * 0.13, sc * 0.09, (0.78, 0.36, 0.29), ruddy * 0.65, soft=7)
-        veins = np.clip((norm(fbm(S, 26, 3, seed + 3)) - 0.66) * 4.0, 0, 1)
-        img = mix(img, rgb(S, (0.72, 0.30, 0.26)), veins * ruddy * 0.30)
-
-    img = mul_gray(img, grunge(S, seed + 5, 0.12))
-    return finish(img, seed + 9, noise=0.03, levels=26)
+    # --- 生え際の影(髪はモデル側にある) ---
+    ellipse(img, 26, 128, 26, 104, sh, 0.35, soft=20)
+    # 端を落として、頭の側面(肌マテリアル)と馴染ませる
+    gx, gy = np.meshgrid(np.arange(R), np.arange(R), indexing="ij")
+    d = np.clip(1.0 - ((gy - 128) / 138.0) ** 2, 0, 1)
+    img = mul_gray(img, 0.72 + d * 0.30)
+    img = mul_gray(img, stains(R, seed + 13, 3, 0.10, 30))
+    return _degrade(img, seed, out=128)
 
 
 def t_face_boss():
-    return _npc_face((0.70, 0.56, 0.47), (0.16, 0.14, 0.13), 470, age="old", ruddy=0.15)
+    """社長(60 代)。血色はあるが疲れている。目の下のくま。"""
+    return _photo_face((0.72, 0.58, 0.48), (0.22, 0.18, 0.15), 470,
+                       age=0.95, ruddy=0.22, stubble=0.18, bags=0.85)
 
 
 def t_face_son():
-    return _npc_face((0.72, 0.52, 0.44), (0.20, 0.18, 0.16), 480, age="old", ruddy=0.85)
+    """息子(60 代)。酒で赤ら顔、無精髭、くまが濃い。"""
+    return _photo_face((0.75, 0.55, 0.45), (0.24, 0.20, 0.17), 480,
+                       age=0.90, ruddy=0.95, stubble=0.70, bags=1.0)
 
 
 def t_face_granddaughter():
-    return _npc_face((0.80, 0.68, 0.62), (0.09, 0.08, 0.09), 490, age="young", female=True)
+    """孫娘(20 代)。皺は浅く、泣き腫らしたような目元。"""
+    return _photo_face((0.80, 0.67, 0.60), (0.16, 0.12, 0.11), 490,
+                       age=0.22, ruddy=0.14, stubble=0.0, bags=0.55,
+                       female=True, lips=(0.72, 0.42, 0.40))
+
+
+# ---------------------------------------------------------------- 胴の柄
+
+def _torso_base(color, seed):
+    """128x128。u=0 が背中、u=0.5(列 64)が正面の中心。v=1(行 0)が肩。"""
+    T = 128
+    base = rgb(T, color)
+    base = mul_gray(base, 0.90 + norm(fbm(T, 20, 3, seed)) * 0.20)
+    base = mul_gray(base, 1.0 - periodic_lines(T, 48, 0, 0.40, 0.34) * 0.04)
+    base = mul_gray(base, 1.0 - periodic_lines(T, 48, 1, 0.40, 0.34) * 0.04)
+    return base
+
+
+def t_torso_suit():
+    """黒いスーツ。襟・白シャツ・ネクタイを正面中央に描く。"""
+    T = 128
+    img = _torso_base((0.105, 0.105, 0.120), 701)
+    # 白シャツ(襟元の V)
+    for r in range(0, 34):
+        w = int(15 - r * 0.32)
+        if w > 0:
+            rect(img, r, 64 - w, r + 1, 64 + w, (0.74, 0.73, 0.70), 1.0)
+    # 襟(左右の折り返し)
+    for sgn in (-1, 1):
+        for r in range(0, 40):
+            c0 = 64 + sgn * (13 + int(r * 0.52))
+            rect(img, r, min(c0, c0 + sgn * 11), r + 1, max(c0, c0 + sgn * 11),
+                 (0.17, 0.17, 0.19), 1.0)
+            rect(img, r, c0, r + 1, c0 + sgn * 2, (0.26, 0.26, 0.28), 0.8)
+    # ネクタイ(結び目 + 剣先)
+    rect(img, 6, 57, 20, 71, (0.20, 0.16, 0.22), 1.0)
+    for r in range(20, 86):
+        w = 5 + int((r - 20) * 0.075)
+        rect(img, r, 64 - w, r + 1, 64 + w, (0.17, 0.13, 0.19), 1.0)
+    for r in range(24, 84, 9):                                  # 斜めのストライプ
+        for k in range(10):
+            rect(img, r + k, 64 - 11 + k, r + k + 1, 64 - 8 + k, (0.30, 0.24, 0.32), 0.7)
+    # 前立てのボタン
+    for r in (92, 108):
+        disc(img, r, 78, 2.6, (0.06, 0.06, 0.07), 1.0, 1.2)
+    # 肩と袖の縫い目
+    rect(img, 0, 24, 128, 26, (0.05, 0.05, 0.06), 0.55)
+    rect(img, 0, 102, 128, 104, (0.05, 0.05, 0.06), 0.55)
+    return finish(mul_gray(img, grunge(T, 702, 0.12)), 703, noise=0.02)
+
+
+def t_torso_jumper():
+    """くたびれたジャンパー。正面中央にファスナー、胸ポケット。"""
+    T = 128
+    img = _torso_base((0.19, 0.22, 0.28), 711)
+    worn = np.clip((norm(fbm(T, 5, 4, 712)) - 0.55) * 3.0, 0, 1)
+    img = mix(img, rgb(T, (0.34, 0.35, 0.38)), worn * 0.40)
+    # 襟(立ち襟)
+    rect(img, 0, 34, 15, 94, (0.14, 0.17, 0.22), 1.0)
+    rect(img, 14, 34, 16, 94, (0.30, 0.32, 0.36), 0.7)
+    # ファスナー(務歯を交互に)
+    rect(img, 8, 61, 128, 67, (0.13, 0.15, 0.19), 1.0)
+    for r in range(10, 128, 3):
+        rect(img, r, 61, r + 2, 64, (0.58, 0.58, 0.60), 0.9)
+        rect(img, r + 1, 64, r + 3, 67, (0.46, 0.46, 0.48), 0.9)
+    rect(img, 8, 59, 128, 61, (0.10, 0.12, 0.15), 0.8)
+    rect(img, 8, 67, 128, 69, (0.10, 0.12, 0.15), 0.8)
+    # スライダー
+    rect(img, 30, 58, 40, 70, (0.62, 0.62, 0.64), 1.0)
+    rect(img, 39, 62, 47, 66, (0.55, 0.55, 0.57), 1.0)
+    # 胸ポケット
+    rect(img, 34, 80, 56, 102, (0.16, 0.19, 0.25), 1.0)
+    rect(img, 34, 80, 37, 102, (0.30, 0.32, 0.36), 0.8)
+    # 裾のリブ
+    for r in range(118, 128):
+        rect(img, r, 0, r + 1, 128, (0.15, 0.18, 0.23), 0.5)
+    img = mul_gray(img, 1.0 - periodic_lines(T, 32, 1, 0.30, 0.2) * 0.06)
+    return finish(mul_gray(img, grunge(T, 713, 0.20) * stains(T, 714, 4, 0.18, 26)), 715)
+
+
+def t_torso_dress():
+    """黒いワンピース。正面中央に小さな白襟。"""
+    T = 128
+    img = _torso_base((0.085, 0.085, 0.100), 721)
+    # 白い襟(丸襟)
+    for r in range(0, 20):
+        w = int(22 - abs(r - 8) * 0.9)
+        if w > 0:
+            rect(img, r, 64 - w, r + 1, 64 + w, (0.78, 0.77, 0.75), 1.0)
+    for r in range(0, 22):
+        w = int(7 - r * 0.28)
+        if w > 0:
+            rect(img, r, 64 - w, r + 1, 64 + w, (0.085, 0.085, 0.100), 1.0)
+    rect(img, 19, 42, 21, 86, (0.55, 0.55, 0.53), 0.7)
+    # 前身頃の切り替えとダーツ
+    rect(img, 22, 63, 128, 65, (0.05, 0.05, 0.06), 0.55)
+    for sgn in (-1, 1):
+        for r in range(30, 90):
+            c = 64 + sgn * (16 + int((r - 30) * 0.10))
+            rect(img, r, c, r + 1, c + 1, (0.05, 0.05, 0.06), 0.35)
+    rect(img, 0, 26, 128, 28, (0.05, 0.05, 0.06), 0.5)
+    rect(img, 0, 100, 128, 102, (0.05, 0.05, 0.06), 0.5)
+    # 布の落ち感
+    img = mul_gray(img, 1.0 - 0.10 * (1.0 - _folds(3.0, 0.40, 722, 5, axis=1)))
+    return finish(mul_gray(img, grunge(T, 723, 0.10)), 724, noise=0.022)
+
+
+# ---------------------------------------------------------------- 髪と靴
+
+def _hair(base, seed, grey=0.0, scalp=0.0, scalp_col=(0.62, 0.50, 0.44)):
+    T = 128
+    img = rgb(T, base)
+    strand = hstreak(white(T, seed), 3, axis=1)
+    img = mul_gray(img, 0.62 + norm(strand) * 0.80)
+    img = mix(img, rgb(T, tuple(min(1.0, c * 1.9 + 0.05) for c in base)),
+              norm(fbm(T, 10, 3, seed + 1)) * 0.28)
+    if grey > 0:
+        g = (hstreak(white(T, seed + 2), 2, axis=1) > 0.60).astype(float)
+        img = mix(img, rgb(T, (0.72, 0.71, 0.70)), g * grey * 0.55)
+    if scalp > 0:
+        sc = np.clip((norm(fbm(T, 4, 3, seed + 3)) - 0.45) * 2.4, 0, 1)
+        img = mix(img, rgb(T, scalp_col), sc * scalp)
+    return finish(img, seed + 7, noise=0.04)
+
+
+def t_hair_thin():
+    """社長。薄くなって地肌が透ける。"""
+    return _hair((0.13, 0.115, 0.105), 731, grey=0.30, scalp=0.55)
+
+
+def t_hair_salt():
+    """息子。白髪混じりの短髪。"""
+    return _hair((0.16, 0.15, 0.14), 741, grey=0.62, scalp=0.12)
+
+
+def t_hair_long():
+    """孫娘。黒い長髪。"""
+    return _hair((0.075, 0.070, 0.078), 751, grey=0.0, scalp=0.0)
+
+
+def t_shoe_leather():
+    T = 128
+    img = rgb(T, (0.085, 0.082, 0.085))
+    img = mul_gray(img, 0.80 + norm(fbm(T, 30, 3, 761)) * 0.42)
+    crease = norm(hstreak(fbm(T, 7, 3, 762), 12, axis=1))
+    img = mul_gray(img, 1.0 - np.clip(1.0 - np.abs(crease - 0.5) * 9.0, 0, 1) * 0.30)
+    img = mix(img, rgb(T, (0.26, 0.25, 0.24)), norm(fbm(T, 16, 2, 763)) * 0.16)
+    return finish(mul_gray(img, scratches(T, 764, 24, 0.12, 26)), 765, noise=0.025)
 
 
 # ---------------------------------------------------------------- 文字もの
@@ -1083,6 +1286,13 @@ ALL = {
     "iei_photo": t_iei_photo,
     "iei_photo_player": t_iei_photo_player,
     "face_boss": t_face_boss,
+    "torso_suit": t_torso_suit,
+    "torso_jumper": t_torso_jumper,
+    "torso_dress": t_torso_dress,
+    "hair_thin": t_hair_thin,
+    "hair_salt": t_hair_salt,
+    "hair_long": t_hair_long,
+    "shoe_leather": t_shoe_leather,
     "face_son": t_face_son,
     "face_granddaughter": t_face_granddaughter,
     "vending_panel": t_vending_panel,

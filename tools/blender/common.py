@@ -481,9 +481,17 @@ class Builder:
         self.fmat = []
         self.fuv = []
         self.fscale = []
+        self.fsmooth = []
 
-    def add(self, geo, mat, uvscale=1.0, uv=None, flip=False):
-        v, f = geo
+    def add(self, geo, mat, uvscale=1.0, uv=None, flip=False, smooth=False):
+        """geo は (verts, faces) か (verts, faces, uvs)。
+        smooth=True で面をスムーズシェーディングにする(丸い部位に使う)。"""
+        if len(geo) == 3:
+            v, f, guv = geo
+            if uv is None:
+                uv = guv
+        else:
+            v, f = geo
         base = len(self.verts)
         self.verts.extend(v)
         for i, ff in enumerate(f):
@@ -494,6 +502,7 @@ class Builder:
             self.fmat.append(mat)
             self.fuv.append(uv[i] if uv is not None else None)
             self.fscale.append(uvscale)
+            self.fsmooth.append(smooth)
         return self
 
     def count(self):
@@ -525,8 +534,7 @@ class Builder:
             me.materials.append(objs[nm])
         for i, poly in enumerate(me.polygons):
             poly.material_index = midx[i]
-            if shade_flat:
-                poly.use_smooth = False
+            poly.use_smooth = bool(self.fsmooth[i]) if shade_flat else True
 
         # UV: 明示指定が無ければ面法線からボックス投影
         uvl = me.uv_layers.new(name="UVMap")
@@ -753,6 +761,49 @@ def loft_rings(rings, cap=True):
     return verts, faces
 
 
+def tube(sections, n=10, phase=None, cap_start=True, cap_end=True):
+    """楕円断面を並べた筒。(verts, faces, uvs) を返す。
+
+    sections : [(cx, cy, cz, rx, ry, v), ...] を **z の降順**(上から下)で。
+               v はその断面の V 座標。
+    n        : 断面の分割数
+    phase    : 既定は +Y(背中側)が k=0。u=0 が背中、u=0.5 が正面になるので、
+               胴の正面に襟やネクタイを描いたテクスチャを貼れる。
+
+    隣の断面と頂点を共有するので、スムーズシェーディングで丸く見え、
+    ボーンで曲げても裂けない。
+    """
+    if phase is None:
+        phase = math.pi / 2.0
+    verts = []
+    for (cx, cy, cz, rx, ry, _v) in sections:
+        for k in range(n):
+            a = phase + 2.0 * math.pi * k / n
+            verts.append((cx + math.cos(a) * rx, cy + math.sin(a) * ry, cz))
+    faces, uvs = [], []
+    m = len(sections)
+    for i in range(m - 1):
+        v0 = sections[i][5]
+        v1 = sections[i + 1][5]
+        for k in range(n):
+            k2 = (k + 1) % n
+            faces.append((i * n + k, (i + 1) * n + k, (i + 1) * n + k2, i * n + k2))
+            u0 = k / float(n)
+            u1 = (k + 1) / float(n)
+            uvs.append([(u0, v0), (u0, v1), (u1, v1), (u1, v0)])
+    if cap_start:
+        faces.append(tuple(range(n)))
+        uvs.append([(0.5 + math.cos(phase + 2 * math.pi * k / n) * 0.5,
+                     0.5 + math.sin(phase + 2 * math.pi * k / n) * 0.5) for k in range(n)])
+    if cap_end:
+        b0 = (m - 1) * n
+        faces.append(tuple(range(b0 + n - 1, b0 - 1, -1)))
+        uvs.append([(0.5 + math.cos(phase + 2 * math.pi * k / n) * 0.5,
+                     0.5 + math.sin(phase + 2 * math.pi * k / n) * 0.5)
+                    for k in range(n - 1, -1, -1)])
+    return verts, faces, uvs
+
+
 def donut(cx, cy, cz, rxi, ryi, rxo, ryo, h, seg=12):
     """楕円の輪(便座や便器のリムに使う)。内周・外周・上下の 4 面を張る。"""
     v = []
@@ -857,6 +908,50 @@ def chain_weights(mesh_obj, arm_obj, chain, key, rigid=None, rigid_idx=None):
     mesh_obj.parent = arm_obj
     mesh_obj.matrix_parent_inverse = arm_obj.matrix_world.inverted()
     return groups
+
+
+def add_chain_weights(groups, mesh_obj, idxs, chain, key):
+    """idxs の頂点を chain(t 昇順)に沿って 2 ボーンへ線形配分し groups に足す。
+    肘や膝のように大きく曲がる関節でも裂けない。"""
+    ts = [c[1] for c in chain]
+
+    def put(bn, i, w):
+        if w > 1e-4:
+            groups.setdefault(bn, []).append((i, w))
+
+    verts = mesh_obj.data.vertices
+    for i in idxs:
+        t = key(verts[i].co)
+        if t <= ts[0]:
+            put(chain[0][0], i, 1.0)
+        elif t >= ts[-1]:
+            put(chain[-1][0], i, 1.0)
+        else:
+            for j in range(len(ts) - 1):
+                if ts[j] <= t <= ts[j + 1]:
+                    f = (t - ts[j]) / max(ts[j + 1] - ts[j], 1e-6)
+                    put(chain[j][0], i, 1.0 - f)
+                    put(chain[j + 1][0], i, f)
+                    break
+    return groups
+
+
+def add_rigid_weights(groups, idxs, bone):
+    for i in idxs:
+        groups.setdefault(bone, []).append((i, 1.0))
+    return groups
+
+
+def bind_weights(mesh_obj, arm_obj, groups):
+    """groups: {bone: [(vertex_index, weight), ...]} を頂点グループにして束ねる。"""
+    for bn, items in groups.items():
+        vg = mesh_obj.vertex_groups.get(bn) or mesh_obj.vertex_groups.new(name=bn)
+        for (i, w) in items:
+            vg.add([i], w, 'REPLACE')
+    mod = mesh_obj.modifiers.new("Armature", 'ARMATURE')
+    mod.object = arm_obj
+    mesh_obj.parent = arm_obj
+    mesh_obj.matrix_parent_inverse = arm_obj.matrix_world.inverted()
 
 
 class Anim:

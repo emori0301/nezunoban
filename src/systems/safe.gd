@@ -19,10 +19,13 @@ const NOTE_SCENE := "res://src/systems/note.tscn"
 @export_multiline var note_body: String = ""
 @export var note_page: int = 0
 @export var door_size: Vector3 = Vector3(0.44, 0.50, 0.04)
+## safe.glb の "Door"(原点 (-0.205, 0.050, 0.254)、Y 回転で開く)
+@export var door_open_degrees: float = -108.0
 
 var is_open: bool = false
 
 var _has_model: bool = false
+var _door_node: Node3D
 var _door_pivot: Node3D
 var _note: Note
 var _busy: bool = false
@@ -36,9 +39,15 @@ func _ready() -> void:
 	_spawn_note()
 
 func _build() -> void:
-	# safe.glb があるときは自前の扉は出さない(二重になるため)。
-	# 扉が開くアニメが欲しいので、models に "Door" ノードを切ってもらいたい。
+	# safe.glb の "Door" があればそれを回す。無いときだけ自前の扉を作る。
 	_has_model = SystemUtil.has_model("safe")
+	var prop := get_node_or_null(^"Prop") as Prop
+	if prop:
+		var inst := prop.get_instance()
+		if inst:
+			_door_node = inst.find_child("Door", true, false) as Node3D
+	if _door_node:
+		return
 	_door_pivot = Node3D.new()
 	_door_pivot.name = "DoorPivot"
 	_door_pivot.position = Vector3(-door_size.x * 0.5, 0.32, -0.24)
@@ -74,7 +83,8 @@ func _spawn_note() -> void:
 	_note.title = note_title
 	_note.body = note_body
 	_note.page_number = note_page
-	_note.position = Vector3(0, 0.32, -0.10)
+	_note.paper_size = Vector2(0.16, 0.22)
+	_note.position = Vector3(0, 0.315, 0.0)   # 庫内の棚板の上
 	_note.enabled = false
 	_note.visible = false
 	add_child(_note)
@@ -103,10 +113,11 @@ func open() -> void:
 	Audio.play_at(&"safe_open", global_position)
 	is_open = true
 	enabled = false
-	if _door_pivot:
+	var door: Node3D = _door_node if _door_node else _door_pivot
+	if door:
 		var tw := create_tween()
 		tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(_door_pivot, "rotation_degrees:y", -105.0, 0.9)
+		tw.tween_property(door, "rotation_degrees:y", door_open_degrees, 0.9)
 	if _note:
 		_note.enabled = true
 		_note.visible = true

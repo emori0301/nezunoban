@@ -166,18 +166,18 @@ static func _backyard(b: Building) -> void:
 	var conc := LevelMaterials.get_mat("concrete", 1.0)
 
 	b.add_anchor_prop(R, "Anchor_Freezer", "freezer_chest", Vector3(3.6, 0.0, -6.3), 180.0,
-		Vector3(1.4, 0.9, 0.72), Color(0.72, 0.73, 0.74))
+		Vector3(1.4, 0.9, 0.72), Color(0.72, 0.73, 0.74), true, 0.0)
 	b.add_anchor_prop(R, "Anchor_Sink", "sink", Vector3(-3.55, 0.0, -3.2), -90.0,
 		Vector3(0.95, 0.85, 0.55), Color(0.55, 0.57, 0.6))
 	b.add_anchor_prop(R, "Anchor_Breaker", "breaker_box", Vector3(5.14, 1.3, -6.3), 90.0,
-		Vector3(0.44, 0.52, 0.13), Color(0.55, 0.55, 0.52), false)
+		Vector3(0.44, 0.52, 0.13), Color(0.55, 0.55, 0.52), false, -90.0)
 
 	# 在庫棚
 	b.add_prop(R, "Shelf_Stock1", "shelf", Vector3(-3.0, 0.0, -7.05), 0.0,
 		Vector3(1.7, 2.0, 0.45), WOOD)
 	b.add_prop(R, "Shelf_Stock2", "shelf", Vector3(2.4, 0.0, -7.05), 0.0,
 		Vector3(1.7, 2.0, 0.45), WOOD)
-	b.add_prop(R, "Shelf_Stock3", "shelf", Vector3(4.85, 0.0, -2.6), 90.0,
+	b.add_prop(R, "Shelf_Stock3", "shelf", Vector3(4.85, 0.0, -2.6), -90.0,
 		Vector3(1.7, 2.0, 0.45), WOOD)
 	b.add_prop(R, "DryIceBox", "dry_ice_box", Vector3(1.9, 0.0, -6.3), 0.0,
 		Vector3(0.58, 0.42, 0.42), Color(0.45, 0.46, 0.48))

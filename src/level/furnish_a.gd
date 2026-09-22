@@ -36,7 +36,7 @@ static func _genkan(b: Building) -> void:
 		LevelMaterials.plain(Color(0.55, 0.51, 0.44)), false, "", false)
 	# 記帳台(芳名帳)は受付の手前に床置き
 	b.add_anchor_prop(R, "Anchor_GuestBook", "guest_book_stand",
-		Vector3(-6.5, 0.0, -2.4), 150.0, Vector3(0.5, 1.0, 0.4), Color(0.4, 0.33, 0.24), false)
+		Vector3(-6.5, 0.0, -2.4), 150.0, Vector3(0.5, 1.0, 0.4), Color(0.4, 0.33, 0.24), false, -30.0)
 
 	# 下駄箱・傘立て・スリッパ
 	b.add_prop(R, "ShoeCabinet", "cabinet", Vector3(-10.6, 0.0, 3.0), 90.0,
@@ -49,7 +49,7 @@ static func _genkan(b: Building) -> void:
 		Vector3(1.0, 0.06, 0.62), Color(0.16, 0.16, 0.18), false)
 
 	# 掲示板(南の壁)
-	b.add_prop(R, "NoticeBoard", "notice_board", Vector3(-5.9, 1.0, 3.84), 0.0,
+	b.add_prop(R, "NoticeBoard", "notice_board", Vector3(-5.9, 1.0, 3.84), 180.0,
 		Vector3(1.3, 0.95, 0.07), Color(0.32, 0.3, 0.26), false)
 
 	# 案内看板「故 春日 キヨ 儀 葬儀式場」。入ってすぐ正面に見える向き(西向き)。
@@ -105,13 +105,14 @@ static func _office(b: Building) -> void:
 
 	b.add_anchor(R, "Anchor_BossDesk", Vector3(-9.3, 0.72, 6.3), 180.0)
 	b.add_anchor_prop(R, "Anchor_Phone", "phone", Vector3(-9.85, 0.72, 6.1), 180.0,
-		Vector3(0.26, 0.13, 0.22), Color(0.14, 0.14, 0.15), false)
+		Vector3(0.26, 0.13, 0.22), Color(0.14, 0.14, 0.15), false, 0.0)
 	b.add_anchor_prop(R, "Anchor_Monitor", "monitor_crt", Vector3(-6.4, 0.72, 6.1), 180.0,
-		Vector3(0.44, 0.42, 0.42), Color(0.2, 0.2, 0.19), false)
+		Vector3(0.44, 0.42, 0.42), Color(0.2, 0.2, 0.19), false, 0.0)
 	b.add_anchor_prop(R, "Anchor_Matches", "matches", Vector3(-8.75, 0.72, 6.5), 180.0,
 		Vector3(0.06, 0.02, 0.045), Color(0.7, 0.35, 0.2), false)
-	b.add_anchor_prop(R, "Anchor_Safe", "safe", Vector3(-10.4, 0.0, 9.4), 180.0,
-		Vector3(0.54, 0.64, 0.5), Color(0.26, 0.27, 0.28))
+	# 扉は室内(北)向き。プレイヤーは北側に立つのでアンカーの向きは 0。
+	b.add_anchor_prop(R, "Anchor_Safe", "safe", Vector3(-10.4, 0.0, 9.4), 0.0,
+		Vector3(0.54, 0.64, 0.5), Color(0.26, 0.27, 0.28), true, 180.0)
 
 	# 書類・日誌・ポット・棚
 	LevelBuild.box(node, Vector3(-8.85, 0.76, 6.2), Vector3(0.3, 0.08, 0.22), paper, false, "", false)
@@ -233,7 +234,7 @@ static func _hikaeshitsu(b: Building) -> void:
 		Vector3(1.0, 0.18, 2.0), Color(0.72, 0.70, 0.66), false)
 	LevelBuild.box(node, Vector3(-0.95, 0.21, 1.75), Vector3(0.78, 0.42, 0.48), wood)
 	b.add_anchor_prop(R, "Anchor_TV", "tv_crt", Vector3(-0.95, 0.42, 1.75), 135.0,
-		Vector3(0.54, 0.45, 0.47), Color(0.22, 0.21, 0.2), false)
+		Vector3(0.54, 0.45, 0.47), Color(0.22, 0.21, 0.2), false, -45.0)
 	# 押入れ(襖)
 	LevelBuild.box(node, Vector3(-1.25, 1.0, 4.4), Vector3(1.52, 2.0, 0.48), wood)
 	for fx in [-1.63, -0.87]:
@@ -264,7 +265,7 @@ static func _toilet(b: Building) -> void:
 	var white := LevelMaterials.plain(Color(0.78, 0.78, 0.75))
 	var tile := LevelMaterials.get_mat("concrete", 2.0)
 
-	b.add_prop(R, "Toilet", "toilet", Vector3(1.35, 0.0, 3.05), 0.0,
+	b.add_prop(R, "Toilet", "toilet", Vector3(1.35, 0.0, 3.05), 180.0,
 		Vector3(0.4, 0.78, 0.68), Color(0.78, 0.78, 0.75))
 	LevelBuild.box(node, Vector3(1.5, 0.4, 1.65), Vector3(0.36, 0.8, 0.34), white)
 	LevelBuild.box(node, Vector3(1.69, 1.35, 1.65), Vector3(0.03, 0.52, 0.44),

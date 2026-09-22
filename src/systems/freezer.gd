@@ -16,12 +16,17 @@ signal found_empty
 @export var empty_line: String = "……空だ。もう無い。"
 @export var open_seconds: float = 2.2
 @export var keep_open: bool = false       # 確認用: 蓋を開けっぱなしにする
+## freezer_chest.glb の "Lid"(原点 (0, 0.785, -0.342)、X 回転の - で開く)
+@export var lid_open_degrees: float = -74.0
+## 庫内のドライアイス箱の位置(庫内は Y 0.285..0.785)
+@export var ice_offset: Vector3 = Vector3(0.0, 0.30, 0.0)
 @export var chest_size: Vector3 = Vector3(1.244, 0.86, 0.717)   # freezer_chest.glb の実寸
 
 var is_lid_open: bool = false
 
 var _lid_pivot: Node3D
 var _lid_node: Node3D
+var _ice: Prop
 var _fog: GPUParticles3D
 var _prop: Prop
 var _busy: bool = false
@@ -35,7 +40,7 @@ func _ready() -> void:
 		call_deferred(&"_set_lid", true)
 
 func _build() -> void:
-	# 蓋(glb にあればそれを、無ければ箱を作る)
+	# 蓋。freezer_chest.glb の "Lid" は原点が奥側の蝶番になっている。
 	_lid_node = _find_lid_in_model()
 	if _lid_node == null:
 		_lid_pivot = Node3D.new()
@@ -51,15 +56,25 @@ func _build() -> void:
 		mi.material_override = SystemUtil.flat_material(Color(0.78, 0.78, 0.76))
 		mi.visible = not SystemUtil.has_model("freezer_chest")
 		_lid_pivot.add_child(mi)
+		lid_open_degrees = -72.0
 	else:
 		_lid_pivot = _lid_node
+
+	# 庫内のドライアイス(空にすると消える)
+	if SystemUtil.has_model("dry_ice_box"):
+		_ice = Prop.new()
+		_ice.name = "DryIce"
+		_ice.add_collision = false
+		_ice.position = ice_offset
+		_ice.model_name = "dry_ice_box"
+		add_child(_ice)
+		_ice.visible = not is_empty
 
 	# 中の白い霧
 	_fog = SystemUtil.make_fog(130, 3.0, chest_size.x * 0.42)
 	_fog.name = "Fog"
-	# freezer_chest.glb には独立した蓋ノードが無いので、霧は蓋の上から
-	# あふれ出して側面を伝い落ちるように出す(開けた冷凍庫の冷気に見える)。
-	_fog.position = Vector3(0, chest_size.y + 0.03, 0)
+	# 庫内の口のあたりから湧かせ、縁を越えて側面を伝い落ちるようにする。
+	_fog.position = Vector3(0, chest_size.y - 0.04, 0)
 	_fog.emitting = false
 	add_child(_fog)
 
@@ -79,7 +94,7 @@ func _set_lid(open: bool) -> void:
 	if _lid_pivot:
 		var tw := create_tween()
 		tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-		tw.tween_property(_lid_pivot, "rotation_degrees:x", -72.0 if open else 0.0, 0.5)
+		tw.tween_property(_lid_pivot, "rotation_degrees:x", lid_open_degrees if open else 0.0, 0.5)
 	if _fog:
 		_fog.emitting = open
 
@@ -87,8 +102,14 @@ func _set_lid(open: bool) -> void:
 # 公開 API
 # --------------------------------------------------------------------------
 
+## 蓋の開閉(確認用・台本用)。
+func set_lid_open(open: bool) -> void:
+	_set_lid(open)
+
 func set_empty(empty: bool) -> void:
 	is_empty = empty
+	if _ice:
+		_ice.visible = not empty
 
 ## 蓋を開けてドライアイスを取る。
 func take(player: Node3D) -> void:
