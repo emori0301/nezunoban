@@ -4,7 +4,7 @@
   {"name": "03_entrance_out",   "pos": [-15.5, 1.60, 0.6],   "yaw": -95,  "pitch": -3, "time": "23:00", "wait": 0.6},
   {"name": "04_genkan",         "pos": [-10.2, 1.60, 0.2],   "yaw": -85,  "pitch": -3, "time": "23:00", "wait": 0.6},
   {"name": "04b_sign",          "pos": [-10.4,  1.60, 1.40],  "yaw": -90,  "pitch": 0,  "time": "23:00", "wait": 0.6},
-  {"name": "05_reception",      "pos": [-8.6,  1.60, 1.0],   "yaw": -20,  "pitch": -6, "time": "23:00", "wait": 0.6},
+  {"name": "05_reception",      "pos": [-9.7,  1.60, -0.4],  "yaw": -38,  "pitch": -6, "time": "23:00", "wait": 0.6},
   {"name": "06_office",         "pos": [-7.0,  1.60, 4.8],   "yaw": 123,  "pitch": -8, "time": "23:00", "wait": 0.6},
   {"name": "07_hall_west",      "pos": [-3.4,  1.60, 0.0],   "yaw": -90,  "pitch": -2, "time": "23:00", "wait": 0.6},
   {"name": "08_hall_east",      "pos": [7.0,   1.60, 0.0],   "yaw": 90,   "pitch": -2, "time": "23:00", "wait": 0.6},
