@@ -43,6 +43,11 @@ const SCREEN_SHADER := "res://src/systems/shaders/crt_screen.gdshader"
 @export var auto_switch: bool = true
 @export var auto_switch_seconds: float = 9.0
 @export var base_static: float = 0.10
+## 監視カメラが見るレンダーレイヤー。既定は player_hidden(11)以外すべて。
+@export_flags_3d_render var cctv_cull_mask: int = 1047551
+## true にするとモニター本体をレンダーレイヤー 11 に移し、監視カメラから隠す。
+## プレイヤーのカメラが 11 を含まないと本体ごと見えなくなるので既定は false。
+@export var hide_from_cctv: bool = false
 @export var look_prompt: String = "モニターを見る"
 
 var feed_index: int = 0
@@ -80,8 +85,11 @@ func _build() -> void:
 		cam.fov = camera_fov
 		cam.near = 0.05
 		cam.far = 40.0
-		# 1(default) + 10(cctv_only)。11(player_hidden)は含めない。
-		cam.cull_mask = SystemUtil.LAYER_DEFAULT | SystemUtil.LAYER_CCTV_ONLY
+		# 11(player_hidden)以外は全部見る。「1 と 10 を含み 11 を含まない」という
+		# 要件を満たしつつ、level が別のレンダーレイヤーを使っていても映像が
+		# 真っ暗にならないようにする。
+		cam.cull_mask = cctv_cull_mask | SystemUtil.LAYER_DEFAULT | SystemUtil.LAYER_CCTV_ONLY
+		cam.cull_mask &= ~SystemUtil.LAYER_PLAYER_HIDDEN
 		cam.current = (i == 0)
 		_vp.add_child(cam)
 		_cams.append(cam)
@@ -94,8 +102,8 @@ func _build() -> void:
 	_screen.position = screen_offset
 	_screen.rotation_degrees = screen_rotation_degrees
 	_screen.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# 監視カメラ自身には映らないようにする(画面の無限ループ防止)
-	_screen.layers = SystemUtil.LAYER_PLAYER_HIDDEN
+	if hide_from_cctv:
+		_screen.layers = SystemUtil.LAYER_PLAYER_HIDDEN
 	add_child(_screen)
 
 	_mat = ShaderMaterial.new()
@@ -120,9 +128,12 @@ func _build() -> void:
 			push_warning("Monitor: monitor_crt.glb に Screen サーフェスが無い。板ポリで代用する")
 		if n_screen > 0:
 			_screen.visible = false
-		# モニター自身が監視カメラに映ると画面が入れ子になるので、本体ごと隠す
-		for m in inst.find_children("*", "MeshInstance3D", true, false):
-			(m as MeshInstance3D).layers = SystemUtil.LAYER_PLAYER_HIDDEN
+		# 監視カメラ自身に映り込ませたくない場合だけレイヤー 11 に移す。
+		# ただしプレイヤーのカメラが 11 を見ない設定だとモニターごと見えなくなるので、
+		# 既定は false。式場/玄関のカメラは事務所を映さないので入れ子は起きない。
+		if hide_from_cctv:
+			for m in inst.find_children("*", "MeshInstance3D", true, false):
+				(m as MeshInstance3D).layers = SystemUtil.LAYER_PLAYER_HIDDEN
 
 	# 画面の光がわずかに部屋へ漏れる
 	var glow := OmniLight3D.new()

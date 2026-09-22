@@ -36,6 +36,17 @@ const MAP := {
 	"Anchor_BossDesk": "boss_desk",
 }
 
+## 向きの決め方
+## アンカーの規約は「-Z がプレイヤーの立つ側」で、models のモデルは多くが
+## ローカル +Z が前面なので、素直に置くと壁を向く。
+## ただし「+180 すればよい」わけではない(棺や供花のように 0 のものもある)。
+## level は `add_anchor_prop(..., prop_yaw)` で各アンカーの正しいモデル向きを
+## 持っていて、それを "<Anchor 名>_Prop" というプレースホルダに反映している。
+## 二重に表を持つとずれるので、**そのプレースホルダの向きをそのまま使う**。
+## プレースホルダが無いアンカーだけ、既定の +180 を当てる。
+const YAW_OFFSET_DEFAULT := 180.0
+const YAW_OFFSET := {}
+
 signal installed(count: int)
 
 @export var verbose: bool = true
@@ -141,6 +152,23 @@ func _hide_level_placeholders() -> void:
 		print("[systems] level のプレースホルダ %d 個を消した" % _placeholders_to_hide.size())
 	_placeholders_to_hide.clear()
 
+## そのアンカーに置くときのモデルの向き。
+## level のプレースホルダ "<Anchor 名>_Prop" があればその向きを踏襲する。
+func _facing_for(anchor_name: String, prefab: String, anchor: Node3D) -> Basis:
+	var root: Node = _level_root()
+	if root:
+		var ph := root.find_child(anchor_name + "_Prop", true, false) as Node3D
+		if ph and ph.is_inside_tree():
+			return ph.global_basis.orthonormalized()
+	var extra: float = float(YAW_OFFSET.get(prefab, YAW_OFFSET_DEFAULT))
+	return anchor.global_basis.orthonormalized() * Basis(Vector3.UP, deg_to_rad(extra))
+
+func _level_root() -> Node:
+	var root: Node = Game.level
+	if root == null:
+		root = get_tree().current_scene
+	return root
+
 func _place(anchor_name: String, prefab: String, anchor: Node) -> Node:
 	var path := PREFAB_DIR + prefab + ".tscn"
 	if not ResourceLoader.exists(path):
@@ -155,7 +183,7 @@ func _place(anchor_name: String, prefab: String, anchor: Node) -> Node:
 	add_child(node)
 	if node is Node3D and anchor is Node3D:
 		var a := anchor as Node3D
-		(node as Node3D).global_transform = Transform3D(a.global_basis.orthonormalized(), a.global_position)
+		(node as Node3D).global_transform = Transform3D(_facing_for(anchor_name, prefab, a), a.global_position)
 	node.add_to_group(StringName("system_" + prefab))
 	node.add_to_group(&"system")
 	node.set_meta(&"anchor", anchor_name)
