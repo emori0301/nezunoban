@@ -82,6 +82,7 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--shots=<dir>` `--shot-interval=<sec>` | 自動プレイ中、既定 20 秒おきに `<dir>/HHMM_<n>.png` を保存。夜全体の目視用。**`--headless` では撮れない** |
 | `--cctv-shot=<path>` | 監視モニターの SubViewport(256x192)をそのまま PNG に保存して終了。画面内のモニターは小さすぎて人影が判別できないため |
 | `--scare=<関数名>` | `scares.gd` の脅かしを 1 つだけ発火させる。`--screenshot` / `--cctv-shot` と組み合わせて使う |
+| `--reload-test=<sec>` | 数秒ごとに `reload_current_scene()` を繰り返す。`Game.reset()` のシグナル一括解除との二重解除を確かめる用 |
 
 夜を通しで目で見るとき:
 
@@ -152,6 +153,41 @@ autoplay(speed 8)で測った実際の距離:
 
 `Game.debug` か autoplay が有効なときだけこの行を出す。
 
+## ランダム脅かしの出し方(時刻と異変度で締める)
+
+「前半は静かで日常的、後半に向けて密度を上げる」という台本の方針に合わせて、
+`random_scare()` の発火間隔を時刻で変えている(`Director._scare_interval`)。
+間隔は速度 1 のときの実秒。`Clock.speed` を上げても夜全体での回数は変わらない。
+
+| 時間帯 | 間隔 | 中身 |
+|---|---|---|
+| 〜22:30 | 出さない | 導入と最初の用事だけにする |
+| 22:30〜00:00 | 4〜6 分 | **音だけの系統に限定**(`Scares.QUIET_SCARES`)。物は動かさない |
+| 00:00〜03:00 | 2〜4 分 | 全種類 |
+| 03:00〜 | 1〜2 分 | 全種類 |
+
+異変度が上がるほど間隔を詰める(level 1 で -20%、level 2 で -40%)。
+終盤(`ev_finale` 中)は出さない。
+
+台本イベントと重ならないように、**前後 7 ゲーム分(速度 1 で約 20 秒)** は出さない
+(`Director.SCARE_GAP_MINUTES` と `Timeline.next_event_minute`)。
+窓が閉じているあいだは 20 秒ごとに再判定するので、開いた直後に出る。
+
+speed 8 の自動プレイ 1 本で実測した発火(`--debug` で `[scare]` 行が出る):
+
+```
+[scare] 22:43 whisper     room=Room_Office     dread=0
+[scare] 00:18 door_behind room=Room_Hall       dread=0
+[scare] 01:21 chairs      room=Room_Shikijo    dread=0
+[scare] 02:22 smoke       room=Room_Shikijo    dread=0
+[scare] 03:53 attic_meow  room=Room_Backyard   dread=0
+[scare] 04:44 ceiling     room=Room_Shikijo    dread=0
+```
+
+異変度 0 の「まじめに遊んだ」一夜でこの密度。放置して異変度が上がると間隔が詰まる。
+03:00 以降が 1 回しか出ていないのは、03:00 / 03:20 / 03:40 の台本イベントが
+前後 7 分ずつ窓を塞ぐため。台本の山場が続く時間帯なので、これでよいと判断した。
+
 ## 脅かしチェックリスト
 
 `--scare=<関数名>` で 1 つだけ発火させて撮った。画像は `out/director/scares/`。
@@ -197,6 +233,15 @@ systems 側を動かすものは `Director._fire_scare` の `match` に別名を
 | 25 | `set_moonlight` | 04:00 の全消灯と同時 | `set_moonlight.png` | 見える。非常灯の緑 + 月明かりで「暗いが輪郭は追える」 |
 
 音のみのものは画面に出ないのが仕様なので、直す対象からは外してある。
+
+## シグナルの後始末
+
+`Game.reset()` が autoload のシグナル接続をまとめて外すようになったので、director 側で
+外す必要は無い。ただし二重に外しても落ちないよう、`Director._exit_tree` で
+`Signal.is_connected()` を見てから `disconnect()` している
+(`night_ended` / `flag_changed` / `Dread.level_changed` / `Clock.hour_passed`)。
+
+`--reload-test=4` で 30 秒走らせて 6 回再読み込みし、エラーも警告も出ないことを確認した。
 
 ## 未解決・判断したこと
 

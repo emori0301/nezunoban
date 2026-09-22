@@ -662,13 +662,19 @@ func _process(delta: float) -> void:
 
 # ============================================================ ランダムな脅かし
 
+## 音だけで済む系統。夜の前半(〜00:00)はここからしか撃たない。
+const QUIET_SCARES := [&"whisper", &"ceiling", &"attic_meow", &"door_behind"]
+
 ## 異変度と時刻と居場所を見て、条件に合う脅かしを1つ撃つ。
-func random_scare() -> void:
+## quiet = true なら音だけの系統に絞る(前半は物を動かさない)。
+func random_scare(quiet: bool = false) -> void:
 	var lvl := Dread.level()
 	var minutes := int(Clock.game_minutes)
 	var room := current_room()
 	var pool: Array[StringName] = []
 	var add := func(id: StringName, weight: int) -> void:
+		if quiet and not QUIET_SCARES.has(id):
+			return
 		for i in weight:
 			pool.append(id)
 
@@ -704,7 +710,7 @@ func random_scare() -> void:
 	if _recent.size() > 3:
 		_recent.pop_front()
 	if Game.debug:
-		print("[scare] %s  room=%s dread=%d" % [pick, room, Dread.value])
+		print("[scare] %s %s room=%s dread=%d" % [Clock.hhmm(), pick, room, Dread.value])
 	match pick:
 		&"whisper": whisper()
 		&"ceiling": ceiling_steps()

@@ -50,6 +50,7 @@ var _scare_timer: float = 0.0
 var _fallback_chase: bool = false
 var _fallback_t: float = 0.0
 var _event_log: Array[String] = []
+var _last_event_minute: int = -99
 var _drone: StringName = &""
 
 
@@ -90,6 +91,11 @@ func _boot() -> void:
 	if args.has("dread"):
 		Dread.add(int(String(args["dread"])), &"debug")
 	apply_state_for_time(start_minutes)
+	# QA 用: --reload-test で数秒ごとにシーンを再読み込みし続ける。
+	# Game.reset() のシグナル一括 disconnect と director の _exit_tree が
+	# 二重に外しても落ちないことを確かめるため。
+	if args.has("reload-test"):
+		_reload_loop(float(args.get("reload-test", "5")))
 	# QA 用: --scare=<関数名> で脅かしを1つだけ発火させる(チェックリストの撮影用)
 	if args.has("scare"):
 		_fire_scare(String(args["scare"]))
@@ -124,6 +130,13 @@ func _boot() -> void:
 	else:
 		await play_intro()
 		Clock.start()
+
+
+func _reload_loop(sec: float) -> void:
+	await get_tree().create_timer(maxf(sec, 1.0)).timeout
+	if is_inside_tree():
+		print("[dir] reload-test: reload_current_scene")
+		get_tree().reload_current_scene()
 
 
 ## 引数が要る脅かしの呼び出し方(QA 専用)
@@ -196,6 +209,21 @@ func _grab_cctv(path: String, wait: float) -> void:
 	get_tree().quit()
 
 
+## Game.reset() が autoload のシグナルをまとめて外すので普段は不要だが、
+## 二重に外しても落ちないよう is_connected で守ってから外す。
+func _exit_tree() -> void:
+	for pair in [
+			[Game.night_ended, Callable(self, "_on_night_ended")],
+			[Game.flag_changed, Callable(self, "_on_flag_changed")],
+			[Dread.level_changed, Callable(self, "_on_dread_level")],
+			[Clock.hour_passed, Callable(self, "_on_hour")],
+		]:
+		var sig: Signal = pair[0]
+		var cb: Callable = pair[1]
+		if sig.is_connected(cb):
+			sig.disconnect(cb)
+
+
 func _parse_args() -> Dictionary:
 	var out := {}
 	for a in OS.get_cmdline_user_args():
@@ -206,6 +234,7 @@ func _parse_args() -> Dictionary:
 
 
 func log_event(name: String) -> void:
+	_last_event_minute = int(Clock.game_minutes)
 	var line := "%s %s" % [Clock.hhmm(), name]
 	_event_log.append(line)
 	if Game.debug or autoplay != null:
@@ -634,12 +663,17 @@ func refresh_dread_ambient() -> void:
 func _process(delta: float) -> void:
 	if Game.state != Game.State.PLAYING or intro_running:
 		return
-	# 追加の脅かしを 80〜160 秒おきに 1 つ
+	# 追加の脅かし。前半は静か、後半ほど密度が上がる(_scare_interval を見よ)
 	_scare_timer -= delta * maxf(Clock.speed, 1.0)
 	if _scare_timer <= 0.0:
-		_scare_timer = scares.rng.randf_range(80.0, 160.0)
-		if int(Clock.game_minutes) >= 30 and not timeline.finale_running():
-			scares.random_scare()
+		var iv := _scare_interval()
+		if iv < 0.0:
+			_scare_timer = 30.0        # まだ出さない時間帯。30 秒後にまた見る
+		elif not _can_scare():
+			_scare_timer = 20.0        # 台本イベントの近く。少し待ってから出す
+		else:
+			_scare_timer = iv
+			scares.random_scare(int(Clock.game_minutes) < 180)
 	# 火車が居ないときの追跡の代役(音と画面だけ)
 	if _fallback_chase:
 		_fallback_t -= delta
@@ -651,6 +685,41 @@ func _process(delta: float) -> void:
 				back, -2.0, 1.0, 22.0)
 			scares.glitch(0.35)
 			Audio.play(&"heartbeat", -14.0)
+
+
+## 台本イベントの前後これだけ(ゲーム内分)は脅かしを出さない。実時間で約 20 秒。
+const SCARE_GAP_MINUTES := 7
+
+## 次のランダム脅かしまでの秒数(速度 1 の実秒)。-1 なら「まだ出さない」。
+##   〜22:30   出さない(前半は本当に静かにする)
+##   〜00:00   4〜6 分に 1 回(音だけの系統が中心)
+##   〜03:00   2〜4 分に 1 回
+##   03:00〜   1〜2 分に 1 回
+## 異変度が上がるほど間隔を詰める(level 1 で -20%、level 2 で -40%)。
+func _scare_interval() -> float:
+	var m := int(Clock.game_minutes)
+	if m < 90:
+		return -1.0
+	var lo := 240.0
+	var hi := 360.0
+	if m >= 360:
+		lo = 60.0
+		hi = 120.0
+	elif m >= 180:
+		lo = 120.0
+		hi = 240.0
+	return scares.rng.randf_range(lo, hi) * (1.0 - 0.2 * float(Dread.level()))
+
+
+func _can_scare() -> bool:
+	if timeline.finale_running() or Game.state != Game.State.PLAYING:
+		return false
+	var m := int(Clock.game_minutes)
+	if m - _last_event_minute < SCARE_GAP_MINUTES:
+		return false
+	if timeline.next_event_minute(m) - m < SCARE_GAP_MINUTES:
+		return false
+	return true
 
 
 # ============================================================ 火車(NPC が無いときの代役)

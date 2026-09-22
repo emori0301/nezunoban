@@ -47,6 +47,16 @@ func register(from_minutes: int) -> void:
 		Events.at(String(row[0]), Callable(self, String(row[1])), String(row[1]))
 
 
+## m 以降でいちばん早い台本イベントの時刻(分)。無ければ 9999。
+func next_event_minute(m: int) -> int:
+	var best := 9999
+	for row in SCHEDULE:
+		var t := int(Clock.minutes_from_hhmm(String(row[0])))
+		if t >= m and t < best:
+			best = t
+	return best
+
+
 ## --time= で途中から始めたとき、それより前のイベントの結果だけを反映する。
 func apply_past(m: int) -> void:
 	var b: Building = dir.building()
