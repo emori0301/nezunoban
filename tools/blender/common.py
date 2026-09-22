@@ -52,12 +52,31 @@ def write_png(path, arr):
 
 
 def save_tex(name, rgb):
-    """rgb: float (H,W,3) 0..1 を assets/textures/<name>.png に保存。"""
+    """float (H,W,3) か (H,W,4) 0..1 を assets/textures/<name>.png に保存。
+    4 チャンネルならアルファ付き PNG になる(デカール用)。"""
     a = np.clip(rgb, 0.0, 1.0)
     p = os.path.join(TEX_DIR, name + ".png")
     write_png(p, (a * 255.0 + 0.5).astype(np.uint8))
-    print("  tex %-24s %s" % (name + ".png", "%dx%d" % (rgb.shape[1], rgb.shape[0])))
+    print("  tex %-24s %dx%d %s" % (name + ".png", rgb.shape[1], rgb.shape[0],
+                                    "RGBA" if rgb.shape[2] == 4 else "RGB"))
     return p
+
+
+def rgba(rgb_arr, alpha):
+    """RGB と アルファ(H,W)を繋いで (H,W,4) にする。"""
+    return np.concatenate([np.clip(rgb_arr, 0, 1),
+                           np.clip(alpha, 0, 1)[..., None]], axis=2)
+
+
+def stroke(img, p0, p1, rad, color, alpha=1.0, soft=1.5, steps=None):
+    """p0=(row,col) から p1 まで円を並べて太い線を引く。指や足跡の肉球に使う。"""
+    r0, c0 = p0
+    r1, c1 = p1
+    n = steps or max(3, int(math.hypot(r1 - r0, c1 - c0) / max(rad * 0.4, 1.0)))
+    for i in range(n + 1):
+        t = i / float(n)
+        disc(img, r0 + (r1 - r0) * t, c0 + (c1 - c0) * t, rad, color, alpha, soft)
+    return img
 
 
 # ================================================================ noise
@@ -698,23 +717,64 @@ def world_quat(arm_obj, bone_name, axis, angle):
 
 
 def loft_rings(rings, cap=True):
-    """rings: [[p0,p1,p2,p3], ...] 4 点の断面を順に繋いだ筒。
-    隣の断面と頂点を共有するので、ボーンで曲げても裂けない。"""
+    """rings: [[p0, p1, ...], ...] 同じ点数の断面を順に繋いだ筒。
+    隣の断面と頂点を共有するので、ボーンで曲げても裂けない。
+    断面の点数は 3 以上なら何点でもよい(蒲鉾形の掛け布団など)。"""
     verts = []
     for r in rings:
         verts.extend(r)
     faces = []
-    n = 4
+    n = len(rings[0])
+    for r in rings:
+        assert len(r) == n, "すべての断面は同じ点数であること"
     for i in range(len(rings) - 1):
         a, b = i * n, (i + 1) * n
         for k in range(n):
             k2 = (k + 1) % n
             faces.append((a + k, a + k2, b + k2, b + k))
     if cap:
-        faces.append((3, 2, 1, 0))
+        faces.append(tuple(range(n - 1, -1, -1)))
         last = (len(rings) - 1) * n
-        faces.append((last, last + 1, last + 2, last + 3))
+        faces.append(tuple(range(last, last + n)))
     return verts, faces
+
+
+def donut(cx, cy, cz, rxi, ryi, rxo, ryo, h, seg=12):
+    """楕円の輪(便座や便器のリムに使う)。内周・外周・上下の 4 面を張る。"""
+    v = []
+    for (rx, ry, z) in ((rxi, ryi, cz), (rxo, ryo, cz),
+                        (rxi, ryi, cz + h), (rxo, ryo, cz + h)):
+        for k in range(seg):
+            a = 2 * math.pi * k / seg
+            v.append((cx + math.cos(a) * rx, cy + math.sin(a) * ry, z))
+    I0, O0, I1, O1 = 0, seg, 2 * seg, 3 * seg
+    f = []
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        f.append((I1 + k, I1 + k2, O1 + k2, O1 + k))     # 上面
+        f.append((O0 + k, O0 + k2, I0 + k2, I0 + k))     # 下面
+        f.append((O0 + k, O1 + k, O1 + k2, O0 + k2))     # 外周
+        f.append((I0 + k2, I1 + k2, I1 + k, I0 + k))     # 内周
+    return v, f
+
+
+def oval_cyl(rx, ry, h, seg=12, c=(0, 0, 0), cap=True, rx_top=None, ry_top=None):
+    """楕円断面の筒。便器の鉢のような形に。"""
+    rx_top = rx if rx_top is None else rx_top
+    ry_top = ry if ry_top is None else ry_top
+    v = []
+    for (a_rx, a_ry, z) in ((rx, ry, -h / 2.0), (rx_top, ry_top, h / 2.0)):
+        for k in range(seg):
+            a = 2 * math.pi * k / seg
+            v.append((c[0] + math.cos(a) * a_rx, c[1] + math.sin(a) * a_ry, c[2] + z))
+    f = []
+    for k in range(seg):
+        k2 = (k + 1) % seg
+        f.append((k, k2, seg + k2, seg + k))
+    if cap:
+        f.append(tuple(range(seg - 1, -1, -1)))
+        f.append(tuple(range(seg, seg * 2)))
+    return v, f
 
 
 def ring(cx, cy, cz, hw, hh, axis='Y'):

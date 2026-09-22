@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from common import (save_tex, fbm, value_noise, white, norm, rgb, mix, mul_gray,
                     grunge, speckle, scratches, stains, posterize, finish,
-                    rect, disc, ellipse, blur, tile_coords)
+                    rect, disc, ellipse, blur, tile_coords, rgba, stroke)
 
 S = 256
 
@@ -176,16 +176,38 @@ def t_white_wood():
 
 
 def t_white_cloth():
-    base = rgb(S, (0.90, 0.89, 0.86))
-    # 皺: 方向を持った低周波の陰影
-    w = norm(fbm(S, cells=5, octaves=4, seed=101))
-    w = hstreak(w, 5, axis=1)
-    fold = np.clip(1.0 - np.abs(w - 0.5) * 7.0, 0, 1)
-    base = mul_gray(base, 1.0 - fold * 0.22)
-    base = mul_gray(base, 0.96 + norm(fbm(S, 40, 2, 102)) * 0.08)
-    weave = periodic_lines(S, 64, 0, 0.35, 0.3) * 0.02
-    base = mul_gray(base, 1.0 - weave)
-    return finish(mul_gray(base, grunge(S, 103, 0.10) * stains(S, 104, 3, 0.10, 30)), 105)
+    """白布。石の脈に見えないよう、皺は「方向のある緩やかな陰影」にして、
+    織り目を実際に出す。棺台・祭壇の白幕・シーツで共用。"""
+    base = rgb(S, (0.88, 0.875, 0.85))
+
+    # --- 織り目(縦横の糸。これが無いと石に見える) ---
+    warp = periodic_lines(S, 48, 0, 0.42, 0.34)      # 縦糸
+    weft = periodic_lines(S, 48, 1, 0.42, 0.34)      # 横糸
+    base = mul_gray(base, 1.0 - warp * 0.055)
+    base = mul_gray(base, 1.0 - weft * 0.045)
+    base = mul_gray(base, 0.985 + white(S, 100) * 0.030)   # 糸のばらつき
+
+    # --- 皺: 一方向に引き伸ばした場を cos に通し、細い脈ではなく
+    #     ゆるやかな明暗の帯にする(布のドレープ) ---
+    f1 = norm(hstreak(fbm(S, cells=6, octaves=3, seed=101), 26, axis=1))
+    drape = 0.5 + 0.5 * np.cos(f1 * 2 * math.pi * 3.0)
+    base = mul_gray(base, 0.90 + drape * 0.19)
+
+    # 斜めに入る二本目の皺(弱め)
+    f2 = norm(hstreak(fbm(S, cells=5, octaves=3, seed=102), 20, axis=0))
+    drape2 = 0.5 + 0.5 * np.cos(f2 * 2 * math.pi * 2.0)
+    base = mul_gray(base, 0.945 + drape2 * 0.095)
+
+    # --- 折り目(畳んだ跡。まっすぐな線を数本だけ) ---
+    crease = periodic_lines(S, 2, 1, 0.020, 0.012)
+    base = mul_gray(base, 1.0 - crease * 0.10)
+    base = mix(base, rgb(S, (0.96, 0.955, 0.94)),
+               periodic_lines(S, 2, 1, 0.055, 0.040) * 0.18)   # 折り目の山は明るい
+
+    # --- くすみ ---
+    base = mix(base, rgb(S, (0.78, 0.77, 0.73)), norm(fbm(S, 3, 3, 103)) * 0.16)
+    return finish(mul_gray(base, grunge(S, 104, 0.08) * stains(S, 105, 3, 0.08, 26)),
+                  106, noise=0.022)
 
 
 def t_brocade():
@@ -309,14 +331,30 @@ def t_zabuton():
 
 
 def t_futon_cloth():
-    base = rgb(S, (0.80, 0.77, 0.69))
-    base = mul_gray(base, 0.93 + norm(fbm(S, 56, 2, 211)) * 0.14)
-    u, v = tile_coords(S)
-    stripe = np.clip(1 - np.abs(((u * 8) % 1.0) - 0.5) * 6, 0, 1)
-    base = mix(base, rgb(S, (0.36, 0.38, 0.48)), stripe * 0.35)
-    w = norm(fbm(S, 5, 4, 212))
-    base = mul_gray(base, 1.0 - np.clip(1 - np.abs(w - 0.5) * 8, 0, 1) * 0.18)
-    return finish(mul_gray(base, grunge(S, 213, 0.18) * stains(S, 214, 3, 0.16, 30)), 215)
+    """掛け布団の側生地。紺の格子(和柄)がはっきり出るようにする。"""
+    base = rgb(S, (0.82, 0.79, 0.71))
+    base = mul_gray(base, 0.94 + norm(fbm(S, 56, 2, 211)) * 0.12)
+    # 織り目
+    base = mul_gray(base, 1.0 - periodic_lines(S, 64, 0, 0.40, 0.34) * 0.05)
+    base = mul_gray(base, 1.0 - periodic_lines(S, 64, 1, 0.40, 0.34) * 0.04)
+
+    navy = rgb(S, (0.20, 0.24, 0.36))
+    navy = mul_gray(navy, 0.85 + norm(fbm(S, 40, 2, 216)) * 0.30)
+    # 太い格子(縦横)
+    wide_u = periodic_lines(S, 4, 0, 0.13, 0.03)
+    wide_v = periodic_lines(S, 4, 1, 0.13, 0.03)
+    base = mix(base, navy, np.maximum(wide_u, wide_v) * 0.72)
+    # 細い格子(太い線の間に 1 本ずつ)
+    thin_u = periodic_lines(S, 8, 0, 0.045, 0.02)
+    thin_v = periodic_lines(S, 8, 1, 0.045, 0.02)
+    base = mix(base, navy, np.maximum(thin_u, thin_v) * 0.34)
+    # 交点は濃い
+    base = mix(base, navy * 0.75, (wide_u * wide_v) * 0.55)
+
+    # 布らしい皺
+    w = norm(hstreak(fbm(S, 5, 3, 212), 18, axis=1))
+    base = mul_gray(base, 0.93 + (0.5 + 0.5 * np.cos(w * 2 * math.pi * 2.5)) * 0.14)
+    return finish(mul_gray(base, grunge(S, 213, 0.16) * stains(S, 214, 3, 0.14, 30)), 215)
 
 
 def t_fur_black():
@@ -469,6 +507,17 @@ def t_slipper():
     base = mul_gray(base, 0.9 + norm(fbm(S, 48, 2, 381)) * 0.2)
     base = mix(base, rgb(S, (0.42, 0.40, 0.34)), norm(fbm(S, 5, 3, 382)) * 0.3)
     return finish(mul_gray(base, grunge(S, 383, 0.22)), 384)
+
+
+def t_porcelain():
+    """便器・洗面の白い陶器。ほぼ真っ白で、貫入と隅の汚れだけ。"""
+    base = rgb(S, (0.905, 0.905, 0.885))
+    base = mul_gray(base, 0.975 + norm(fbm(S, 44, 2, 621)) * 0.050)
+    base = mix(base, rgb(S, (0.82, 0.82, 0.80)), norm(fbm(S, 4, 3, 622)) * 0.16)
+    cr = norm(fbm(S, 13, 3, 623))
+    cr = np.clip(1.0 - np.abs(cr - 0.5) * 30.0, 0, 1)          # 貫入(細いひび)
+    base = mix(base, rgb(S, (0.70, 0.70, 0.68)), cr * 0.20)
+    return finish(mul_gray(base, stains(S, 624, 3, 0.11, 26)), 625, noise=0.018)
 
 
 def t_tile_white():
@@ -893,6 +942,81 @@ def t_guest_book():
     return finish(mul_gray(img, stains(S, 573, 3, 0.14, 26)), 574)
 
 
+# ---------------------------------------------------------------- デカール
+
+def _mask(size):
+    return np.zeros((size, size, 3))
+
+
+def t_paw_print():
+    """濡れた猫の足跡(64x64, アルファ付き)。上(row 0)が進行方向。
+    廊下 → 式場 に並べて置く用。"""
+    S2 = 64
+    m = _mask(S2)
+    # 指球 4 つ(外側ほど下がる弧)
+    for (r, c, rx, ry) in ((21.0, 13.0, 6.2, 5.4), (15.5, 25.0, 6.4, 5.6),
+                           (15.5, 39.0, 6.4, 5.6), (21.0, 51.0, 6.2, 5.4)):
+        ellipse(m, r, c, rx, ry, (1, 1, 1), 1.0, soft=2.4)
+    # 掌球(下がふくらんだ三角)
+    ellipse(m, 44.0, 32.0, 12.5, 15.5, (1, 1, 1), 1.0, soft=2.6)
+    ellipse(m, 35.0, 32.0, 7.0, 10.0, (1, 1, 1), 1.0, soft=3.2)
+    mask = np.clip(m[..., 0], 0, 1)
+
+    n = norm(fbm(S2, cells=10, octaves=3, seed=601))
+    n2 = norm(fbm(S2, cells=26, octaves=2, seed=602))
+    # 水の膜: 中は薄く、縁に溜まって濃い
+    rim = np.clip((mask - 0.30) * 3.0, 0, 1) * np.clip((0.92 - mask) * 3.0, 0, 1)
+    col = rgb(S2, (0.085, 0.095, 0.115))
+    col = mix(col, rgb(S2, (0.17, 0.19, 0.21)), n * 0.45)     # 濡れたムラ
+    col = mix(col, rgb(S2, (0.05, 0.055, 0.07)), rim * 0.65)  # 縁の水溜まり
+    a = mask * (0.52 + n * 0.30 + n2 * 0.10) + rim * 0.22
+    # 端は完全に透明にしてタイルの継ぎ目を出さない
+    edge = np.ones((S2, S2))
+    edge[:2] = 0; edge[-2:] = 0; edge[:, :2] = 0; edge[:, -2:] = 0
+    a = np.clip(a * edge, 0, 1)
+    return rgba(posterize(col, 24), a)
+
+
+def t_handprint():
+    """棺の小窓の内側に付いた手形(128x128, アルファ付き)。
+    皮脂で曇ったような白っぽい跡。指先が上(row 0)。"""
+    S2 = 128
+    m = _mask(S2)
+    # 掌
+    ellipse(m, 84.0, 62.0, 25.0, 23.0, (1, 1, 1), 1.0, soft=5.0)
+    ellipse(m, 96.0, 62.0, 16.0, 20.0, (1, 1, 1), 1.0, soft=6.0)
+    # 指 4 本(付け根 → 指先。少し開く)
+    fingers = (((62.0, 40.0), (26.0, 31.0), 7.0),
+               ((59.0, 55.0), (18.0, 50.0), 7.4),
+               ((59.0, 70.0), (19.0, 69.0), 7.2),
+               ((63.0, 84.0), (28.0, 88.0), 6.6))
+    for (p0, p1, rad) in fingers:
+        stroke(m, p0, p1, rad, (1, 1, 1), 1.0, soft=3.0)
+        disc(m, p1[0], p1[1], rad * 0.95, (1, 1, 1), 1.0, 2.2)
+    # 親指(斜めに出る)
+    stroke(m, (88.0, 40.0), (74.0, 16.0), 8.2, (1, 1, 1), 1.0, soft=3.2)
+    disc(m, 74.0, 16.0, 8.0, (1, 1, 1), 1.0, 2.4)
+    mask = np.clip(m[..., 0], 0, 1)
+
+    n = norm(fbm(S2, cells=14, octaves=4, seed=611))
+    n2 = norm(fbm(S2, cells=40, octaves=2, seed=612))
+    # 皮脂の曇り: 接地が強いところほど白い
+    col = rgb(S2, (0.90, 0.90, 0.88))
+    col = mix(col, rgb(S2, (0.74, 0.75, 0.76)), n * 0.45)
+    # 掌の中央は浮いていて薄い(ドーナツ状に残る)
+    hollow = np.clip(1.0 - np.sqrt(((np.arange(S2)[:, None] - 90) / 17.0) ** 2
+                                   + ((np.arange(S2)[None, :] - 62) / 15.0) ** 2), 0, 1)
+    a = mask * (0.42 + n * 0.24 + n2 * 0.12)
+    a = a * (1.0 - hollow * 0.30)
+    # 指紋らしい細い筋
+    ridge = 0.5 + 0.5 * np.sin(norm(fbm(S2, cells=8, octaves=3, seed=613)) * 44.0)
+    a = a * (0.80 + ridge * 0.30)
+    edge = np.ones((S2, S2))
+    edge[:2] = 0; edge[-2:] = 0; edge[:, :2] = 0; edge[:, -2:] = 0
+    a = np.clip(a * edge, 0, 1)
+    return rgba(posterize(col, 26), a)
+
+
 ALL = {
     # level が使う(シームレス)
     "floor_lino": t_floor_lino,
@@ -935,6 +1059,7 @@ ALL = {
     "car_black": t_car_black,
     "slipper": t_slipper,
     "tile_white": t_tile_white,
+    "porcelain": t_porcelain,
     # 顔・写真・文字もの(タイルしない)
     "body_face_calm": t_body_face_calm,
     "body_face_mouth": t_body_face_mouth,
@@ -953,6 +1078,9 @@ ALL = {
     "matchbox": t_matchbox,
     "incense_box_tex": t_incense_box,
     "guest_book": t_guest_book,
+    # デカール(アルファ付き。タイルしない)
+    "paw_print": t_paw_print,
+    "handprint": t_handprint,
 }
 
 

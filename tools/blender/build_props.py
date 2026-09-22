@@ -1,6 +1,6 @@
 """小物: kettle guest_book_stand umbrella_stand slippers wall_clock
 fire_extinguisher notice_board sake_bottle beer_can matches incense_box
-coil_incense
+coil_incense hanging_robe
 
 blender --background --python tools/blender/build_props.py
 """
@@ -13,7 +13,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
 from common import (reset_scene, material, Builder, emit, dump_report,
-                    box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads)
+                    box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads,
+                    make_armature, chain_weights, loft_rings, ring, Anim,
+                    set_scene_frames)
+
+R = math.radians
+FPS = 30
 
 UVQ = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -266,6 +271,120 @@ def build_coil_incense():
     emit("coil_incense", [b.build()])
 
 
+# ---------------------------------------------------------------- 湯灌室
+
+# ハンガーのフックの先端が z = 2.00(原点は床)
+HOOK_Z = 2.00
+ROBE_TOP = 1.84      # 肩のライン
+ROBE_BOT = 0.58      # 裾
+
+ROBE_BONES = [
+    ("Hook",       (0.00, 0.00, 1.86), (0.00, 0.00, HOOK_Z), None),
+    ("RobeTop",    (0.00, 0.00, ROBE_TOP), (0.00, 0.00, 1.30), "Hook"),
+    ("RobeBottom", (0.00, 0.00, 1.30), (0.00, 0.00, ROBE_BOT), "RobeTop"),
+]
+
+
+def build_hanging_robe():
+    """湯灌室に吊るした白装束(経帷子)。
+    原点は床。ハンガーのフックの先端が +Z 2.00。
+    アニメ `sway`(4 秒ループ)と `drop`(1.5 秒、1 回)。"""
+    reset_scene()
+    bpy.context.scene.render.fps = FPS
+    bpy.context.scene.render.fps_base = 1.0
+
+    cloth = material("RobeCloth", "white_cloth", color=(0.87, 0.86, 0.83), rough=0.95)
+    wire = material("HangerWire", "steel", color=(0.56, 0.57, 0.58), rough=0.45, metal=0.8)
+
+    b = Builder("hanging_robe")
+
+    # --- ハンガー(Hook ボーンに固定。落ちても残る) ---
+    hanger_idx = []
+    h0 = b.count()
+    b.add(cyl(0.006, 0.10, 6, (0, 0, 1.905)), wire, 30.0)               # 縦の針金
+    for k in range(5):                                                   # フックの曲がり
+        a = math.pi * (0.15 + 0.70 * k / 4.0)
+        b.add(cyl(0.005, 0.030, 5,
+                  (math.cos(a) * 0.030, 0, 1.962 + math.sin(a) * 0.032)), wire, 40.0)
+    for sx in (-1, 1):                                                   # 肩の斜材
+        v, f = box(0.200, 0.014, 0.014, (0, 0, 0))
+        v = tr(v, rot=(0, 0.28, 0), t=(sx * 0.098, 0, 1.818))
+        b.add((v, f), wire, 16.0)
+    b.add(box_mm(-0.192, 0.192, -0.007, 0.007, 1.760, 1.774), wire, 12.0)  # 下の横棒
+    hanger_idx = list(range(h0, b.count()))
+
+    # --- 経帷子(白装束)。胴は 1 本のロフトで裂けないように ---
+    body = [
+        ring(0.0, 0.0, ROBE_TOP + 0.015, 0.212, 0.072, axis='Z'),
+        ring(0.0, 0.0, 1.700, 0.226, 0.090, axis='Z'),
+        ring(0.0, 0.0, 1.450, 0.222, 0.096, axis='Z'),
+        ring(0.0, 0.0, 1.150, 0.216, 0.090, axis='Z'),
+        ring(0.0, 0.0, 0.850, 0.210, 0.084, axis='Z'),
+        ring(0.0, 0.0, ROBE_BOT, 0.206, 0.078, axis='Z'),
+    ]
+    b.add(loft_rings(body), cloth, 3.8)
+    # 袖(着物なので四角く大きい)
+    for sx in (-1, 1):
+        b.add(box_taper(0.230, 0.100, 0.215, 0.092, 0.135,
+                        (sx * 0.318, 0.0, 1.790)), cloth, 4.6)
+        b.add(box_mm(sx * 0.300 - 0.072 if sx > 0 else sx * 0.300 - 0.072,
+                     sx * 0.300 + 0.072, -0.048, 0.048, 1.380, 1.722), cloth, 4.6)
+    # 襟(前で V にあわせる)
+    for sx in (-1, 1):
+        v, f = box(0.052, 0.022, 0.300, (0, 0, 0))
+        v = tr(v, rot=(0, sx * 0.30, 0), t=(sx * 0.052, -0.088, 1.700))
+        b.add((v, f), cloth, 8.0)
+    # 紐
+    b.add(box_mm(-0.216, 0.216, -0.100, -0.082, 1.268, 1.306), cloth, 6.0)
+    b.add(box_mm(-0.030, 0.030, -0.108, -0.086, 1.150, 1.290), cloth, 10.0)
+
+    mesh = b.build()
+
+    ao = make_armature("hanging_robe", ROBE_BONES, scale=1.0)
+    # 胴と袖は z に沿って滑らかに、ハンガーだけインデックスで固定
+    chain_weights(mesh, ao, [("RobeBottom", 0.95), ("RobeTop", 1.65)],
+                  lambda c: c.z, rigid_idx={"Hook": hanger_idx})
+
+    set_scene_frames(121)
+
+    # --- sway: ゆっくり揺れる(4.0 秒ちょうどでループ) ---
+    a = Anim(ao, "sway", 121)
+    N = 12
+    for k in range(N + 1):
+        f = 1 + k * 120.0 / N
+        t = k / float(N)
+        w = 2 * math.pi * t
+        a.keyw_mul(f, "RobeTop", [('Y', R(2.2) * math.sin(w)),
+                                  ('X', R(1.4) * math.sin(w + 0.7)),
+                                  ('Z', R(1.2) * math.sin(w * 2))])
+        a.keyw_mul(f, "RobeBottom", [('Y', R(3.6) * math.sin(w - 0.55)),
+                                     ('X', R(2.2) * math.sin(w + 0.2)),
+                                     ('Z', R(1.8) * math.sin(w * 2 - 0.9))])
+    a.finish()
+
+    # --- drop: 1.5 秒で床に落ちる(1 回) ---
+    set_scene_frames(46)
+    a = Anim(ao, "drop", 46)
+    N = 12
+    for k in range(N + 1):
+        f = 1 + k * 45.0 / N
+        t = k / float(N)
+        fall = min(max((t - 0.08) / 0.62, 0.0), 1.0)
+        settle = min(max((t - 0.62) / 0.38, 0.0), 1.0)
+        se = settle * settle * (3 - 2 * settle)
+        # 落下は加速する
+        a.keyw_loc(f, "RobeTop", (0.055 * fall, -0.10 * fall, -1.74 * (fall ** 2)))
+        a.keyw_mul(f, "RobeTop", [('X', R(-88) * (fall ** 1.4)),
+                                  ('Y', R(11) * fall),
+                                  ('Z', R(-7) * fall)])
+        a.keyw_mul(f, "RobeBottom", [('X', R(34) * se),
+                                     ('Y', R(-14) * se + R(5) * fall)])
+    a.finish()
+
+    set_scene_frames(121)
+    emit("hanging_robe", [ao, mesh], animations=True)
+
+
 def main():
     build_kettle()
     build_guest_book_stand()
@@ -279,6 +398,7 @@ def main():
     build_matches()
     build_incense_box()
     build_coil_incense()
+    build_hanging_robe()
     dump_report()
 
 

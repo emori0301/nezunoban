@@ -24,6 +24,7 @@ ANGLES = {
     "coffin": (1.0, -1.05, 0.80),
     "coffin_lid_open": (1.0, -1.05, 0.80),
     "futon": (0.7, -1.0, 1.15),
+    "hanging_robe": (0.85, -1.40, 0.18),
     "body_risen": (1.55, -0.35, 0.45),
     "zabuton": (0.7, -1.0, 1.10),
     "slippers": (0.6, -1.0, 1.10),
@@ -57,6 +58,10 @@ def setup_world(dark=0.055):
 
 
 # テクスチャ側に陰影が焼いてあるもの(顔・遺影)は弱い光で撮る
+# アニメ帯用の画角の上書き: (カメラ距離の倍率, 注視点のずらし)
+# 落下などで rest ポーズの外へ動くものは、広めに引かないと画面から出る。
+STRIP_FRAME = {"hanging_robe": (1.85, (0.0, -0.55, -0.60))}
+
 DIM = {"body_face": 0.50, "iei_frame": 0.55, "body_risen": 0.62}
 
 
@@ -200,9 +205,11 @@ def render_anim_strips(name, path, engine, angle):
     lo, hi = bbox_of(objs)
     center = (lo + hi) * 0.5
     radius = max((hi - lo).length * 0.5, 0.08)
+    zoom, coff = STRIP_FRAME.get(name, (1.0, (0.0, 0.0, 0.0)))
+    center = center + Vector(coff)
     setup_world()
     add_lights(center, radius, DIM.get(name, 1.0))
-    v = Vector(angle).normalized() * (radius * 2.9)
+    v = Vector(angle).normalized() * (radius * 2.9 * zoom)
     cd = bpy.data.cameras.new("Cam")
     cd.lens = 46.0
     cam = bpy.data.objects.new("Cam", cd)

@@ -15,6 +15,7 @@ var expect_anims := {
 	"npc_son": ["idle", "walk"],
 	"npc_granddaughter": ["idle", "walk"],
 	"body_risen": ["rise"],
+	"hanging_robe": ["sway", "drop"],
 }
 
 var fail := 0
