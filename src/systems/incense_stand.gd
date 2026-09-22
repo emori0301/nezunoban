@@ -24,9 +24,11 @@ signal burn_progress(ratio: float)
 ## モデルに焼き込まれた古い線香と重ならないように少しずらす。
 @export var stick_offset: Vector3 = Vector3(0.042, 0.0, 0.026)
 @export var ember_light_energy: float = 0.035 # 火種はほとんど光らない
-@export var smoke_amount: int = 20
+@export var smoke_amount: int = 46
 ## 在庫が無いときの独白。日本語の文面は director が差し替えられるように export にしてある。
 @export var no_stock_line: String = "線香が無い。"
+## 煙がゆっくり横に流れる既定の風。director が set_wind() で上書きできる。
+@export var smoke_drift: Vector3 = Vector3(0.035, 0.0, 0.02)
 
 var is_burning: bool = false
 var wind: Vector3 = Vector3.ZERO
@@ -95,7 +97,9 @@ func _build_visuals() -> void:
 	add_child(_ember_light)
 
 	# 細い灰色の煙(粒が離れて見えないよう、多め・大きめ・薄めにする)
-	_smoke = SystemUtil.make_smoke(smoke_amount, 3.2, 0.30, 0.018, 0.085, Color(0.52, 0.52, 0.55, 0.095), 3.0)
+	# 一筋の細い煙にする。粒を小さく薄くし、数を増やして途切れないようにする。
+	# 上昇速度と寿命の組み合わせで 1.2m ほど昇って消える。
+	_smoke = SystemUtil.make_smoke(smoke_amount, 3.2, 0.30, 0.008, 0.042, Color(0.58, 0.58, 0.61, 0.115), 2.2)
 	_smoke.name = "Smoke"
 	_smoke.emitting = false
 	add_child(_smoke)
@@ -107,6 +111,8 @@ func _build_visuals() -> void:
 	_puff.explosiveness = 0.85
 	_puff.emitting = false
 	add_child(_puff)
+
+	set_wind(smoke_drift)
 
 func _process(delta: float) -> void:
 	_t += delta
