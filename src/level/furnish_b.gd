@@ -39,7 +39,8 @@ static func _aim(m: Node3D, target: Vector3) -> void:
 static func _shikijo(b: Building) -> void:
 	const R := &"Room_Shikijo"
 	var node := b.room_of(R)
-	var cloth := LevelMaterials.get_mat("white_cloth", 0.8)
+	# 織り目が細かいので 1 タイル 0.33m 相当まで詰める(大きな面で巨大な染みに見えるのを防ぐ)
+	var cloth := LevelMaterials.get_mat("white_cloth", 3.0)
 	var brocade := LevelMaterials.get_mat("brocade", 1.0)
 	var wood := LevelMaterials.get_mat("wood_dark", 1.0)
 
