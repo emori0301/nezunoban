@@ -152,6 +152,9 @@ static func _shikijo(b: Building) -> void:
 		spot.look_at(cfg["aim"], Vector3.UP)
 		b.add_aux_light(R, spot)
 
+	# 非常口サイン(入口の引き分け戸の上、室内から見える向き)
+	b.add_exit_sign(R, Vector3(7.72, 2.55, 0.0), 90.0)
+
 	# 照明(蛍光灯 4 本。落とすと燭台の暖色と祭壇スポットだけが残る)
 	for p in [[10.2, -2.6], [10.2, 1.6], [15.4, -2.6], [15.4, 1.6]]:
 		b.add_fluorescent(R, Vector3(p[0], 3.08, p[1]), 1.35, COOL, 0.85, 6.4, true)
@@ -199,6 +202,9 @@ static func _backyard(b: Building) -> void:
 	})
 
 	LevelBuild.box(node, Vector3(0.0, 0.01, -7.1), Vector3(1.2, 0.03, 0.7), conc, false, "concrete", false)
+
+	# 非常口サイン(勝手口の上、室内から見える向き)
+	b.add_exit_sign(R, Vector3(0.0, 2.2, -7.33), 0.0)
 
 	b.add_fluorescent(R, Vector3(-1.0, 2.46, -3.2), 1.25, COOL, 0.9, 5.8, true)
 	b.add_fluorescent(R, Vector3(3.0, 2.46, -6.0), 1.25, COOL, 0.9, 5.8, true)

@@ -10,6 +10,7 @@ extends Node3D
 ##   get_anchor(name) / get_door(name) / get_window_pane(name) / get_room_area(name) / current_room
 ##   set_room_lights(room, on) / set_all_lights(on) / flicker(room, duration) / get_light_state(room)
 ##   set_aux_lights(room, on) / get_aux_light_state(room)  … 祭壇スポットなど別系統
+##   set_emergency_lights(on) / get_emergency_light_state()  … 非常口サイン(全消灯でも残る)
 ##   hide_anchor_prop(anchor)   … systems が実物を置くとき、level のプレースホルダを消す
 
 const OUTSIDE := &"Room_Outside"
@@ -69,6 +70,11 @@ var _light_on: Dictionary = {}       # StringName -> bool
 var _aux_lights: Dictionary = {}     # StringName -> Array[Light3D]
 var _aux_energy: Dictionary = {}     # StringName -> Array[float]
 var _aux_on: Dictionary = {}         # StringName -> bool
+# 非常灯(第3系統)。set_all_lights(false) でも消えず、set_emergency_lights() だけが切れる。
+var _emg_lights: Array[Light3D] = []
+var _emg_energy: Array[float] = []
+var _emg_mats: Array[StandardMaterial3D] = []
+var _emg_on: bool = true
 var _inside_stack: Array[StringName] = []
 var _flickering: Dictionary = {}
 
@@ -167,6 +173,18 @@ func get_light_state(room: StringName) -> bool:
 	return bool(_light_on.get(room, false))
 
 
+## 非常灯の点灯状態。
+func get_emergency_light_state() -> bool:
+	return _emg_on
+
+
+## 非常灯(非常口サイン)。全消灯でも消えないので、真っ暗でも輪郭が追える。
+## 04:00 の演出でこれも落としたいときだけ director が false を呼ぶ。
+func set_emergency_lights(on: bool) -> void:
+	_emg_on = on
+	_apply_emergency(on)
+
+
 ## 別系統(祭壇スポットなど)の点灯状態。
 func get_aux_light_state(room: StringName) -> bool:
 	return bool(_aux_on.get(room, false))
@@ -207,6 +225,7 @@ func set_light_scale(f: float) -> void:
 	for r in _light_on:
 		_apply_lights(r, get_light_state(r))
 		_apply_aux(r, get_aux_light_state(r))
+	_apply_emergency(_emg_on)
 
 
 ## 蛍光灯の明滅。duration 秒だけちらついて、元の状態に戻る。
@@ -269,6 +288,19 @@ func add_prop(room: StringName, node_name: String, model: String, pos: Vector3,
 func add_box(room: StringName, center: Vector3, size: Vector3, mat: Material,
 		collide: bool = true) -> MeshInstance3D:
 	return LevelBuild.box(_room_nodes[room], center, size, mat, collide, "", true)
+
+
+## 非常灯として登録する。set_all_lights でも消えない。
+func add_emergency_light(light: Light3D, mat: StandardMaterial3D = null) -> void:
+	_emg_lights.append(light)
+	_emg_energy.append(light.light_energy)
+	_emg_mats.append(mat)
+
+
+## 非常口サインを1つ置く(緑の発光板 + 弱い緑の光)。
+func add_exit_sign(room: StringName, pos: Vector3, yaw: float) -> void:
+	var r := LevelBuild.exit_sign(_room_nodes[room], pos, yaw)
+	add_emergency_light(r[0], r[1])
 
 
 ## 蛍光灯とは別系統で登録する。set_room_lights では消えない。
@@ -336,6 +368,19 @@ func _apply_lights(room: StringName, on: bool) -> void:
 		if m:
 			m.emission_energy_multiplier = 1.25 if on else 0.0
 			m.albedo_color = Color(0.92, 0.94, 0.95) if on else Color(0.24, 0.25, 0.26)
+
+
+func _apply_emergency(on: bool) -> void:
+	for i in _emg_lights.size():
+		var l: Light3D = _emg_lights[i]
+		if not is_instance_valid(l):
+			continue
+		l.light_energy = float(_emg_energy[i]) * light_scale if on else 0.0
+		l.visible = on
+		var m: StandardMaterial3D = _emg_mats[i]
+		if m:
+			m.emission_energy_multiplier = 1.7 if on else 0.0
+			m.albedo_color = Color(0.13, 0.78, 0.30) if on else Color(0.07, 0.16, 0.09)
 
 
 func _apply_aux(room: StringName, on: bool) -> void:

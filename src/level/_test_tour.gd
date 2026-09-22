@@ -37,6 +37,8 @@ func _ready() -> void:
 		return
 	if args.has("dark"):
 		b.set_all_lights(false)
+	if args.has("emgoff"):
+		b.set_emergency_lights(false)
 	if args.has("roomoff"):
 		b.set_room_lights(StringName(String(args["roomoff"])), false)
 	if args.has("tour"):

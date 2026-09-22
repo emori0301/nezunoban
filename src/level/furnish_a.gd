@@ -71,6 +71,9 @@ static func _genkan(b: Building) -> void:
 	b.add_fluorescent(R, Vector3(-6.2, 2.6, 1.8), 1.2, WARM, 0.85, 6.2, true)
 	b.add_bulb(R, Vector3(-8.0, 2.55, -2.2), WARM, 0.75, 4.2, true)
 
+	# 非常口サイン(玄関の自動ドアの上、室内から見える向き)
+	b.add_exit_sign(R, Vector3(-10.88, 2.42, 0.0), 90.0)
+
 	# スポーン
 	b.add_anchor(R, "Spawn_Player", Vector3(-9.5, 0.0, 0.0), -90.0)
 	b.add_anchor(R, "Spawn_Boss", Vector3(-8.0, 0.0, -2.2), 90.0)
@@ -203,6 +206,12 @@ static func _hall(b: Building) -> void:
 		b.add_fluorescent(R, Vector3(x, 2.42, 0.0), 1.15, COOL, 0.8, 4.8, true)
 	for z in [-3.0, -5.4]:
 		b.add_fluorescent(R, Vector3(6.4, 2.42, z), 1.15, COOL, 0.62, 4.2, true)
+
+	# 非常口サイン。廊下の両端と、L 字の突き当たり(湯灌室の扉の上)。
+	# 全消灯でも消えないので、真っ暗な廊下でも進む向きが分かる。
+	b.add_exit_sign(R, Vector3(-3.2, 2.28, 0.0), 90.0)
+	b.add_exit_sign(R, Vector3(6.9, 2.28, 0.0), -90.0)
+	b.add_exit_sign(R, Vector3(6.4, 2.2, -7.3), 0.0)
 
 	# 式場の入口(引き分け戸)
 	b.add_door(R, "Door_Shikijo", Vector3(7.5, 0.0, 0.0), 90.0, {

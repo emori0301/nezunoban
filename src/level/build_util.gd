@@ -146,6 +146,37 @@ static func bulb(parent: Node, pos: Vector3, color: Color, energy: float,
 	holder.add_child(light)
 	return [light, mi, emat]
 
+## 非常口サイン。緑の発光板と弱い緑の光。ローカル +Z が表。戻り値 [light, mat]
+static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
+		energy: float = 0.32, range_m: float = 5.0) -> Array:
+	var holder := Node3D.new()
+	holder.name = "ExitSign"
+	holder.position = pos
+	holder.rotation_degrees.y = yaw_deg
+	parent.add_child(holder)
+	var emat := LevelMaterials.emissive(Color(0.13, 0.78, 0.30), 1.7)
+	box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
+	# 非常口の白いピクトグラム代わり
+	box(holder, Vector3(-0.04, 0.0, 0.016), Vector3(0.07, 0.10, 0.006),
+		LevelMaterials.plain(Color(0.88, 0.95, 0.88)), false, "", false)
+	box(holder, Vector3(0.08, 0.0, 0.016), Vector3(0.03, 0.10, 0.006),
+		LevelMaterials.plain(Color(0.88, 0.95, 0.88)), false, "", false)
+	# 天吊りの金具
+	box(holder, Vector3(0, 0.11, 0), Vector3(0.36, 0.06, 0.07),
+		LevelMaterials.plain(Color(0.20, 0.20, 0.21)), false, "", false)
+	var light := OmniLight3D.new()
+	light.name = "Light"
+	light.position = Vector3(0, -0.2, 0.1)
+	light.light_color = Color(0.40, 0.95, 0.55)
+	light.light_energy = energy
+	light.omni_range = range_m
+	light.omni_attenuation = 1.3
+	light.shadow_enabled = false
+	light.light_specular = 0.0
+	holder.add_child(light)
+	return [light, emat]
+
+
 ## Marker3D のアンカー。yaw は度。-Z が正面。
 static func marker(parent: Node, anchor_name: String, pos: Vector3, yaw_deg: float = 0.0) -> Marker3D:
 	var m := Marker3D.new()
