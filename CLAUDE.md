@@ -94,3 +94,11 @@ godot --path . -- --skip-title --time=01:00 --debug   # デバッグ: F2/F3 で�
 
 - ブランチ `work/v1` で作業。コミットは「1つの意図 = 1コミット」、メッセージは日本語で「何のために」。
 - 担当エージェントはコミットしない(監督がまとめてコミットする)。
+
+## 起動時の組み立て順(main.gd)
+
+1. `src/level/building.tscn` を World に追加
+2. `src/systems/installer.tscn` と `src/npc/installer.tscn` があれば World に追加(それぞれ `Anchor_*` / `Spawn_*` を `find_child` で探し、自分のプレハブを置く)
+3. `src/player/player.tscn` を `Spawn_Player` に置き `Game.register_player`
+4. `src/ui/hud.tscn` を SubViewport 内に、`src/fx/vhs_layer.tscn` を Main 直下に(`attach(container)`)
+5. `src/director/director.tscn` を Main 直下に。director が `Clock.start()` する(無ければ main が始動)

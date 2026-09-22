@@ -12,6 +12,8 @@ const PLAYER_PATH := "res://src/player/player.tscn"
 const HUD_PATH := "res://src/ui/hud.tscn"
 const VHS_PATH := "res://src/fx/vhs_layer.tscn"
 const DIRECTOR_PATH := "res://src/director/director.tscn"
+const INSTALLER_PATH := "res://src/systems/installer.tscn"   # Anchor_* に systems のプレハブを置く
+const NPC_INSTALLER_PATH := "res://src/npc/installer.tscn"   # Spawn_* に NPC/猫を置く
 const TITLE_PATH := "res://src/ui/title.tscn"
 
 @onready var viewport: SubViewport = %GameViewport
@@ -44,6 +46,11 @@ func start_game() -> void:
 		Game.level = lvl
 	else:
 		_build_fallback_floor()
+	# systems / npc のプレハブをアンカーに配置(存在すれば)
+	for inst_path in [INSTALLER_PATH, NPC_INSTALLER_PATH]:
+		if ResourceLoader.exists(inst_path):
+			var inst: Node = load(inst_path).instantiate()
+			world.add_child(inst)
 	# player
 	if ResourceLoader.exists(PLAYER_PATH):
 		var p: Node3D = load(PLAYER_PATH).instantiate()
