@@ -9,6 +9,7 @@ extends Node3D
 ## 公開 API:
 ##   get_anchor(name) / get_door(name) / get_window_pane(name) / get_room_area(name) / current_room
 ##   set_room_lights(room, on) / set_all_lights(on) / flicker(room, duration) / get_light_state(room)
+##   set_aux_lights(room, on) / get_aux_light_state(room)  … 祭壇スポットなど別系統
 ##   hide_anchor_prop(anchor)   … systems が実物を置くとき、level のプレースホルダを消す
 
 const OUTSIDE := &"Room_Outside"
@@ -64,6 +65,10 @@ var _lights: Dictionary = {}         # StringName -> Array[Light3D]
 var _lamp_mats: Dictionary = {}      # StringName -> Array[StandardMaterial3D]
 var _lamp_energy: Dictionary = {}    # StringName -> Array[float]
 var _light_on: Dictionary = {}       # StringName -> bool
+# 別系統の照明(祭壇スポットなど)。set_room_lights では消えず、set_all_lights でだけ消える。
+var _aux_lights: Dictionary = {}     # StringName -> Array[Light3D]
+var _aux_energy: Dictionary = {}     # StringName -> Array[float]
+var _aux_on: Dictionary = {}         # StringName -> bool
 var _inside_stack: Array[StringName] = []
 var _flickering: Dictionary = {}
 
@@ -102,6 +107,9 @@ func _ready() -> void:
 		_lights[r] = []
 		_lamp_mats[r] = []
 		_lamp_energy[r] = []
+		_aux_lights[r] = []
+		_aux_energy[r] = []
+		_aux_on[r] = true
 	var out := Node3D.new()
 	out.name = String(OUTSIDE)
 	rooms_root.add_child(out)
@@ -110,6 +118,9 @@ func _ready() -> void:
 	_lights[OUTSIDE] = []
 	_lamp_mats[OUTSIDE] = []
 	_lamp_energy[OUTSIDE] = []
+	_aux_lights[OUTSIDE] = []
+	_aux_energy[OUTSIDE] = []
+	_aux_on[OUTSIDE] = true
 
 	_build_floors_and_ceilings()
 	_build_walls()
@@ -156,6 +167,19 @@ func get_light_state(room: StringName) -> bool:
 	return bool(_light_on.get(room, false))
 
 
+## 別系統(祭壇スポットなど)の点灯状態。
+func get_aux_light_state(room: StringName) -> bool:
+	return bool(_aux_on.get(room, false))
+
+
+## 別系統だけを点けたり消したりする。
+func set_aux_lights(room: StringName, on: bool) -> void:
+	if not _aux_on.has(room):
+		return
+	_aux_on[room] = on
+	_apply_aux(room, on)
+
+
 ## 部屋の照明を点ける/消す。光源だけでなく蛍光灯メッシュの emission も落とす。
 func set_room_lights(room: StringName, on: bool) -> void:
 	if not _light_on.has(room):
@@ -165,13 +189,15 @@ func set_room_lights(room: StringName, on: bool) -> void:
 	Audio.play(&"lights_on" if on else &"lights_off")
 
 
-## 屋内の全照明。include_outside = true なら外灯・自販機も落とす。
+## 屋内の全照明。別系統(祭壇スポット)もここでは一緒に落とす(終盤の全消灯用)。include_outside = true なら外灯・自販機も落とす。
 func set_all_lights(on: bool, include_outside: bool = false) -> void:
 	for r in _light_on:
 		if r == OUTSIDE and not include_outside:
 			continue
 		_light_on[r] = on
 		_apply_lights(r, on)
+		_aux_on[r] = on
+		_apply_aux(r, on)
 	Audio.play(&"lights_on" if on else &"lights_off")
 
 
@@ -180,6 +206,7 @@ func set_light_scale(f: float) -> void:
 	light_scale = maxf(f, 0.0)
 	for r in _light_on:
 		_apply_lights(r, get_light_state(r))
+		_apply_aux(r, get_aux_light_state(r))
 
 
 ## 蛍光灯の明滅。duration 秒だけちらついて、元の状態に戻る。
@@ -222,10 +249,14 @@ func add_anchor(room: StringName, anchor_name: String, pos: Vector3, yaw: float 
 
 
 ## アンカーとその場所のプレースホルダ Prop をまとめて置く。
+## glb の前面がローカル +Z 側にあるモデル(祭壇・遺影など)は、アンカーの向き(-Z が正面)と
+## 合わないので prop_yaw で Prop 側だけ別の角度にする。既定はアンカーと同じ。
 func add_anchor_prop(room: StringName, anchor_name: String, model: String, pos: Vector3,
-		yaw: float, size: Vector3, color: Color, collide: bool = true) -> Marker3D:
+		yaw: float, size: Vector3, color: Color, collide: bool = true,
+		prop_yaw: float = NAN) -> Marker3D:
 	var m := add_anchor(room, anchor_name, pos, yaw)
-	var p := LevelBuild.prop(_room_nodes[room], anchor_name + "_Prop", model, pos, yaw, size, color, collide)
+	var py: float = yaw if is_nan(prop_yaw) else prop_yaw
+	var p := LevelBuild.prop(_room_nodes[room], anchor_name + "_Prop", model, pos, py, size, color, collide)
 	_anchor_props[StringName(anchor_name)] = p
 	return m
 
@@ -238,6 +269,12 @@ func add_prop(room: StringName, node_name: String, model: String, pos: Vector3,
 func add_box(room: StringName, center: Vector3, size: Vector3, mat: Material,
 		collide: bool = true) -> MeshInstance3D:
 	return LevelBuild.box(_room_nodes[room], center, size, mat, collide, "", true)
+
+
+## 蛍光灯とは別系統で登録する。set_room_lights では消えない。
+func add_aux_light(room: StringName, light: Light3D) -> void:
+	_aux_lights[room].append(light)
+	_aux_energy[room].append(light.light_energy)
 
 
 func add_light(room: StringName, light: Light3D, mat: StandardMaterial3D = null) -> void:
@@ -299,6 +336,17 @@ func _apply_lights(room: StringName, on: bool) -> void:
 		if m:
 			m.emission_energy_multiplier = 1.25 if on else 0.0
 			m.albedo_color = Color(0.92, 0.94, 0.95) if on else Color(0.24, 0.25, 0.26)
+
+
+func _apply_aux(room: StringName, on: bool) -> void:
+	var list: Array = _aux_lights.get(room, [])
+	var energies: Array = _aux_energy.get(room, [])
+	for i in list.size():
+		var l: Light3D = list[i]
+		if not is_instance_valid(l):
+			continue
+		l.light_energy = float(energies[i]) * light_scale if on else 0.0
+		l.visible = on
 
 
 func _build_environment() -> void:

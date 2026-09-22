@@ -52,10 +52,12 @@ static func _shikijo(b: Building) -> void:
 	LevelBuild.box(node, Vector3(19.39, 1.7, -0.5), Vector3(0.04, 2.6, 4.6), brocade, false, "", false)
 
 	# --- 祭壇まわり -----------------------------------------------------------
+	# 祭壇と遺影の glb は飾り面がローカル +Z 側。アンカーの向き(-Z が正面 = 西)のまま置くと
+	# 壁を向いてしまうので、Prop だけ yaw -90 にして西を向かせる。
 	b.add_anchor_prop(R, "Anchor_Altar", "altar", Vector3(18.55, 0.0, -0.5), 90.0,
-		Vector3(3.3, 1.5, 1.45), Color(0.80, 0.78, 0.72))
+		Vector3(3.3, 1.5, 1.45), Color(0.80, 0.78, 0.72), true, -90.0)
 	b.add_anchor_prop(R, "Anchor_Iei", "iei_frame", Vector3(18.72, 1.5, -0.5), 90.0,
-		Vector3(0.52, 0.62, 0.07), Color(0.10, 0.09, 0.09), false)
+		Vector3(0.52, 0.62, 0.07), Color(0.10, 0.09, 0.09), false, -90.0)
 
 	# 棺と棺台
 	LevelBuild.box(node, Vector3(16.9, 0.22, -0.5), Vector3(2.15, 0.44, 0.98), cloth)
@@ -126,7 +128,31 @@ static func _shikijo(b: Building) -> void:
 	# 孫娘は後列に残っている
 	b.add_anchor(R, "Spawn_Granddaughter", Vector3(10.35, 0.0, 1.1), -90.0)
 
-	# 照明(蛍光灯 4 本。落とすと燭台の暖色だけが残る)
+	# 祭壇スポット(天井の埋め込みダウンライト2灯)。蛍光灯とは別系統で、
+	# set_room_lights では消えず set_all_lights(false) でだけ落ちる。影は出さない。
+	#   A: 遺影と三段祭壇の正面  /  B: 棺の手前を薄く起こすだけ
+	for cfg in [
+			{"name": "Light_AltarSpot", "pos": Vector3(17.2, 3.12, -0.5),
+			 "aim": Vector3(18.62, 1.78, -0.5), "angle": 27.0, "energy": 1.9},
+			{"name": "Light_CoffinSpot", "pos": Vector3(15.4, 3.12, -0.5),
+			 "aim": Vector3(16.9, 0.8, -0.5), "angle": 25.0, "energy": 1.05},
+		]:
+		var spot := SpotLight3D.new()
+		spot.name = String(cfg["name"])
+		spot.position = cfg["pos"]
+		spot.light_color = Color(1.0, 0.87, 0.68)
+		spot.light_energy = float(cfg["energy"])
+		spot.spot_range = 7.0
+		spot.spot_angle = float(cfg["angle"])
+		spot.spot_angle_attenuation = 0.9
+		spot.spot_attenuation = 1.1
+		spot.shadow_enabled = false
+		spot.light_specular = 0.0
+		node.add_child(spot)
+		spot.look_at(cfg["aim"], Vector3.UP)
+		b.add_aux_light(R, spot)
+
+	# 照明(蛍光灯 4 本。落とすと燭台の暖色と祭壇スポットだけが残る)
 	for p in [[10.2, -2.6], [10.2, 1.6], [15.4, -2.6], [15.4, 1.6]]:
 		b.add_fluorescent(R, Vector3(p[0], 3.08, p[1]), 1.35, COOL, 0.85, 6.4, true)
 
