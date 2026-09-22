@@ -23,6 +23,9 @@ const POS_OFFICE_NOTE := Vector3(-8.85, 0.76, 6.15)
 const POS_YUKAN_NOTE := Vector3(7.3, 0.87, -9.55)
 const POS_BACKYARD_BOX := Vector3(2.4, 0.95, -6.95)
 
+## 会話するときに NPC が止まるプレイヤーからの距離(m)
+const TALK_DISTANCE := 1.8
+
 var scares: Scares
 var timeline: Timeline
 var endings: Endings
@@ -692,10 +695,12 @@ func play_intro() -> void:
 		Tasks.set_task(&"talk_boss", "社長に話しかける")
 		await _wait_talk(boss)
 		Tasks.complete(&"talk_boss")
+		await face_off(boss)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_RECEPTION)
 
 	# --- 事務所(クリップボード) ---
 	await _walk(boss, POS_OFFICE_DESK)
+	await face_off(boss)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_OFFICE)
 	Game.set_flag(&"has_clipboard", true)
 	Audio.play(&"paper_rustle", -4.0)
@@ -707,6 +712,7 @@ func play_intro() -> void:
 
 	# --- 式場(線香とロウソク) ---
 	await _walk(boss, POS_SHIKIJO_COFFIN)
+	await face_off(boss)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_INCENSE)
 	Tasks.set_task(&"incense", ScriptText.TASK_INCENSE)
 	await _wait_event(&"incense_lit", 600.0)
@@ -719,8 +725,7 @@ func play_intro() -> void:
 	# --- 孫娘 ---
 	if hikari:
 		hikari.call(&"set_active", true)
-		if hikari.has_method(&"face_player"):
-			hikari.call(&"face_player")
+		await face_off(hikari)
 	await _say_lines(ScriptText.SPEAKER_HIKARI, ScriptText.HIKARI)
 	var page1 := _make_note(Vector3(15.1, 0.9, 1.1), ScriptText.PAGE1_TITLE, ScriptText.PAGE1_BODY, 1)
 	if page1:
@@ -733,6 +738,7 @@ func play_intro() -> void:
 
 	# --- 社長が帰る ---
 	await _walk(boss, POS_GENKAN_INSIDE)
+	await face_off(boss)
 	# 「勝手口の鍵」→「式場の蛍光灯」→「じゃあな」の順で言わせる
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[0]))
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LIGHTS)
@@ -760,6 +766,60 @@ func play_intro() -> void:
 func _say_lines(speaker: String, lines: Array) -> void:
 	for l in lines:
 		await Dialogue.say(speaker, String(l))
+
+
+## 会話の前に、プレイヤーから TALK_DISTANCE だけ離れた位置で向き合わせる。
+## NPC がカメラに密着すると顔が画面いっぱいになるので、台詞の前に必ず通す。
+func face_off(who) -> void:
+	if who == null:
+		return
+	var p := Game.player
+	if p == null:
+		return
+	var npc3 := who as Node3D
+	if npc3 == null:
+		return
+	var to := p.global_position
+	var away := npc3.global_position - to
+	away.y = 0.0
+	if away.length() < 0.6:
+		# 真上に乗っているときはプレイヤーの正面へ回り込ませる
+		away = -p.global_transform.basis.z
+		away.y = 0.0
+	var target := to + away.normalized() * TALK_DISTANCE
+	target.y = 0.0
+	if who.has_method(&"go_to") and npc3.global_position.distance_to(target) > 0.5:
+		await who.call(&"go_to", target)
+	# 歩いているあいだにプレイヤーが動いていることがあるので、現在位置から測り直す
+	if npc3.global_position.distance_to(p.global_position) > TALK_DISTANCE + 1.5 \
+			and who.has_method(&"teleport_to"):
+		var away2 := npc3.global_position - p.global_position
+		away2.y = 0.0
+		if away2.length() < 0.6:
+			away2 = -p.global_transform.basis.z
+			away2.y = 0.0
+		var t2 := p.global_position + away2.normalized() * TALK_DISTANCE
+		t2.y = 0.0
+		who.call(&"teleport_to", t2)
+	if who.has_method(&"face_player"):
+		who.call(&"face_player")
+	look_at_npc(who)
+	if Game.debug or autoplay != null:
+		var d := npc3.global_position.distance_to(p.global_position)
+		print("[dir] face_off %s dist=%.2fm" % [String(who.get(&"npc_id")), d])
+
+
+## プレイヤーの視線を NPC の顔(Head)へ向ける。
+func look_at_npc(who) -> void:
+	var p := Game.player
+	if p == null or who == null or not p.has_method(&"look_at_point"):
+		return
+	var head: Vector3
+	if who.has_method(&"head_position"):
+		head = who.call(&"head_position")
+	else:
+		head = (who as Node3D).global_position + Vector3(0, 1.55, 0)
+	p.look_at_point(head, 0.7)
 
 
 func _walk(who, pos: Vector3) -> void:

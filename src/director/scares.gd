@@ -223,7 +223,7 @@ func set_moonlight(on: bool) -> void:
 		for m in MOONLIGHT:
 			var l := OmniLight3D.new()
 			l.light_color = Color(0.52, 0.62, 0.86)
-			l.light_energy = 0.38
+			l.light_energy = 0.55
 			l.omni_range = float(m[1])
 			l.omni_attenuation = 1.4
 			l.shadow_enabled = false

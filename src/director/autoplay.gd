@@ -18,6 +18,14 @@ var speed: float = 6.0
 var interval: float = 3.0                ## 判断の間隔(実秒。speed で割る)
 var watchdog: float = 900.0              ## これを超えたら失敗扱い
 
+## 走行中の定期スクリーンショット(--shots=<dir> --shot-interval=<sec>)。
+## 夜全体を目視するための連番。--headless では撮れないので通常モードで走らせること。
+var shots_dir: String = ""
+var shot_interval: float = 20.0
+
+var _shot_t: float = 0.0
+var _shot_n: int = 0
+var _shooting: bool = false
 var _t: float = 0.0
 var _elapsed: float = 0.0
 var _busy: bool = false
@@ -49,6 +57,13 @@ func begin() -> void:
 	var cnd: Node = dir.sys(&"candle")
 	if cnd:
 		cnd.set(&"burn_seconds", 720.0 / maxf(speed, 0.1))
+	var a: Dictionary = dir.args
+	shots_dir = String(a.get("shots", ""))
+	shot_interval = float(a.get("shot-interval", "20"))
+	if shots_dir != "":
+		DirAccess.make_dir_recursive_absolute(shots_dir)
+		_shot_t = 2.0
+		print("AUTOPLAY SHOTS dir=%s interval=%.1fs" % [shots_dir, shot_interval])
 	Game.night_ended.connect(_on_ended)
 	Events.event.connect(func(n: StringName, d: Dictionary):
 		_log.append("%s %s %s" % [Clock.hhmm(), n, d]))
@@ -84,6 +99,11 @@ func _process(delta: float) -> void:
 	if _elapsed > watchdog:
 		_fail("watchdog: %.0f 秒たっても終わらない" % _elapsed)
 		return
+	if shots_dir != "":
+		_shot_t -= delta
+		if _shot_t <= 0.0 and not _shooting:
+			_shot_t = shot_interval
+			_take_shot()
 	_t -= delta
 	if _t > 0.0 or _busy:
 		return
@@ -282,11 +302,26 @@ func _go(target: Node3D, dist: float) -> void:
 
 # ============================================================ 終わり
 
+## 画面をそのまま連番で保存する。ファイル名は HHMM_<n>.png。
+func _take_shot() -> void:
+	_shooting = true
+	_shot_n += 1
+	var name := "%s_%02d.png" % [Clock.hhmm().replace(":", ""), _shot_n]
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	if img != null:
+		img.save_png(shots_dir.path_join(name))
+		_log.append("%s shot %s" % [Clock.hhmm(), name])
+	_shooting = false
+
+
 func _on_ended(id: StringName) -> void:
 	if _done:
 		return
 	_done = true
 	print("AUTOPLAY RESULT ending=%s dread=%d minutes=%d" % [id, Dread.value, int(Clock.game_minutes)])
+	if shots_dir != "":
+		await _take_shot()
 	_write_log(id)
 	var want: StringName = EXPECTED.get(mode, mode)
 	await get_tree().create_timer(0.4).timeout

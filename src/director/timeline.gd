@@ -89,6 +89,9 @@ func apply_past(m: int) -> void:
 		if desk:
 			desk.call(&"enable_key", true)
 		_prepare_safe()
+	if m > 420:
+		# 終盤の途中から始めたときは、終盤そのものを動かす
+		call_deferred(&"ev_finale")
 	if m > 400:
 		var fz: Node = dir.sys(&"freezer")
 		if fz:
@@ -339,9 +342,8 @@ func ev_son() -> void:
 	var son: Node = dir.npc(&"son")
 	if son and son.has_method(&"enter_from_genkan"):
 		son.call(&"set_active", true)
-		await son.call(&"enter_from_genkan", Vector3(-8.6, 0.0, -0.6))
-		if son.has_method(&"face_player"):
-			son.call(&"face_player")
+		await son.call(&"enter_from_genkan", Vector3(-9.2, 0.0, 0.0))
+		await dir.face_off(son)       # カメラに密着させない
 	else:
 		var d: Door = b.get_door(&"Door_Genkan") if b else null
 		if d:
@@ -352,6 +354,7 @@ func ev_son() -> void:
 		await Dialogue.say(ScriptText.SPEAKER_SON, l)
 	for l in ScriptText.SON_ENTER:
 		await Dialogue.say(ScriptText.SPEAKER_SON, l)
+	dir.look_at_npc(son)
 	var i: int = await Dialogue.choose(ScriptText.SON_CHOICE_PROMPT, ScriptText.SON_CHOICE_OPTIONS)
 	if i == 1:
 		await _son_allowed(son)
@@ -599,7 +602,9 @@ func ev_finale() -> void:
 	var coffin: Node = dir.sys(&"coffin")
 	if b:
 		b.set_all_lights(false)           # 外(自販機・外灯)は残る
-	scares.set_moonlight(true)            # 窓からの月明かりだけ残す(真っ暗だと歩けない)
+		if b.has_method(&"set_emergency_lights"):
+			b.call(&"set_emergency_lights", true)   # 緑の非常灯は点けたままにする
+	scares.set_moonlight(true)            # 窓からの月明かり(真っ暗だと歩けない)
 	if inc:
 		dir.quench(&"incense_stand")
 	if cnd:

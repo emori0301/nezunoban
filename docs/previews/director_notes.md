@@ -79,6 +79,14 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--dread=N` | 異変度を先に積む。座布団や遺影の追従など異変度で出るものを撮るため |
 | `--ending=morning\|kasha\|substitute\|portrait` | 前口上を飛ばしてエンディング画面だけ出す |
 | `--autoplay=<mode>` `--speed=N` | 自動プレイ |
+| `--shots=<dir>` `--shot-interval=<sec>` | 自動プレイ中、既定 20 秒おきに `<dir>/HHMM_<n>.png` を保存。夜全体の目視用。**`--headless` では撮れない** |
+
+夜を通しで目で見るとき:
+
+```bash
+godot --path . -- --skip-title --autoplay=morning --speed=8 \
+  --shots=out/director/night --shot-interval=9
+```
 
 撮影の例:
 
@@ -107,6 +115,32 @@ godot --path . -- --skip-title --ending=portrait --screenshot=out/director/endin
 | `09_ending_*.png` | 4 種とも `docs/script.md` の文がそのまま出る。遺影エンドは `iei_photo_player` の写真つき |
 | `11_intro_6s.png` | 導入のフェードイン直後。会話順はログで確認 |
 
+## 会話の立ち位置
+
+NPC がカメラに密着して顔が画面いっぱいになる問題があったので、
+`Director.face_off(npc)` を台詞の前に必ず通すようにした。
+
+1. プレイヤーから見た NPC の方向へ `TALK_DISTANCE`(1.8m)の点を計算して `go_to`
+2. 歩いているあいだにプレイヤーが動いていたら、現在位置から測り直して `teleport_to`
+3. `face_player()` で NPC を向き合わせる
+4. `Player.look_at_point(npc.head_position())` でプレイヤーの視線を顔へ向ける
+
+`NpcBase` に `stop_distance` は無いので、目的地を director 側で計算している
+(`walk_to(pos, tolerance)` の tolerance は経由点用なので使っていない)。
+
+autoplay(speed 8)で測った実際の距離:
+
+```
+[dir] face_off boss dist=1.80m
+[dir] face_off boss dist=2.11m
+[dir] face_off boss dist=1.40m
+[dir] face_off granddaughter dist=2.02m
+[dir] face_off boss dist=2.25m
+[dir] face_off son dist=3.13m
+```
+
+`Game.debug` か autoplay が有効なときだけこの行を出す。
+
 ## 未解決・判断したこと
 
 ### 丑三つ時の長さを 2 分から 20 ゲーム分に変えた
@@ -129,13 +163,17 @@ godot --path . -- --skip-title --ending=portrait --screenshot=out/director/endin
 
 火車エンドの条件(異変度 6 以上、または猫が棺をまたいだ)はここで担保している。
 
-### 04:00 の全照明消灯に月明かりを足した
+### 04:00 の全照明消灯に非常灯と月明かりを足した
 
 仕様どおり `Building.set_all_lights(false)` だけにすると画面が完全な黒になり、
-「怖い」ではなく「見えない」になって廊下を歩けない。
-`Scares.set_moonlight(true)` で窓 7 か所(玄関・事務所・トイレ・廊下 2 か所・勝手口・式場)に
-ごく弱い青い `OmniLight3D`(energy 0.38)を足している。輪郭が分かる下限に合わせたつもりだが、
-**明るさは調整の余地がある**。定数は `Scares.MOONLIGHT`。灯し直しに成功したら消す。
+「怖い」ではなく「見えない」になって廊下を歩けない。終盤は次の 2 つを足している。
+
+- `Building.set_emergency_lights(true)`(緑の非常灯)。**level が入れたら効く**ように
+  `has_method` で守ってある。現時点の `building.gd` にはまだ無いので呼ばれない。
+- `Scares.set_moonlight(true)`。窓 7 か所(玄関・事務所・トイレ・廊下 2 か所・勝手口・式場)に
+  弱い青い `OmniLight3D`(energy 0.55)。定数は `Scares.MOONLIGHT`。灯し直しに成功したら消す。
+
+非常灯が入ったら月明かりを下げる方向で再調整したほうがよい。
 
 ### `Dialogue.say` はプレイヤーが送るまで返らない
 
@@ -169,6 +207,13 @@ CRT モニターそのものがプレイヤーから見えないため(下の「
 - director はコミットしていない。
 
 ## 他担当への依頼
+
+### 0. level — 祭壇スポットの件は解決済み
+
+21:30 の式場で遺影が黒い板に見えた件は、`Light_AltarSpot`(aux 系統)が入った最新の
+コミットで撮り直したところ**解決していた**。`out/director/12_iei_close.png` で
+遺影の写真(白髪の女性)が見える。`out/director/02_2130_shikijo.png` の引きの画では
+遺影が 10px ほどにしかならないので暗い矩形に見えるが、これは 640x360 の解像度の話で不具合ではない。
 
 ### 1. player(至急) — モニターが見えない
 
