@@ -1,6 +1,6 @@
 """家具・設備: folding_chair low_table zabuton futon tv_crt office_desk
 office_chair phone monitor_crt freezer_chest dry_ice_box vending_machine
-breaker_box safe sink shelf cabinet
+breaker_box safe sink shelf cabinet toilet
 
 blender --background --python tools/blender/build_furniture.py
 """
@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
 from common import (reset_scene, material, Builder, emit, dump_report,
-                    box, box_mm, box_taper, cyl, sphere, prism, tr)
+                    box, box_mm, box_taper, cyl, sphere, prism, tr,
+                    loft_rings, donut, oval_cyl)
 
 UVQ = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -108,21 +109,54 @@ def build_low_table():
     emit("low_table", [b.build()])
 
 
+def _quilt_ring(y, w, h, z0, n_top=5):
+    """掛け布団の断面(上が丸い蒲鉾形、下は平ら)。8 点の閉ループ。"""
+    pts = []
+    for i in range(n_top):
+        a = math.pi * (1.0 - i / (n_top - 1.0))      # π → 0(-w/2 から +w/2 へ)
+        pts.append((math.cos(a) * w / 2.0, y, z0 + math.sin(a) * h))
+    for x in (w / 4.0, 0.0, -w / 4.0):               # 下側を戻る
+        pts.append((x, y, z0))
+    return pts
+
+
 def build_futon():
-    """敷いた布団(敷布団 + 掛布団 + 枕)。"""
+    """敷いた布団。+Y が頭側。掛け布団は蒲鉾形にふくらませ、
+    柄(futon_cloth)が見えるように敷布団のシーツ(白)と色を分ける。"""
     reset_scene()
     m = M()
     b = Builder("futon")
     W, L = 0.98, 2.00
-    # 敷布団
-    b.add(box_taper(W - 0.05, L - 0.05, W, L, 0.085, (0, 0, 0.0425)), m["fut"], 1.1)
-    # シーツのふくらみ
-    b.add(box_taper(W, L, W - 0.06, L - 0.06, 0.02, (0, 0, 0.095)), m["cloth"], 1.2)
-    # 掛布団(足側を覆い、胸のあたりで折り返す)
-    b.add(box_taper(W + 0.03, 1.22, W - 0.02, 1.18, 0.14, (0, -0.36, 0.175)), m["fut"], 1.1)
-    b.add(box_mm(-W / 2 - 0.015, W / 2 + 0.015, 0.24, 0.32, 0.105, 0.265), m["cloth"], 1.6)
-    # 枕
-    b.add(box_taper(0.46, 0.26, 0.42, 0.22, 0.10, (0, 0.74, 0.155)), m["cloth"], 2.4)
+    MAT_H = 0.095
+
+    # --- 敷布団(白いシーツを掛けた状態) ---
+    b.add(box_taper(W - 0.06, L - 0.06, W, L, MAT_H * 0.70,
+                    (0, 0, MAT_H * 0.35)), m["cloth"], 2.8)
+    b.add(box_taper(W, L, W - 0.05, L - 0.05, MAT_H * 0.30,
+                    (0, 0, MAT_H * 0.85)), m["cloth"], 2.8)
+
+    # --- 掛け布団(足元 -Y から胸 +Y まで。腹のあたりが一番高い) ---
+    ys = (-0.995, -0.86, -0.62, -0.34, -0.05, 0.16, 0.30)
+    secs = []
+    for i, y in enumerate(ys):
+        t = i / (len(ys) - 1.0)
+        # 足先は低く、腰〜腹で膨らみ、胸元でまた下がる
+        h = 0.075 + 0.145 * math.sin(min(1.0, t * 1.18) * math.pi * 0.92)
+        w = W + 0.075 - 0.030 * t
+        secs.append(_quilt_ring(y, w, h, MAT_H - 0.012))
+    b.add(loft_rings(secs), m["fut"], 2.6)
+
+    # --- 襟(掛け布団を折り返して白い裏地が見えるところ) ---
+    b.add(box_taper(W + 0.045, 0.145, W + 0.015, 0.125, 0.105,
+                    (0, 0.345, MAT_H + 0.048)), m["cloth"], 3.2)
+    b.add(box_mm(-(W + 0.045) / 2, (W + 0.045) / 2, 0.272, 0.300,
+                 MAT_H - 0.012, MAT_H + 0.085), m["fut"], 3.2)
+
+    # --- 枕 ---
+    b.add(box_taper(0.48, 0.28, 0.44, 0.24, 0.055, (0, 0.735, MAT_H + 0.028)),
+          m["cloth"], 3.6)
+    b.add(box_taper(0.44, 0.24, 0.40, 0.21, 0.045, (0, 0.735, MAT_H + 0.078)),
+          m["cloth"], 3.6)
     emit("futon", [b.build()])
 
 
@@ -524,6 +558,45 @@ def build_cabinet():
     emit("cabinet", [b.build()])
 
 
+def build_toilet():
+    """洋式便器(タンク付き、白い陶器)。蓋は上げてタンクに立てかけた状態。
+    原点は床の中心、正面は -Y。"""
+    reset_scene()
+    m = M()
+    porc = material("Porcelain", "porcelain", color=(0.90, 0.90, 0.88), rough=0.16)
+    seat = material("ToiletSeat", "plastic_beige", color=(0.86, 0.84, 0.78), rough=0.32)
+    water = material("ToiletWater", None, color=(0.13, 0.18, 0.20), rough=0.05)
+
+    b = Builder("toilet")
+    # 台座(床から鉢まで、いったん細くなって広がる)
+    b.add(box_taper(0.30, 0.44, 0.24, 0.40, 0.055, (0, -0.02, 0.0275)), porc, 3.0)
+    b.add(box_taper(0.24, 0.40, 0.27, 0.42, 0.155, (0, -0.02, 0.1325)), porc, 3.0)
+    b.add(box_taper(0.27, 0.42, 0.33, 0.45, 0.090, (0, -0.03, 0.255)), porc, 3.0)
+    # 鉢(楕円)
+    b.add(oval_cyl(0.168, 0.202, 0.100, 12, (0, -0.05, 0.350),
+                   rx_top=0.186, ry_top=0.226), porc, 3.0)
+    # 溜まった水
+    b.add(oval_cyl(0.132, 0.162, 0.004, 12, (0, -0.05, 0.332)), water, 4.0)
+    # リム
+    b.add(donut(0, -0.05, 0.396, 0.140, 0.172, 0.190, 0.230, 0.022, 12), porc, 4.0)
+    # 便座
+    b.add(donut(0, -0.05, 0.418, 0.128, 0.158, 0.196, 0.236, 0.026, 12), seat, 4.0)
+    # 蓋(上げてタンクに立てかける)
+    lv, lf = oval_cyl(0.196, 0.238, 0.020, 12, (0, 0, 0))
+    lv = tr(lv, rot=('X', 1.36), t=(0, 0.100, 0.590))
+    b.add((lv, lf), seat, 4.0)
+    # タンク
+    b.add(box_mm(-0.190, 0.190, 0.155, 0.345, 0.400, 0.740), porc, 2.4)
+    b.add(box_mm(-0.202, 0.202, 0.143, 0.357, 0.740, 0.775), porc, 2.4)
+    # 洗浄レバー
+    b.add(cyl(0.013, 0.030, 6, (-0.148, 0.152, 0.688), axis='Y'), m["steel"], 12.0)
+    b.add(box_mm(-0.170, -0.126, 0.108, 0.152, 0.676, 0.698), m["steel"], 10.0)
+    # 給水管と止水栓
+    b.add(cyl(0.011, 0.300, 6, (0.145, 0.330, 0.250)), m["steel"], 10.0)
+    b.add(cyl(0.021, 0.048, 6, (0.145, 0.330, 0.086)), m["steel"], 12.0)
+    emit("toilet", [b.build()])
+
+
 def main():
     build_folding_chair()
     build_zabuton()
@@ -542,6 +615,7 @@ def main():
     build_sink()
     build_shelf()
     build_cabinet()
+    build_toilet()
     dump_report()
 
 

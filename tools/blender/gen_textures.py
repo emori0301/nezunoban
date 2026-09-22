@@ -175,39 +175,54 @@ def t_white_wood():
     return finish(mul_gray(base, grunge(S, 93, 0.14)), 94)
 
 
+def _noise1d(seed, cells, axis):
+    """タイル可能な 1 次元ノイズ。2 次元場の等高線は「石の脈」に見えるので、
+    皺は必ず片方の軸だけで変化させる。"""
+    g = value_noise(S, cells, seed)
+    return norm(g.mean(axis=1 - axis))
+
+
+def _folds(freq, wobble, seed, cells, axis):
+    """平行な皺の帯。位置だけをもう片方の軸のノイズで揺らす。
+    axis=0 なら縦に流れる皺。"""
+    t = (np.arange(S) + 0.5) / S
+    n = _noise1d(seed, cells, 1 - axis)
+    if axis == 0:
+        f = t[:, None] * freq + n[None, :] * wobble
+    else:
+        f = t[None, :] * freq + n[:, None] * wobble
+    return 0.5 + 0.5 * np.cos(2 * math.pi * f)
+
+
 def t_white_cloth():
-    """白布。石の脈に見えないよう、皺は「方向のある緩やかな陰影」にして、
-    織り目を実際に出す。棺台・祭壇の白幕・シーツで共用。"""
-    base = rgb(S, (0.88, 0.875, 0.85))
+    """白布。棺台・祭壇の白幕・シーツで共用。
+    石に見えないよう、皺は一方向に流れる帯にして、織り目を実際に出す。"""
+    base = rgb(S, (0.885, 0.880, 0.858))
 
-    # --- 織り目(縦横の糸。これが無いと石に見える) ---
-    warp = periodic_lines(S, 48, 0, 0.42, 0.34)      # 縦糸
-    weft = periodic_lines(S, 48, 1, 0.42, 0.34)      # 横糸
-    base = mul_gray(base, 1.0 - warp * 0.055)
-    base = mul_gray(base, 1.0 - weft * 0.045)
-    base = mul_gray(base, 0.985 + white(S, 100) * 0.030)   # 糸のばらつき
+    # --- 織り目(縦糸・横糸。これが無いと布に見えない) ---
+    base = mul_gray(base, 1.0 - periodic_lines(S, 56, 0, 0.44, 0.36) * 0.050)
+    base = mul_gray(base, 1.0 - periodic_lines(S, 56, 1, 0.44, 0.36) * 0.042)
+    base = mul_gray(base, 0.984 + white(S, 100) * 0.032)
 
-    # --- 皺: 一方向に引き伸ばした場を cos に通し、細い脈ではなく
-    #     ゆるやかな明暗の帯にする(布のドレープ) ---
-    f1 = norm(hstreak(fbm(S, cells=6, octaves=3, seed=101), 26, axis=1))
-    drape = 0.5 + 0.5 * np.cos(f1 * 2 * math.pi * 3.0)
-    base = mul_gray(base, 0.90 + drape * 0.19)
+    # --- 縦に流れるドレープ(主) ---
+    d1 = _folds(5.0, 0.55, 111, 6, axis=0)
+    amp1 = 0.07 + 0.06 * _noise1d(113, 5, 1)[None, :]
+    base = mul_gray(base, 1.0 - amp1 * (1.0 - d1))
 
-    # 斜めに入る二本目の皺(弱め)
-    f2 = norm(hstreak(fbm(S, cells=5, octaves=3, seed=102), 20, axis=0))
-    drape2 = 0.5 + 0.5 * np.cos(f2 * 2 * math.pi * 2.0)
-    base = mul_gray(base, 0.945 + drape2 * 0.095)
+    # --- 横に走る緩い皺(従) ---
+    d2 = _folds(3.0, 0.40, 112, 5, axis=1)
+    base = mul_gray(base, 1.0 - 0.045 * (1.0 - d2))
 
-    # --- 折り目(畳んだ跡。まっすぐな線を数本だけ) ---
-    crease = periodic_lines(S, 2, 1, 0.020, 0.012)
-    base = mul_gray(base, 1.0 - crease * 0.10)
-    base = mix(base, rgb(S, (0.96, 0.955, 0.94)),
-               periodic_lines(S, 2, 1, 0.055, 0.040) * 0.18)   # 折り目の山は明るい
+    # --- 畳んだ折り目(まっすぐな線。谷は暗く、山は明るい) ---
+    valley = periodic_lines(S, 2, 1, 0.016, 0.010)
+    ridge = np.clip(periodic_lines(S, 2, 1, 0.060, 0.044) - valley, 0, 1)
+    base = mul_gray(base, 1.0 - valley * 0.085)
+    base = mix(base, rgb(S, (0.955, 0.950, 0.935)), ridge * 0.16)
 
-    # --- くすみ ---
-    base = mix(base, rgb(S, (0.78, 0.77, 0.73)), norm(fbm(S, 3, 3, 103)) * 0.16)
-    return finish(mul_gray(base, grunge(S, 104, 0.08) * stains(S, 105, 3, 0.08, 26)),
-                  106, noise=0.022)
+    # --- 経年のくすみ ---
+    base = mix(base, rgb(S, (0.79, 0.78, 0.745)), norm(fbm(S, 3, 3, 103)) * 0.13)
+    return finish(mul_gray(base, grunge(S, 104, 0.07) * stains(S, 105, 3, 0.07, 26)),
+                  106, noise=0.020)
 
 
 def t_brocade():
@@ -341,19 +356,19 @@ def t_futon_cloth():
     navy = rgb(S, (0.20, 0.24, 0.36))
     navy = mul_gray(navy, 0.85 + norm(fbm(S, 40, 2, 216)) * 0.30)
     # 太い格子(縦横)
-    wide_u = periodic_lines(S, 4, 0, 0.13, 0.03)
-    wide_v = periodic_lines(S, 4, 1, 0.13, 0.03)
-    base = mix(base, navy, np.maximum(wide_u, wide_v) * 0.72)
+    wide_u = periodic_lines(S, 4, 0, 0.055, 0.018)
+    wide_v = periodic_lines(S, 4, 1, 0.055, 0.018)
+    base = mix(base, navy, np.maximum(wide_u, wide_v) * 0.46)
     # 細い格子(太い線の間に 1 本ずつ)
-    thin_u = periodic_lines(S, 8, 0, 0.045, 0.02)
-    thin_v = periodic_lines(S, 8, 1, 0.045, 0.02)
-    base = mix(base, navy, np.maximum(thin_u, thin_v) * 0.34)
-    # 交点は濃い
-    base = mix(base, navy * 0.75, (wide_u * wide_v) * 0.55)
+    thin_u = periodic_lines(S, 8, 0, 0.022, 0.012)
+    thin_v = periodic_lines(S, 8, 1, 0.022, 0.012)
+    base = mix(base, navy, np.maximum(thin_u, thin_v) * 0.22)
+    # 交点だけ少し濃い
+    base = mix(base, navy * 0.80, (wide_u * wide_v) * 0.30)
 
-    # 布らしい皺
-    w = norm(hstreak(fbm(S, 5, 3, 212), 18, axis=1))
-    base = mul_gray(base, 0.93 + (0.5 + 0.5 * np.cos(w * 2 * math.pi * 2.5)) * 0.14)
+    # 布らしい皺(白布と同じく一方向の帯で)
+    base = mul_gray(base, 1.0 - 0.075 * (1.0 - _folds(4.0, 0.48, 212, 5, axis=0)))
+    base = mul_gray(base, 1.0 - 0.040 * (1.0 - _folds(2.5, 0.35, 217, 4, axis=1)))
     return finish(mul_gray(base, grunge(S, 213, 0.16) * stains(S, 214, 3, 0.14, 30)), 215)
 
 

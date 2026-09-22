@@ -49,7 +49,7 @@ def _coffin(name, lid_slide=0.0):
             b.add(box_mm(sx - 0.018, sx + 0.018, sy * hw - 0.006, sy * hw + 0.006,
                          0.105, BODY_H - 0.04), trim, 4.0)
     # 内側(白布を敷いた底)
-    b.add(box_mm(-hl + 0.05, hl - 0.05, -hw + 0.05, hw - 0.05, 0.16, 0.185), cloth, 1.5)
+    b.add(box_mm(-hl + 0.05, hl - 0.05, -hw + 0.05, hw - 0.05, 0.16, 0.185), cloth, 3.0)
     # 内壁(暗く)
     b.add(box_mm(-hl + 0.04, -hl + 0.05, -hw + 0.04, hw - 0.04, 0.185, LID_Z0), dark, 2.0)
     b.add(box_mm(hl - 0.05, hl - 0.04, -hw + 0.04, hw - 0.04, 0.185, LID_Z0), dark, 2.0)
@@ -165,10 +165,10 @@ def build_altar():
     y_back = 0.51
     for i, (w, d, ztop, yfront) in enumerate(tiers):
         zbot = 0.0 if i == 0 else tiers[i - 1][2]
-        b.add(box_mm(-w / 2, w / 2, yfront, yfront + d, zbot, ztop), cloth, 1.2)
+        b.add(box_mm(-w / 2, w / 2, yfront, yfront + d, zbot, ztop), cloth, 3.2)
         # 天板の見切り
         b.add(box_mm(-w / 2 - 0.012, w / 2 + 0.012, yfront - 0.012, yfront + d,
-                     ztop - 0.020, ztop), cloth, 2.0)
+                     ztop - 0.020, ztop), cloth, 3.6)
         # 金襴の垂れ(前面の上部)
         dh = 0.16
         b.add(box_mm(-w / 2 - 0.014, w / 2 + 0.014, yfront - 0.016, yfront - 0.004,
@@ -180,7 +180,7 @@ def build_altar():
                          ztop - dh - 0.05, ztop - dh), gold, 4.0)
 
     # 背面の壁(白木の板 + 金の縁)
-    b.add(box_mm(-1.00, 1.00, y_back, y_back + 0.05, 0.94, 1.66), cloth, 1.2)
+    b.add(box_mm(-1.00, 1.00, y_back, y_back + 0.05, 0.94, 1.66), cloth, 3.2)
     b.add(box_mm(-1.02, 1.02, y_back - 0.012, y_back, 1.66, 1.70), gold, 4.0)
     b.add(box_mm(-1.02, -0.98, y_back - 0.012, y_back, 0.94, 1.70), gold, 4.0)
     b.add(box_mm(0.98, 1.02, y_back - 0.012, y_back, 0.94, 1.70), gold, 4.0)
@@ -188,7 +188,7 @@ def build_altar():
     b.add(box_mm(-0.70, 0.70, y_back - 0.018, y_back - 0.006, 1.02, 1.58), bro, 1.2)
 
     # 供物台(前に出した小さな台)
-    b.add(box_mm(-0.42, 0.42, -0.90, -0.58, 0.0, 0.36), cloth, 1.4)
+    b.add(box_mm(-0.42, 0.42, -0.90, -0.58, 0.0, 0.36), cloth, 3.4)
     b.add(box_mm(-0.44, 0.44, -0.92, -0.56, 0.36, 0.385), wood, 2.5)
     # 供物(果物の山と三方)
     b.add(box_mm(-0.30, -0.06, -0.84, -0.64, 0.385, 0.44), wood, 4.0)
@@ -196,7 +196,7 @@ def build_altar():
                             (-0.19, -0.76, 0.525, 0.045)):
         b.add(sphere(r, 6, 4, (fx, fy, fz)), gold, 6.0)
     b.add(box_mm(0.08, 0.32, -0.84, -0.64, 0.385, 0.44), wood, 4.0)
-    b.add(box_mm(0.10, 0.30, -0.82, -0.66, 0.44, 0.50), cloth, 5.0)
+    b.add(box_mm(0.10, 0.30, -0.82, -0.66, 0.44, 0.50), cloth, 6.0)
 
     ob = b.build()
     emit("altar", [ob])
