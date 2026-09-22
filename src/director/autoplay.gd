@@ -302,17 +302,84 @@ func _go(target: Node3D, dist: float) -> void:
 
 # ============================================================ 終わり
 
+## 直近に発火したイベントの見どころ。[目線の位置, yaw, pitch]
+const EVENT_VIEWS := {
+	"intro": [Vector3(-9.5, 1.6, 0.0), -90.0, 0.0],
+	"intro_done": [Vector3(-8.6, 1.6, -1.2), 90.0, 0.0],
+	"ev_flowers": [Vector3(17.6, 1.6, -2.4), -55.0, -10.0],
+	"ev_window": [Vector3(13.0, 1.6, 1.2), 180.0, 0.0],
+	"ev_phone_silent": [Vector3(-9.85, 1.45, 7.3), 0.0, -16.0],
+	"ev_monitor_figure": [Vector3(-6.4, 1.3, 8.05), 0.0, -11.0],
+	"ev_cats_begin": [Vector3(0.0, 1.6, -5.2), 0.0, -4.0],
+	"ev_tv": [Vector3(-2.4, 1.6, 3.0), -49.0, -12.0],
+	"ev_blackout": [Vector3(2.0, 1.6, 0.0), -90.0, 0.0],
+	"ev_son": [Vector3(-8.8, 1.6, -0.4), 90.0, 0.0],
+	"ev_dry_ice": [Vector3(3.6, 1.6, -4.9), 0.0, -16.0],
+	"ev_office_note": [Vector3(-8.85, 1.5, 7.4), 0.0, -24.0],
+	"ev_son_sleeps": [Vector3(-2.6, 1.6, 2.3), -20.0, -18.0],
+	"ev_yukan": [Vector3(7.3, 1.6, -8.6), -35.0, -6.0],
+	"ev_phone_wet": [Vector3(-9.85, 1.45, 7.3), 0.0, -16.0],
+	"ev_ushimitsu": [Vector3(13.0, 1.6, -0.5), -90.0, -6.0],
+	"ev_safe": [Vector3(-9.6, 1.5, 9.0), 117.0, -14.0],
+	"ev_freezer_empty": [Vector3(4.0, 1.6, 0.4), -90.0, -32.0],
+	"ev_finale": [Vector3(6.4, 1.6, -1.6), 0.0, -14.0],
+	"kasha_takes_son": [Vector3(-2.6, 1.6, 2.3), -20.0, -18.0],
+}
+const EYE_HEIGHT := 1.6
+
+
 ## 画面をそのまま連番で保存する。ファイル名は HHMM_<n>.png。
+## ボットは焼香台に立ちっぱなしになりがちなので、撮る瞬間だけ
+## 「直近に発火したイベントの見どころ」へ飛び、撮ってから元の位置に戻す。
 func _take_shot() -> void:
 	_shooting = true
 	_shot_n += 1
 	var name := "%s_%02d.png" % [Clock.hhmm().replace(":", ""), _shot_n]
+	var p := player()
+	var saved := _save_pose(p)
+	_goto_view(p)
+	await get_tree().physics_frame
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	if img != null:
 		img.save_png(shots_dir.path_join(name))
 		_log.append("%s shot %s" % [Clock.hhmm(), name])
+	_restore_pose(p, saved)
 	_shooting = false
+
+
+func _save_pose(p: Node3D) -> Array:
+	if p == null:
+		return []
+	var pitch := 0.0
+	var head: Variant = p.get(&"head")
+	if head is Node3D:
+		pitch = rad_to_deg((head as Node3D).rotation.x)
+	return [p.global_position, rad_to_deg(p.rotation.y), pitch]
+
+
+func _restore_pose(p: Node3D, saved: Array) -> void:
+	if p == null or saved.is_empty() or not p.has_method(&"teleport"):
+		return
+	p.call(&"teleport", saved[0], saved[1], saved[2])
+
+
+func _goto_view(p: Node3D) -> void:
+	if p == null or not p.has_method(&"teleport"):
+		return
+	var log_lines: Array = dir.event_log()
+	if log_lines.is_empty():
+		return
+	# "HH:MM name" の name 部分
+	var last := String(log_lines[-1]).split(" ", true, 1)
+	if last.size() < 2:
+		return
+	var key := last[1]
+	if not EVENT_VIEWS.has(key):
+		return
+	var v: Array = EVENT_VIEWS[key]
+	var pos: Vector3 = v[0]
+	p.call(&"teleport", pos - Vector3(0, EYE_HEIGHT, 0), float(v[1]), float(v[2]))
 
 
 func _on_ended(id: StringName) -> void:

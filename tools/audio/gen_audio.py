@@ -32,6 +32,7 @@ CLAUDE_MD = os.path.join(ROOT, "CLAUDE.md")
 
 # 波形を目で見る音 (依頼された 5 つ + 各系統から代表)
 PNG_NAMES = [
+    "snore_1", "snore_2", "cat_jump", "cloth_drop",
     "stinger_2", "amb_shikijo", "door_close", "cat_scratch_1", "coffin_knock",
     "phone_ring", "door_open", "cat_meow_1", "stinger_1", "amb_room",
     "amb_outside", "amb_tatami", "step_lino_1", "kasha_screech", "chime_dawn",
@@ -47,6 +48,7 @@ RECOMMENDED_DB = {
     "cat_purr": -16.0, "tv_static": -14.0, "paper_rustle": -10.0,
     "page_turn": -10.0, "phone_breath": -8.0, "coffin_scratch": -6.0,
     "footstep_ceiling_1": -8.0, "footstep_ceiling_2": -8.0, "footstep_ceiling_3": -8.0,
+    "snore_1": -14.0, "snore_2": -14.0, "cat_jump": -6.0, "cloth_drop": -6.0,
 }
 for _pfx in ("step_lino_", "step_tatami_", "step_concrete_"):
     for _i in range(1, 5):
@@ -189,15 +191,18 @@ def write_report(rows, exp, not_written, orphan):
     lines.append("## 作り直す手順\n")
     lines.append("```bash")
     lines.append("/opt/homebrew/bin/blender --background --python tools/audio/gen_audio.py  # wav + PNG + このレポート")
-    lines.append("python3 tools/audio/fix_imports.py                                        # compress/mode を PCM に戻す")
-    lines.append("godot --headless --path . --import   # 2 回")
+    lines.append("godot --headless --path . --import          # 1 回目: .import ファイルが作られる")
+    lines.append("python3 tools/audio/fix_imports.py          # compress/mode を PCM に戻す")
+    lines.append("godot --headless --path . --import          # 2 回目: PCM で入れ直す")
     lines.append("godot --headless --path . --script res://tools/audio/verify_audio.gd      # 名前/形式/ループの照合")
     lines.append("godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バス構成を作り直すとき")
     lines.append("```\n")
     lines.append("`fix_imports.py` が要るのは、Godot 4.7 の wav インポータの既定が **QOA(非可逆)**")
     lines.append("だから。この作品の環境音はほぼ無音に近いところで鳴るので、非可逆の粗が出ると困る。")
     lines.append("`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で %.0fMB 程度。" % total_mb)
-    lines.append("新しく wav を足したら、import のあとに必ずこれを掛け直すこと。\n")
+    lines.append("**順序に注意**: `.import` ファイルは Godot が import したときに初めて作られるので、")
+    lines.append("新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。")
+    lines.append("必ず **import -> fix_imports -> import** の順で回すこと。\n")
 
     lines.append("## 照合結果\n")
     lines.append("- CLAUDE.md「音名一覧」: **%d** 個" % len(exp))

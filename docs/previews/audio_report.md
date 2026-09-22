@@ -3,7 +3,7 @@
 `tools/audio/gen_audio.py` が自動生成する。手で編集しない。
 
 - 形式: WAV 44.1kHz / mono / 16bit。素材は一切使わず numpy で合成している。
-- 本数 **95**、合計 **320.5 秒**、**27.0 MB**(ループ 15 / 単発 80)。
+- 本数 **99**、合計 **329.2 秒**、**27.7 MB**(ループ 17 / 単発 82)。
 - ピーク正規化: 単発 -3 dBFS / 環境ループ -12 dBFS / ドローン -15 dBFS。全ファイル DC 除去済み。
 - ループ音には WAV の `smpl` チャンクを書いてある。インポータの `edit/loop_mode` は 既定の `Detect From WAV` のままでよく、ループ点は自動で付く。
 
@@ -11,20 +11,23 @@
 
 ```bash
 /opt/homebrew/bin/blender --background --python tools/audio/gen_audio.py  # wav + PNG + このレポート
-python3 tools/audio/fix_imports.py                                        # compress/mode を PCM に戻す
-godot --headless --path . --import   # 2 回
+godot --headless --path . --import          # 1 回目: .import ファイルが作られる
+python3 tools/audio/fix_imports.py          # compress/mode を PCM に戻す
+godot --headless --path . --import          # 2 回目: PCM で入れ直す
 godot --headless --path . --script res://tools/audio/verify_audio.gd      # 名前/形式/ループの照合
 godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バス構成を作り直すとき
 ```
 
 `fix_imports.py` が要るのは、Godot 4.7 の wav インポータの既定が **QOA(非可逆)**
 だから。この作品の環境音はほぼ無音に近いところで鳴るので、非可逆の粗が出ると困る。
-`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 27MB 程度。
-新しく wav を足したら、import のあとに必ずこれを掛け直すこと。
+`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 28MB 程度。
+**順序に注意**: `.import` ファイルは Godot が import したときに初めて作られるので、
+新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。
+必ず **import -> fix_imports -> import** の順で回すこと。
 
 ## 照合結果
 
-- CLAUDE.md「音名一覧」: **95** 個
+- CLAUDE.md「音名一覧」: **99** 個
 - 欠け: **0** 
 - 一覧に無い余分な wav: **0** 
 
@@ -53,6 +56,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `heartbeat` | 0.000000 | 0.00 | OK |
 | `incense_hiss` | 0.003787 | 0.05 | OK |
 | `phone_ring` | 0.000000 | 0.00 | OK |
+| `snore_1` | 0.000000 | 0.00 | OK |
+| `snore_2` | 0.000000 | 0.00 | OK |
 | `tv_static` | 0.049715 | 0.11 | OK |
 
 最も段差が大きいループ: `amb_fluorescent`(1.13)、`amb_vending`(1.05)、`cat_purr`(0.82)
@@ -92,6 +97,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `heartbeat` | 1.00 | -3.0 | -21.9 | ○ | 0.00000 | 0.00 | 0 | -10 |
 | `incense_hiss` | 4.00 | -3.0 | -27.8 | ○ | 0.00379 | 0.05 | 0 | -24 |
 | `phone_ring` | 3.00 | -3.0 | -16.7 | ○ | 0.00000 | 0.00 | 0 | 0 |
+| `snore_1` | 3.50 | -3.0 | -18.2 | ○ | 0.00000 | 0.00 | 0 | -14 |
+| `snore_2` | 3.50 | -3.0 | -18.7 | ○ | 0.00000 | 0.00 | 0 | -14 |
 | `tv_static` | 3.00 | -3.0 | -17.0 | ○ | 0.04972 | 0.11 | 0 | -14 |
 
 ### 単発
@@ -105,6 +112,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `candle_blow` | 2.76 | -3.0 | -24.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `candle_light` | 3.85 | -3.0 | -27.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_hiss` | 1.87 | -3.0 | -19.4 | — | 0.00000 | 0.00 | 0 | 0 |
+| `cat_jump` | 0.42 | -3.0 | -26.2 | — | 0.00000 | 0.00 | 0 | -6 |
 | `cat_meow_1` | 1.70 | -3.0 | -16.2 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_meow_2` | 2.08 | -3.0 | -16.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_meow_3` | 1.47 | -3.0 | -18.4 | — | 0.00000 | 0.00 | 0 | 0 |
@@ -113,6 +121,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `cat_scratch_3` | 1.18 | -3.0 | -27.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `chair_drag` | 2.07 | -3.0 | -20.7 | — | 0.00000 | 0.00 | 0 | 0 |
 | `chime_dawn` | 12.00 | -3.0 | -19.0 | — | 0.00000 | 0.00 | 0 | 0 |
+| `cloth_drop` | 1.25 | -3.0 | -27.0 | — | 0.00000 | 0.00 | 0 | -6 |
 | `coffin_creak` | 3.97 | -3.0 | -19.3 | — | 0.00000 | 0.00 | 0 | 0 |
 | `coffin_knock` | 2.52 | -3.0 | -24.3 | — | 0.00000 | 0.00 | 0 | 0 |
 | `coffin_lid_slide` | 3.25 | -3.0 | -22.0 | — | 0.00000 | 0.00 | 0 | 0 |
@@ -183,6 +192,10 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 上半分が波形(横線は -3 dBFS と -12 dBFS の目安、クリップした列は赤)、下半分がスペクトログラム(縦軸は 30Hz〜20kHz の対数、上が高域、ダイナミックレンジ 78dB)。
 
+- `snore_1` — ![snore_1](audio_snore_1.png)
+- `snore_2` — ![snore_2](audio_snore_2.png)
+- `cat_jump` — ![cat_jump](audio_cat_jump.png)
+- `cloth_drop` — ![cloth_drop](audio_cloth_drop.png)
 - `stinger_2` — ![stinger_2](audio_stinger_2.png)
 - `amb_shikijo` — ![amb_shikijo](audio_amb_shikijo.png)
 - `door_close` — ![door_close](audio_door_close.png)

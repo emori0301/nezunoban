@@ -90,6 +90,9 @@ func _boot() -> void:
 	if args.has("dread"):
 		Dread.add(int(String(args["dread"])), &"debug")
 	apply_state_for_time(start_minutes)
+	# QA 用: --scare=<関数名> で脅かしを1つだけ発火させる(チェックリストの撮影用)
+	if args.has("scare"):
+		_fire_scare(String(args["scare"]))
 	# QA 用: --cctv-shot=out/x.png で監視モニターの映像そのものを保存する
 	# (モニターの画面は小さくて、ゲーム画面のスクショでは人影が判別できないため)
 	if args.has("cctv-shot"):
@@ -121,6 +124,59 @@ func _boot() -> void:
 	else:
 		await play_intro()
 		Clock.start()
+
+
+## 引数が要る脅かしの呼び出し方(QA 専用)
+const SCARE_ARGS := {
+	"hall_figure": ["kasha", 30.0],
+	"set_second_footsteps": [true],
+	"set_moonlight": [true],
+	"spawn_figure_cctv": null,     # 下で特別扱い
+}
+
+## 脅かしを1つだけ撃つ。--screenshot / --cctv-shot と組み合わせて使う。
+func _fire_scare(n: String) -> void:
+	await get_tree().create_timer(0.7).timeout
+	match n:
+		"coffin_peek":                # QA: 小窓を覗いた画(手形と顔)
+			var cp := sys(&"coffin")
+			if cp:
+				cp.call(&"set_handprint", true)
+				cp.set(&"allow_open_window", true)
+				cp.call(&"show_face", 30.0, "qa")
+			return
+		"genkan_figure_visible":      # QA: CCTV 限定を外して実体を確認する
+			scares.spawn_figure("npc_son", Vector3(-12.3, 0.0, -0.2), 18.0, false, &"idle", 0.42)
+			return
+		"monitor_figure":
+			timeline.ev_monitor_figure()
+			return
+		"tv_face":
+			timeline.ev_tv()
+			timeline.on_tv_approach()
+			return
+		"coffin_face3":
+			var c := sys(&"coffin")
+			if c:
+				c.call(&"set_face_state", 3)
+			return
+		"lid_ajar":
+			var c2 := sys(&"coffin")
+			if c2:
+				c2.call(&"set_lid_ajar", true)
+			return
+		"iei_face_down":
+			var i := sys(&"iei")
+			if i:
+				i.call(&"set_face_down", true)
+			return
+	if not scares.has_method(n):
+		printerr("scare が無い: %s" % n)
+		return
+	if SCARE_ARGS.has(n):
+		scares.callv(n, SCARE_ARGS[n])
+	else:
+		scares.call(n)
 
 
 ## 監視モニターの SubViewport をそのまま PNG に落とす(QA 専用)

@@ -9,8 +9,12 @@ PCM 非圧縮 (compress/mode=0) に固定する。95 本 320 秒で合計 27MB �
 edit/loop_mode は 0 (Detect From WAV) のままにする。
 ループ音の wav には smpl チャンクを書いてあるので、これで自動的にループになる。
 
-    python3 tools/audio/fix_imports.py
-そのあと  godot --headless --path . --import  を掛け直すこと。
+    godot --headless --path . --import     # 1 回目: .import が作られる
+    python3 tools/audio/fix_imports.py     # ここで PCM に直す
+    godot --headless --path . --import     # 2 回目: PCM で入れ直す
+
+.import は Godot が import して初めて作られる。新しい wav を足した直後にこれを先に
+走らせても対象が無くて効かないので、必ず import を挟んでから掛けること。
 """
 
 import os

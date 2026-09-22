@@ -226,14 +226,16 @@ func _son_sleep() -> void:
 	son.drink_on_zabuton()
 	await get_tree().create_timer(2.0).timeout
 	print("あぐら posture=%s anim=%s pos=%v" % [son.posture, son.current_anim(), son.global_position])
-	await _shot("son_02_drinking", Vector3(-2.35, 1.05, 4.15), Vector3(-1.35, 0.45, 2.2))
+	await _shot("son_02_drinking", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
+	await _shot("son_02b_drinking_side", Vector3(-3.45, 1.15, 2.30), Vector3(-1.35, 0.45, 3.8))
 	son.sleep()
 	await get_tree().create_timer(2.0).timeout
-	print("is_sleeping=%s posture=%s anim=%s speed=%.2f フラグ=%s pos=%v" % [son.is_sleeping,
+	print("is_sleeping=%s posture=%s anim=%s speed=%.2f フラグ=%s pos=%v yaw=%.1f" % [son.is_sleeping,
 		son.posture, son.current_anim(), son.anim.speed_scale,
-		Game.get_flag(&"son_asleep"), son.global_position])
-	await _shot("son_03_sleeping", Vector3(-2.35, 1.05, 4.15), Vector3(-1.35, 0.30, 2.2))
-	await _shot("son_04_sleeping2", Vector3(-0.85, 1.15, 1.30), Vector3(-1.35, 0.30, 2.2))
+		Game.get_flag(&"son_asleep"), son.global_position, rad_to_deg(son.rotation.y)])
+	await _shot("son_03_sleeping", Vector3(-1.30, 1.15, 4.05), Vector3(-2.20, 0.25, 2.05))
+	await _shot("son_04_sleeping_along", Vector3(-0.62, 0.85, 2.05), Vector3(-3.20, 0.20, 2.05))
+	await _shot("son_05_sleeping_top", Vector3(-2.30, 2.15, 2.90), Vector3(-2.30, 0.20, 2.05))
 	# 孫娘が椅子に座る(sit アニメ)ところも一緒に見る
 	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
 	gd.sit_on_chair(Vector3(10.9, 0.0, 1.1), -90.0)

@@ -1057,6 +1057,85 @@ def t_hair_long():
     return finish(img, 754, noise=0.035)
 
 
+def t_ihai():
+    """位牌の札。黒塗りに金の文字風。128x128、札の前面に 1 枚貼る。"""
+    T = 128
+    img = rgb(T, (0.045, 0.040, 0.042))
+    img = mul_gray(img, 0.80 + norm(fbm(T, 30, 3, 771)) * 0.40)     # 漆の艶むら
+    rect(img, 4, 18, 124, 110, (0.075, 0.066, 0.068), 1.0)
+    # 金の縁
+    for (a, b2, c, d) in ((4, 18, 7, 110), (121, 18, 124, 110),
+                          (4, 18, 124, 21), (4, 107, 124, 110)):
+        rect(img, a, b2, c, d, (0.62, 0.50, 0.18), 0.85)
+    # 金の文字(縦書きの戒名らしい並び)
+    r = 16
+    rng = np.random.default_rng(772)
+    while r < 116:
+        h = int(rng.integers(10, 17))
+        cw = int(rng.integers(16, 26))
+        c0 = 64 - cw // 2
+        # 1 文字を数本の横棒と縦棒で表す
+        for k in range(int(rng.integers(2, 4))):
+            y = r + 2 + k * (h // 3)
+            rect(img, y, c0, y + 2, c0 + cw, (0.78, 0.64, 0.26), 0.9)
+        vx = c0 + cw // 2
+        rect(img, r + 1, vx - 1, r + h - 1, vx + 2, (0.78, 0.64, 0.26), 0.9)
+        if rng.random() > 0.5:
+            rect(img, r + 2, c0 + 2, r + h - 2, c0 + 4, (0.72, 0.58, 0.22), 0.8)
+            rect(img, r + 2, c0 + cw - 4, r + h - 2, c0 + cw - 2, (0.72, 0.58, 0.22), 0.8)
+        r += h + int(rng.integers(4, 8))
+    img = blur(img, 1)
+    return finish(mul_gray(img, grunge(T, 773, 0.10)), 774, noise=0.02, levels=26)
+
+
+def t_lantern_paper():
+    """回転灯籠の外筒。温かい白紙に淡い菊の模様と縦の骨。
+    横方向にタイルする(筒を一周)。"""
+    T = 256
+    img = rgb(T, (0.90, 0.85, 0.72))
+    img = mul_gray(img, 0.94 + norm(fbm(T, 40, 3, 781)) * 0.12)
+    img = mix(img, rgb(T, (0.80, 0.72, 0.56)), norm(fbm(T, 5, 3, 782)) * 0.22)
+    # 縦の骨(u 方向に等間隔)
+    ribs = periodic_lines(T, 12, 1, 0.045, 0.012)
+    img = mix(img, rgb(T, (0.42, 0.34, 0.24)), ribs * 0.55)
+    # 上下の帯
+    rect(img, 0, 0, 10, T, (0.52, 0.40, 0.26), 0.8)
+    rect(img, T - 10, 0, T, T, (0.52, 0.40, 0.26), 0.8)
+    # 淡い菊の輪
+    rng = np.random.default_rng(783)
+    for _ in range(9):
+        cx = float(rng.integers(30, T - 30))
+        cy = float(rng.integers(0, T))
+        rr = 16 + rng.random() * 12
+        for k in range(10):
+            a = 2 * math.pi * k / 10
+            disc(img, cx + math.cos(a) * rr * 0.62, cy + math.sin(a) * rr * 0.62,
+                 rr * 0.30, (0.72, 0.60, 0.40), 0.28, rr * 0.35)
+        disc(img, cx, cy, rr * 0.22, (0.70, 0.56, 0.32), 0.30, 3.0)
+    return finish(mul_gray(img, stains(T, 784, 3, 0.10, 30)), 785)
+
+
+def t_lantern_inner():
+    """回転灯籠の内筒。透かしの影絵(蓮と波)。横方向にタイルする。"""
+    T = 256
+    img = rgb(T, (0.10, 0.09, 0.09))
+    img = mul_gray(img, 0.85 + norm(fbm(T, 30, 2, 791)) * 0.30)
+    # 波(下半分)
+    for k in range(3):
+        base_r = 150 + k * 32
+        for c in range(T):
+            h = base_r + int(math.sin(c / T * 2 * math.pi * 4 + k) * 12)
+            rect(img, h, c, h + 9, c + 1, (0.42, 0.36, 0.28), 0.75)
+    # 蓮の花の影(上半分)
+    for cx in (60, 190):
+        for k in range(7):
+            a = -math.pi * 0.15 - math.pi * 0.70 * k / 6.0
+            disc(img, 86 + math.sin(a) * 26, cx + math.cos(a) * 30, 12,
+                 (0.40, 0.34, 0.26), 0.7, 5.0)
+        disc(img, 86, cx, 13, (0.46, 0.38, 0.28), 0.7, 4.0)
+    return finish(img, 792, noise=0.03, levels=22)
+
+
 def t_shoe_leather():
     T = 128
     img = rgb(T, (0.085, 0.082, 0.085))
@@ -1333,6 +1412,9 @@ ALL = {
     "hair_salt": t_hair_salt,
     "hair_long": t_hair_long,
     "shoe_leather": t_shoe_leather,
+    "ihai": t_ihai,
+    "lantern_paper": t_lantern_paper,
+    "lantern_inner": t_lantern_inner,
     "face_son": t_face_son,
     "face_granddaughter": t_face_granddaughter,
     "vending_panel": t_vending_panel,

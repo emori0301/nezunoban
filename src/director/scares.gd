@@ -223,7 +223,7 @@ func set_moonlight(on: bool) -> void:
 		for m in MOONLIGHT:
 			var l := OmniLight3D.new()
 			l.light_color = Color(0.52, 0.62, 0.86)
-			l.light_energy = 0.55
+			l.light_energy = 0.38
 			l.omni_range = float(m[1])
 			l.omni_attenuation = 1.4
 			l.shadow_enabled = false
@@ -600,7 +600,7 @@ func monitor_ghost_genkan() -> bool:
 	var mon := sys(&"monitor")
 	if mon == null:
 		return false
-	var fig := spawn_figure("npc_son", Vector3(-10.2, 0.0, 0.6), 90.0, true)
+	var fig := spawn_figure("npc_son", Vector3(-12.3, 0.0, -0.2), 18.0, true, &"idle", 0.42)
 	mon.set(&"auto_switch", false)
 	mon.call(&"switch_feed", 1)
 	mon.call(&"glitch", 0.7)

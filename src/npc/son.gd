@@ -17,10 +17,15 @@ extends NpcBase
 signal fell_asleep
 
 @export_group("息子")
-## 座布団の上。furnish_a.gd の Zabuton_-13_22(-1.35, 2.2)。座布団の厚みは 0.07m で、
-## models の sit_floor / sleep はその厚みを見込んだ高さで作られている。
-@export var sleep_position: Vector3 = Vector3(-1.35, 0.0, 2.2)
-@export var sleep_yaw_deg: float = 180.0
+## 飲んでいる位置。座卓(x -1.93〜-0.78, z 2.64〜3.36)を挟んで TV 台(z 1.51〜1.99)の
+## 反対側にある座布団 Zabuton_-13_38 (-1.35, 3.8)。向きは座卓のほう(-Z)。
+## 座布団の厚みは 0.07m で、models の sit_floor / sleep はそれを見込んだ高さで作られている。
+@export var drink_position: Vector3 = Vector3(-1.35, 0.0, 3.8)
+@export var drink_yaw_deg: float = 0.0
+## 寝る位置。座卓・布団・TV 台のどれにも当たらない畳の空き。
+## sleep アニメは体が正面(-Z)側へ伸びるので、yaw 90 で頭が -X(西の壁側)を向く。
+@export var sleep_position: Vector3 = Vector3(-2.05, 0.0, 2.05)
+@export var sleep_yaw_deg: float = 90.0
 ## 寝息のアニメをゆっくり回す。
 @export var sleep_anim_speed: float = 0.55
 ## いびき。audio に専用の音が無いので breath_close を低いピッチで流している。
@@ -53,9 +58,9 @@ func _ready() -> void:
 	add_to_group(&"npc_human")
 
 
-## 控室の座布団まで歩く。
+## 控室の座布団まで歩く。座卓を回り込めるよう、西(-X)側から寄る。
 func go_to_hikaeshitsu() -> void:
-	await go_to(sleep_position + Vector3(0.0, 0.0, -0.9))
+	await go_to(Vector3(-2.45, 0.0, 3.8))
 
 
 ## 座布団にあぐらで座って飲み続ける(00:30 で「断る」を選んだあと)。
@@ -63,7 +68,7 @@ func drink_on_zabuton() -> void:
 	is_drinking = true
 	is_sleeping = false
 	set_talkable(true)
-	sit_on_floor(sleep_position, sleep_yaw_deg)
+	sit_on_floor(drink_position, drink_yaw_deg)
 
 
 ## 座布団の上で寝る。sleep アニメ(うつ伏せ寄りの寝姿)をゆっくり回し、

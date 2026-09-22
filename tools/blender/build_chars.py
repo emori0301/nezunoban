@@ -2,8 +2,11 @@
 
 blender --background --python tools/blender/build_chars.py
 
-向き: Blender の -Y が正面。export_yup=True なので Godot では -Z が正面になる
-(Godot のキャラクタの既定の前方と一致する)。
+向き: メッシュは Blender の -Y を正面として組んでいる。
+ただし **glTF は Blender の +Y を Godot の -Z に写す**(gltf_z = -blender_y)ので、
+そのまま出すと Godot では +Z 正面になってしまう。
+そこで出力前に face_godot_forward() でアーマチュアを Z 軸 180 度回し、
+Godot の -Z(キャラクタの既定の前方)に合わせる。
 アニメは bpy.data.actions に作り、export_animation_mode='ACTIONS' で glb に入れる。
 """
 
@@ -27,6 +30,18 @@ FPS = 30
 FACE_UV = [(0.50, 0.0), (0.0, 0.0), (0.0, 1.0), (0.50, 1.0)]
 HAIR_UV = [(0.56, 0.0), (1.0, 0.0), (1.0, 1.0), (0.56, 1.0)]
 HEAD_UV = [HAIR_UV, HAIR_UV, FACE_UV, HAIR_UV, HAIR_UV, HAIR_UV]
+
+
+def face_godot_forward(arm_obj):
+    """Godot の -Z 正面に合わせる。
+
+    glTF の座標変換は gltf_z = -blender_y なので、Blender で -Y 正面に組むと
+    Godot では **+Z 正面**になる。アーマチュアを Z 軸に 180 度回して直す。
+    メッシュはアーマチュアの子なので一緒に回る。アニメはボーン空間なので影響しない。
+    """
+    arm_obj.rotation_mode = 'XYZ'
+    arm_obj.rotation_euler = (0.0, 0.0, math.pi)
+    bpy.context.view_layer.update()
 
 
 def setup_fps():
@@ -497,6 +512,7 @@ def build_human(name, spec):
     anim_human_sit(ao)
     anim_human_sit_floor(ao)
     anim_human_sleep(ao)
+    face_godot_forward(ao)
     emit(name, [ao, mesh], animations=True)
 
 
@@ -663,6 +679,7 @@ def build_body_risen():
             a.keyw(f, bn, 'X', R(-6) * e)
         a.keyw(f, "Hips", 'X', R(-4) * e)
     a.finish()
+    face_godot_forward(ao)
     emit("body_risen", [ao, mesh], animations=True)
 
 
@@ -826,6 +843,7 @@ def build_cat():
         a.keyw_mul(f, "Tail2", [('Z', R(32) * math.sin(w + 1.2)), ('X', R(18))])
     a.finish()
 
+    face_godot_forward(ao)
     emit("cat", [ao, mesh], animations=True)
 
 
@@ -983,6 +1001,7 @@ def build_kasha():
         a.keyw_mul(f, "Tail2", [('Z', R(28) * math.sin(w + 1.0)), ('X', R(-10))])
     a.finish()
 
+    face_godot_forward(ao)
     emit("kasha", [ao, mesh], animations=True)
 
 

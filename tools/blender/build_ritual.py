@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
 from common import (reset_scene, material, Builder, new_object, emit, dump_report,
                     box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads,
-                    build_at)
+                    build_at, tube, set_scene_frames)
+import bpy as _bpy
 
 UV01 = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -178,56 +179,132 @@ def build_body_face():
 
 # ---------------------------------------------------------------- altar
 
+UVQ4 = [(0, 0), (1, 0), (1, 1), (0, 1)]
+
+
+def _chrysanth(b, mat_fl, mat_leaf, mat_vase, x, y, z):
+    """白菊を活けた花瓶。祭壇の上段に置く。"""
+    b.add(cyl(0.050, 0.130, 8, (x, y, z + 0.065), r_top=0.042), mat_vase, 6.0, smooth=True)
+    b.add(cyl(0.056, 0.016, 8, (x, y, z + 0.008)), mat_vase, 8.0, smooth=True)
+    import random
+    rnd = random.Random(int(abs(x) * 977) + 3)
+    for k in range(7):
+        a = 2 * math.pi * k / 7.0
+        rr = 0.0 if k == 6 else 0.052
+        fx = x + math.cos(a) * rr
+        fy = y + math.sin(a) * rr * 0.8
+        fz = z + 0.175 + (0.030 if k == 6 else 0.0) + rnd.uniform(-0.012, 0.012)
+        b.add(sphere(0.040, 5, 3, (fx, fy, fz), squash=0.78), mat_fl, 10.0, smooth=True)
+    for k in range(2):
+        a = math.pi * k + 0.4
+        v, f = box(0.070, 0.016, 0.030, (0, 0, 0))
+        v = tr(v, rot=(0, 0.35, a), t=(x + math.cos(a) * 0.058,
+                                       y + math.sin(a) * 0.048, z + 0.140))
+        b.add((v, f), mat_leaf, 10.0)
+
+
+def _sanpo(b, mat_wood, x, y, z):
+    """三方(供物を載せる白木の台)。"""
+    b.add(box_taper(0.150, 0.130, 0.185, 0.160, 0.072, (x, y, z + 0.036)), mat_wood, 5.0)
+    b.add(box_mm(x - 0.115, x + 0.115, y - 0.100, y + 0.100, z + 0.072, z + 0.094),
+          mat_wood, 4.0)
+
+
 def build_altar():
-    """三段の白布祭壇 + 金襴の垂れ + 供物台。"""
+    """三段の白布祭壇。段が段として読めるよう奥行きを取り、
+    上に供物(位牌・白菊・果物・饅頭・燭台)を載せる。"""
     reset_scene()
     cloth = material("AltarCloth", "white_cloth", color=(0.88, 0.87, 0.84), rough=0.95)
     bro = material("AltarBrocade", "brocade", color=(0.45, 0.10, 0.10), rough=0.8)
     wood = material("AltarWood", "wood_dark", color=(0.12, 0.09, 0.07), rough=0.7)
     gold = material("AltarGold", "gold", color=(0.70, 0.55, 0.20), rough=0.45, metal=0.7)
+    white_wood = material("AltarShiraki", "white_wood", color=(0.85, 0.80, 0.70), rough=0.85)
+    fl = material("AltarFlower", "flower_white", color=(0.90, 0.89, 0.84), rough=0.9)
+    leaf = material("AltarLeaf", "leaves_dark", color=(0.10, 0.16, 0.10), rough=0.95)
+    lacquer = material("IhaiLacquer", "wood_dark", color=(0.05, 0.045, 0.045), rough=0.25)
+    ihai_t = material("IhaiFace", "ihai", color=(0.08, 0.07, 0.07), rough=0.3)
+    fruit = material("AltarFruit", "gold", color=(0.72, 0.48, 0.14), rough=0.6)
+    manju = material("AltarManju", "white_cloth", color=(0.92, 0.90, 0.86), rough=0.9)
+    brass = material("AltarBrass", "gold", color=(0.60, 0.47, 0.18), rough=0.35, metal=0.75)
+    wax = material("AltarWax", "white_cloth", color=(0.92, 0.90, 0.84), rough=0.55)
 
     b = Builder("altar")
+    # (幅, 奥行, 上端z, 前面y)。奥行きを取り、段差を大きくして「段」に見せる
     tiers = [
-        # (幅, 奥行, 上端z, 前面y)
-        (2.00, 0.42, 0.40, -0.55),
-        (1.74, 0.34, 0.68, -0.13),
-        (1.46, 0.30, 0.94, 0.21),
+        (2.00, 0.48, 0.42, -0.66),
+        (1.70, 0.42, 0.74, -0.18),
+        (1.40, 0.38, 1.06, 0.24),
     ]
-    y_back = 0.51
+    y_back = 0.62
     for i, (w, d, ztop, yfront) in enumerate(tiers):
         zbot = 0.0 if i == 0 else tiers[i - 1][2]
         b.add(box_mm(-w / 2, w / 2, yfront, yfront + d, zbot, ztop), cloth, 3.2)
-        # 天板の見切り
-        b.add(box_mm(-w / 2 - 0.012, w / 2 + 0.012, yfront - 0.012, yfront + d,
-                     ztop - 0.020, ztop), cloth, 3.6)
+        # 段の縁を金で立てる(ここが無いと段差が読めない)
+        b.add(box_mm(-w / 2 - 0.018, w / 2 + 0.018, yfront - 0.018, yfront - 0.004,
+                     ztop - 0.034, ztop + 0.006), gold, 5.0)
         # 金襴の垂れ(前面の上部)
-        dh = 0.16
-        b.add(box_mm(-w / 2 - 0.014, w / 2 + 0.014, yfront - 0.016, yfront - 0.004,
-                     ztop - dh, ztop - 0.004), bro, 1.4)
-        # 垂れの下端の房
-        for k in range(7):
-            x = -w / 2 + (k + 0.5) * w / 7.0
-            b.add(box_mm(x - 0.016, x + 0.016, yfront - 0.020, yfront - 0.008,
+        dh = 0.17
+        b.add(box_mm(-w / 2 - 0.016, w / 2 + 0.016, yfront - 0.020, yfront - 0.008,
+                     ztop - dh, ztop - 0.030), bro, 1.4)
+        for k in range(4):
+            x = -w / 2 + (k + 0.5) * w / 4.0
+            b.add(box_mm(x - 0.018, x + 0.018, yfront - 0.024, yfront - 0.012,
                          ztop - dh - 0.05, ztop - dh), gold, 4.0)
 
-    # 背面の壁(白木の板 + 金の縁)
-    b.add(box_mm(-1.00, 1.00, y_back, y_back + 0.05, 0.94, 1.66), cloth, 3.2)
-    b.add(box_mm(-1.02, 1.02, y_back - 0.012, y_back, 1.66, 1.70), gold, 4.0)
-    b.add(box_mm(-1.02, -0.98, y_back - 0.012, y_back, 0.94, 1.70), gold, 4.0)
-    b.add(box_mm(0.98, 1.02, y_back - 0.012, y_back, 0.94, 1.70), gold, 4.0)
-    # 背面の金襴の壁掛け
-    b.add(box_mm(-0.70, 0.70, y_back - 0.018, y_back - 0.006, 1.02, 1.58), bro, 1.2)
+    # 背面の白木の板 + 金の縁
+    b.add(box_mm(-1.00, 1.00, y_back, y_back + 0.05, 1.06, 1.72), cloth, 3.2)
+    b.add(box_mm(-1.02, 1.02, y_back - 0.012, y_back, 1.72, 1.76), gold, 4.0)
+    for sx in (-1, 1):
+        b.add(box_mm(sx * 1.02 - 0.04, sx * 1.02, y_back - 0.012, y_back, 1.06, 1.76),
+              gold, 4.0)
+    b.add(box_mm(-0.62, 0.62, y_back - 0.018, y_back - 0.006, 1.14, 1.64), bro, 1.4)
 
-    # 供物台(前に出した小さな台)
-    b.add(box_mm(-0.42, 0.42, -0.90, -0.58, 0.0, 0.36), cloth, 3.4)
-    b.add(box_mm(-0.44, 0.44, -0.92, -0.56, 0.36, 0.385), wood, 2.5)
-    # 供物(果物の山と三方)
-    b.add(box_mm(-0.30, -0.06, -0.84, -0.64, 0.385, 0.44), wood, 4.0)
-    for (fx, fy, fz, r) in ((-0.24, -0.78, 0.47, 0.045), (-0.14, -0.74, 0.47, 0.045),
-                            (-0.19, -0.76, 0.525, 0.045)):
-        b.add(sphere(r, 6, 4, (fx, fy, fz)), gold, 6.0)
-    b.add(box_mm(0.08, 0.32, -0.84, -0.64, 0.385, 0.44), wood, 4.0)
-    b.add(box_mm(0.10, 0.30, -0.82, -0.66, 0.44, 0.50), cloth, 6.0)
+    # ---------------- 上段: 位牌(中央)と白菊(左右) ----------------
+    z3 = tiers[2][2]
+    y3 = tiers[2][3] + tiers[2][1] * 0.5
+    # 位牌: 台座 → 蓮台 → 札
+    b.add(box_taper(0.150, 0.110, 0.125, 0.092, 0.034, (0, y3, z3 + 0.017)), lacquer, 6.0)
+    b.add(cyl(0.056, 0.026, 8, (0, y3, z3 + 0.047), r_top=0.046), lacquer, 8.0, smooth=True)
+    b.add(cyl(0.072, 0.012, 8, (0, y3, z3 + 0.040), r_top=0.056), gold, 10.0, smooth=True)
+    TZ0, TZ1 = z3 + 0.060, z3 + 0.290
+    b.add(box_taper(0.098, 0.022, 0.086, 0.022, TZ1 - TZ0, (0, y3, (TZ0 + TZ1) / 2)),
+          lacquer, 6.0)
+    b.add(box_taper(0.086, 0.022, 0.044, 0.020, 0.036, (0, y3, TZ1 + 0.018)), lacquer, 8.0)
+    # 札の前面に金文字
+    b.add(([(-0.042, y3 - 0.013, TZ0 + 0.012), (0.042, y3 - 0.013, TZ0 + 0.012),
+            (0.038, y3 - 0.013, TZ1 - 0.008), (-0.038, y3 - 0.013, TZ1 - 0.008)],
+           [(0, 1, 2, 3)]), ihai_t, uv=[[(1, 0), (0, 0), (0, 1), (1, 1)]])
+    for sx in (-1, 1):
+        _chrysanth(b, fl, leaf, white_wood, sx * 0.52, y3 + 0.01, z3)
+
+    # ---------------- 中段: 果物と白饅頭の供物 ----------------
+    z2 = tiers[1][2]
+    y2 = tiers[1][3] + tiers[1][1] * 0.5
+    _sanpo(b, white_wood, -0.40, y2, z2)
+    for (fx, fy, fz) in ((-0.44, y2 - 0.028, z2 + 0.140), (-0.36, y2 - 0.028, z2 + 0.140),
+                         (-0.40, y2 + 0.030, z2 + 0.140), (-0.40, y2, z2 + 0.192)):
+        b.add(sphere(0.046, 6, 4, (fx, fy, fz), squash=0.90), fruit, 9.0, smooth=True)
+    _sanpo(b, white_wood, 0.40, y2, z2)
+    for (mx, my, mz) in ((0.356, y2 - 0.030, z2 + 0.118), (0.444, y2 - 0.030, z2 + 0.118),
+                         (0.400, y2 + 0.032, z2 + 0.118)):
+        b.add(cyl(0.040, 0.046, 8, (mx, my, mz), r_top=0.034), manju, 10.0, smooth=True)
+    # 中央に湯呑みと箸(枕飯のかわり)
+    b.add(cyl(0.036, 0.052, 8, (0, y2, z2 + 0.026), r_top=0.042), white_wood, 10.0, smooth=True)
+    b.add(cyl(0.038, 0.030, 8, (0, y2, z2 + 0.066), r_top=0.030), manju, 12.0, smooth=True)
+
+    # ---------------- 下段: 燭台(火は無し)----------------
+    z1 = tiers[0][2]
+    y1 = tiers[0][3] + tiers[0][1] * 0.5
+    for sx in (-1, 1):
+        cx = sx * 0.82
+        b.add(cyl(0.056, 0.020, 8, (cx, y1, z1 + 0.010), r_top=0.040), brass, 7.0, smooth=True)
+        b.add(cyl(0.014, 0.170, 6, (cx, y1, z1 + 0.105)), brass, 9.0, smooth=True)
+        b.add(cyl(0.040, 0.012, 8, (cx, y1, z1 + 0.196), r_top=0.048), brass, 8.0, smooth=True)
+        b.add(cyl(0.019, 0.120, 8, (cx, y1, z1 + 0.262), r_top=0.017), wax, 8.0, smooth=True)
+    # 前に出した供物台(焼香台の手前)
+    b.add(box_mm(-0.42, 0.42, -1.00, -0.68, 0.0, 0.38), cloth, 3.4)
+    b.add(box_mm(-0.44, 0.44, -1.02, -0.66, 0.38, 0.405), wood, 2.5)
+    b.add(box_mm(-0.44, 0.44, -1.02, -1.00, 0.24, 0.405), bro, 2.0)
 
     ob = b.build()
     emit("altar", [ob])
@@ -417,6 +494,61 @@ def build_flower_stand():
     emit("flower_stand", [ob])
 
 
+def build_lantern_rotating():
+    """回転灯籠(走馬灯)。原点は床。外筒は `Paper`(発光・半透明)、
+    内筒 `Inner` が `spin` でゆっくり回る。祭壇の両脇に 1 基ずつ置く。"""
+    reset_scene()
+    _bpy.context.scene.render.fps = 30
+    frame = material("LanternFrame", "wood_dark", color=(0.14, 0.10, 0.08), rough=0.7)
+    brass = material("LanternBrass", "gold", color=(0.58, 0.45, 0.18), rough=0.4, metal=0.7)
+    paper = material("Paper", "lantern_paper", color=(0.90, 0.84, 0.70), rough=0.9,
+                     emission=(1.0, 0.84, 0.56), emission_strength=0.42, alpha=0.55)
+    inner = material("LanternInner", "lantern_inner", color=(0.12, 0.10, 0.10), rough=0.95)
+
+    Z0, Z1 = 0.420, 0.845            # 紙の筒の上下
+    b = Builder("lantern_rotating")
+    # 台
+    b.add(cyl(0.150, 0.026, 10, (0, 0, 0.013)), frame, 5.0)
+    b.add(cyl(0.128, 0.030, 10, (0, 0, 0.041), r_top=0.104), frame, 6.0)
+    b.add(cyl(0.022, 0.330, 6, (0, 0, 0.221)), frame, 6.0)
+    b.add(cyl(0.040, 0.022, 8, (0, 0, 0.397)), brass, 8.0)
+    # 紙の筒(上下に口輪)
+    b.add(cyl(0.152, 0.026, 12, (0, 0, Z0 - 0.013)), frame, 6.0)
+    b.add(tube([(0, 0, Z1, 0.146, 0.146, 1.0), (0, 0, Z0, 0.146, 0.146, 0.0)],
+               n=12, cap_start=False, cap_end=False), paper, smooth=True)
+    b.add(cyl(0.152, 0.026, 12, (0, 0, Z1 + 0.013)), frame, 6.0)
+    # 屋根と擬宝珠
+    b.add(cyl(0.178, 0.040, 12, (0, 0, Z1 + 0.046), r_top=0.108), frame, 5.0)
+    b.add(sphere(0.030, 6, 4, (0, 0, Z1 + 0.086)), brass, 12.0)
+    ob = b.build()
+
+    # 内筒(回る方)。原点を筒の中心軸に置き、Z 回転させる
+    w = Builder("Inner")
+    w.add(tube([(0, 0, Z1 - 0.022, 0.112, 0.112, 1.0),
+                (0, 0, Z0 + 0.022, 0.112, 0.112, 0.0)],
+               n=10, cap_start=False, cap_end=False), inner, smooth=True)
+    iob = build_at(w, (0.0, 0.0, 0.0))
+
+    # spin: 8 秒で 1 回転(等速)
+    iob.rotation_mode = 'XYZ'
+    iob.animation_data_create()
+    act = _bpy.data.actions.new("spin")
+    act.use_fake_user = True
+    iob.animation_data.action = act
+    for (f, ang) in ((1, 0.0), (81, math.pi * 2 / 3), (161, math.pi * 4 / 3),
+                     (241, math.pi * 2)):
+        iob.rotation_euler = (0.0, 0.0, ang)
+        iob.keyframe_insert(data_path="rotation_euler", frame=f)
+    for layer in act.layers:
+        for strip in layer.strips:
+            for cb in strip.channelbags:
+                for fc in cb.fcurves:
+                    for kp in fc.keyframe_points:
+                        kp.interpolation = 'LINEAR'
+    set_scene_frames(241)
+    emit("lantern_rotating", [ob, iob], animations=True)
+
+
 def main():
     build_coffin()
     build_coffin_lid_open()
@@ -426,6 +558,7 @@ def main():
     build_incense_stand()
     build_candle_stand()
     build_flower_stand()
+    build_lantern_rotating()
     dump_report()
 
 

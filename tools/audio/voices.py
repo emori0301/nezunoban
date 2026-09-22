@@ -1723,3 +1723,104 @@ def vhs_tracking():
     x = band(x, 300.0, 9000.0, order=2)
     x *= segments([(0.0, 0.0), (0.03, 1.0), (0.85, 0.9), (1.0, 0.0)], n)
     return norm_peak(dc_kill(x), -0.5)
+
+
+# ==========================================================================
+# 追加分: いびき / 猫の跳躍 / 白装束
+# ==========================================================================
+def _snore(seed, rate_in, rate_out, f1, f2, rough, pitch, level_out):
+    """泥酔した 60 代男性のいびき。軟口蓋のはためきをパルス列で作り、
+    そのリズムで乱流ノイズを開閉させる。1 サイクル 3.5 秒でループする。"""
+    dur = 3.5
+    n = N(dur)
+    out = zeros(n)
+
+    # --- 吸気 1.2 秒: 鼻鳴り。はためきが速く、荒い ---
+    ni = N(1.2)
+    rate = segments([(0.0, rate_in * 0.72), (0.22, rate_in * 1.08), (0.65, rate_in), (1.0, rate_in * 0.76)], ni)
+    rate = rate * (1.0 + 0.12 * rough * smooth_noise(ni, 5.5, seed + 1))
+    flutter = pulse_train(rate, ni, 0.26)
+    gate = 0.25 + 0.75 * np.clip(flutter * 3.2, 0.0, 1.0)
+    air = band(white(ni, seed + 2), 220.0, 5500.0, order=2) * gate
+    src = 1.0 * flutter + 0.80 * air
+    v = 1.00 * svf_tv(src, segments([(0, f1 * 0.78), (0.4, f1), (1, f1 * 0.86)], ni), 3.5, "bp")
+    v += 0.55 * bandpass(src, f2, 4.0, 1)
+    v += 0.24 * bandpass(src, 2500.0 * pitch, 5.0, 1)
+    v += 0.35 * lowpass(src, 190.0 * pitch, order=2)
+    v *= segments([(0.0, 0.0), (0.10, 0.5), (0.42, 1.0), (0.82, 0.85), (1.0, 0.0)], ni)
+    v = softclip(v * 1.6, 2.1)
+    place(out, norm_peak(v, -0.5), 0.16)
+
+    # --- 呼気 1.0 秒: 低い唸り。滑らかで暗い ---
+    ne = N(1.0)
+    rate_e = segments([(0.0, rate_out), (1.0, rate_out * 0.78)], ne)
+    fl = pulse_train(rate_e * (1.0 + 0.08 * rough * smooth_noise(ne, 4.0, seed + 3)), ne, 0.42)
+    air_e = band(white(ne, seed + 4), 140.0, 3200.0, order=2)
+    src_e = 0.55 * fl + 1.0 * air_e
+    e = formant(src_e, [(f1 * 0.70, 3.0, 0.0), (f2 * 0.78, 4.0, -7.0), (2100.0 * pitch, 5.0, -15.0)])
+    e += 0.40 * lowpass(src_e, 210.0 * pitch, order=2)
+    e *= segments([(0.0, 0.0), (0.18, 1.0), (0.6, 0.8), (1.0, 0.0)], ne)
+    e = softclip(e * 1.2, 1.6)
+    place(out, norm_peak(e, -0.5), 1.72, level_out)
+
+    out = room(out, ROOM_TATAMI, wet=0.18)[:n]
+    return fade(dc_kill(out), 0.002, 0.03)
+
+
+reg("snore_1", loop=True)(lambda: _snore(9501, 31.0, 22.0, 330.0, 1180.0, 1.0, 1.0, 0.52))
+reg("snore_2", loop=True)(lambda: _snore(9531, 23.0, 17.0, 262.0, 940.0, 1.7, 0.86, 0.62))
+
+
+@reg("cat_jump")
+def cat_jump():
+    """猫が木の蓋に飛び乗る「トッ」。肉球の鈍い当たり + 爪が滑る小さな音。"""
+    total = N(0.42)
+    out = zeros(total)
+    # 肉球: 減衰の速い、こもった木の胴鳴り
+    np_ = N(0.26)
+    exc = white(np_, 9601) * env_ar(np_, 0.0006, 0.0035, 7.0)
+    pad = resonators(exc, [172.0, 288.0, 455.0], [13, 11, 9], [1.0, 0.45, 0.18])
+    pad += lowpass(white(np_, 9602) * env_ar(np_, 0.0010, 0.014, 5.0), 420.0, order=3) * 1.5
+    pad = lowpass(pad, 1400.0, order=1)
+    place(out, norm_peak(pad, -0.5), 0.0)
+    # 爪: 後ろ足が遅れて着き、小さく引っ掛かる
+    r = rng(9603)
+    for k, at in enumerate((0.012, 0.038, 0.071)):
+        nc = N(0.05)
+        c = bandpass(white(nc, 9610 + k) * env_ar(nc, 0.0002, 0.0018, 7.0), 3200.0 + 2400.0 * r.random(), 3.0, 1)
+        c += resonators(white(nc, 9620 + k) * env_ar(nc, 0.0002, 0.0015, 7.0), [820.0, 1450.0], [12, 10], [0.5, 0.25])
+        place(out, norm_peak(c, -11.0 - 4.0 * r.random()), at)
+    # 0.42 秒に収めるので、尺の中で減衰しきる短い部屋を使う
+    out = room(out, dict(dur=0.30, decay=0.065, damp_hz=3000.0, predelay=0.006, seed=115), wet=0.18)[:total]
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("cloth_drop")
+def cloth_drop():
+    """白装束がハンガーから床に落ちる。布の擦れ -> 落下 -> 柔らかい着地。"""
+    total = N(1.25)
+    out = zeros(total)
+    # ハンガーから滑り落ちる
+    ns = N(0.34)
+    slip = band(white(ns, 9701), 700.0, 7000.0, order=2)
+    slip *= grain_env(ns, 34, 9702, dur_sec=0.008, jitter=0.9)
+    slip *= segments([(0.0, 0.0), (0.2, 1.0), (0.7, 0.7), (1.0, 0.15)], ns)
+    place(out, norm_peak(slip, -6.0), 0.0)
+    # ハンガーが一度だけ鳴る
+    nh = N(0.10)
+    place(out, norm_peak(metal_hit(nh, 9703, base=2200.0, decay=0.016, count=4, bright=0.8), -20.0), 0.02)
+    # 落ちている間の弱い空気の擦れ
+    nf = N(0.36)
+    fall = band(white(nf, 9704), 400.0, 3500.0, order=2)
+    fall *= segments([(0.0, 0.25), (0.55, 0.6), (1.0, 1.0)], nf) * 0.35
+    place(out, norm_peak(fall, -16.0), 0.30)
+    # 着地: 低い「ふさっ」と、そのあとの布の落ち着き
+    nl = N(0.7)
+    land = lowpass(white(nl, 9705) * env_ar(nl, 0.004, 0.028, 4.5), 260.0, order=3) * 1.6
+    land += resonators(white(nl, 9706) * env_ar(nl, 0.003, 0.012, 5.0), [78.0, 132.0], [9, 7], [1.0, 0.4]) * 0.8
+    settle = band(white(nl, 9707), 600.0, 6000.0, order=2)
+    settle *= grain_env(nl, 30, 9708, dur_sec=0.012, jitter=0.9)
+    settle *= segments([(0.0, 1.0), (0.35, 0.5), (1.0, 0.0)], nl)
+    place(out, norm_peak(land + 0.7 * settle, -0.5), 0.58)
+    out = room(out, dict(dur=0.55, decay=0.15, damp_hz=4000.0, predelay=0.008, seed=116), wet=0.18)[:total]
+    return norm_peak(dc_kill(out), -0.5)

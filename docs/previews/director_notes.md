@@ -81,6 +81,7 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--autoplay=<mode>` `--speed=N` | 自動プレイ |
 | `--shots=<dir>` `--shot-interval=<sec>` | 自動プレイ中、既定 20 秒おきに `<dir>/HHMM_<n>.png` を保存。夜全体の目視用。**`--headless` では撮れない** |
 | `--cctv-shot=<path>` | 監視モニターの SubViewport(256x192)をそのまま PNG に保存して終了。画面内のモニターは小さすぎて人影が判別できないため |
+| `--scare=<関数名>` | `scares.gd` の脅かしを 1 つだけ発火させる。`--screenshot` / `--cctv-shot` と組み合わせて使う |
 
 夜を通しで目で見るとき:
 
@@ -116,6 +117,15 @@ godot --path . -- --skip-title --ending=portrait --screenshot=out/director/endin
 | `09_ending_*.png` | 4 種とも `docs/script.md` の文がそのまま出る。遺影エンドは `iei_photo_player` の写真つき |
 | `11_intro_6s.png` | 導入のフェードイン直後。会話順はログで確認 |
 
+## 自動プレイのスクショが単調になる問題
+
+ボットは用事が無いと焼香台の前に立ち続けるので、`--shots` の連番が同じ画ばかりになっていた。
+撮る瞬間だけ「直近に発火したイベントの見どころ」へテレポートし、撮ってから元の位置と向きに戻す
+(`Autoplay.EVENT_VIEWS` / `_goto_view` / `_save_pose` / `_restore_pose`)。
+
+見どころは `Director.event_log()` の最後の行(`HH:MM ev_xxx`)で引く。
+表に無いイベントのときはテレポートしない。
+
 ## 会話の立ち位置
 
 NPC がカメラに密着して顔が画面いっぱいになる問題があったので、
@@ -141,6 +151,52 @@ autoplay(speed 8)で測った実際の距離:
 ```
 
 `Game.debug` か autoplay が有効なときだけこの行を出す。
+
+## 脅かしチェックリスト
+
+`--scare=<関数名>` で 1 つだけ発火させて撮った。画像は `out/director/scares/`。
+撮り方の例:
+
+```bash
+godot --path . -- --skip-title --time=23:30 --scare=zabuton_in_hall \
+  --screenshot=out/director/scares/zabuton_in_hall.png --pos=3.2,1.6,0.0 --yaw=90 --pitch=-30 --wait=3
+godot --path . -- --skip-title --time=23:00 --scare=monitor_figure \
+  --cctv-shot=out/director/scares/monitor_figure_cctv.png --wait=5
+```
+
+`--scare` は `scares.gd` の関数名をそのまま受ける。引数が要るものは `Director.SCARE_ARGS`、
+systems 側を動かすものは `Director._fire_scare` の `match` に別名を用意してある
+(`monitor_figure` `tv_face` `coffin_peek` `coffin_face3` `lid_ajar` `iei_face_down` `genkan_figure_visible`)。
+
+| # | 名前 | 発火条件 | 画像 | 判定 |
+|---|---|---|---|---|
+| 1 | `door_behind` | 廊下で、視界の外にある開いた扉。22:00 以降、異変度で重みが増す | なし | **音のみ**(振り向くと閉まっている演出。`Door.slam()` + VHS グリッチ) |
+| 2 | `zabuton_in_hall` | 廊下、22:30 以降。1 夜 1 回 | `zabuton_in_hall.png` | 見える。廊下に赤い座布団が 1 枚 |
+| 3 | `zabuton_before_coffin` | 式場、23:00 以降かつ異変度 1 以上。1 夜 1 回 | `zabuton_before_coffin.png` | 見える。棺の前に 3 枚 + 独白 |
+| 4 | `chairs_turn_to_coffin` | 式場。異変度で重みが増す。1 回 4 脚 | `chairs_turn_to_coffin.png` | 見える(祭壇の灯りに対するシルエットとして)。**引きの画では向きの差が分かりにくい** |
+| 5 | `chair_pulled_out` | 23:00 のモニター後、式場に入ったとき | `chair_pulled_out.png` | 見える。1 脚だけ列から外れている |
+| 6 | `whisper` | どこでも。異変度で重みが増す | なし | **音のみ**(背後 0.9m で `whisper_1..3`) |
+| 7 | `ceiling_steps` | どこでも | なし | **音のみ** + 独白「天井裏を、何かが歩いている。」 |
+| 8 | `attic_meow` | 23:20 以降 | なし | **音のみ**(頭上 2.7m の `cat_meow_*`) |
+| 9 | `smoke_sideways` | 式場、線香が燃えているとき。9 秒 | `smoke_sideways.png` | **要調整**。煙の gravity は横向きになるが、暗所では粒子が薄く静止画で判別できない |
+| 10 | `handprint` | 式場、00:00 以降かつ異変度 1 以上 | `coffin_peek.png` | **仕様上、小窓を覗いたときだけ見える**。手形は棺の内側にあるので通常視点では出ない。覗きの画は撮れている(顔が見える) |
+| 11 | `clock_reverse` | 事務所、02:00 以降。8 秒 | `clock_reverse.png` | 見える。壁掛け時計に針を足して逆回転させている + 独白 |
+| 12 | `hall_flicker_shadow` | 廊下、23:00 以降 | `hall_flicker_shadow.png` | 明滅と人影の点滅。**静止画では当たり外れがある**(撮った瞬間が明側だと影が出ない) |
+| 13 | `hall_figure` | 03:20 の台帳読了後 | `hall_figure.png` | よく見える。非常灯の緑の下、廊下突き当たりに火車 |
+| 14 | `robe_sway` | 湯灌室に入るたび。回を追うごとに速くなる | `robe_sway.png` | よく見える。白装束 + 独白 |
+| 15 | `robe_drop` | 湯灌室、03:20 以降の最初の 1 回 | `robe_drop.png` | 見える。ハンガーが空になり、床に装束が落ちている |
+| 16 | `paw_prints` | 03:40 | `paw_prints.png` | よく見える。廊下から式場へ約 30 枚 |
+| 17 | `paw_prints_outside` | `monitor_ghost_genkan` の後 | `paw_prints_outside.png` | 玄関の外に 5 枚 |
+| 18 | `set_second_footsteps` | ドライアイス運搬中 | なし | **音のみ**(1.5m 後ろで歩調に合わせた `step_lino_*`) |
+| 19 | `breath_behind` | 同上、独白のあと 1 回 | なし | **音のみ**(`breath_close`) |
+| 20 | `tv_player_back` | 控室、23:40 以降 | `tv_player_back.png` | TV はつく。**後ろ姿のオーバーレイは 2 秒で消えるので撮影タイミングがシビア** |
+| 21 | `monitor_ghost_genkan` | 事務所、23:00 以降 | `monitor_ghost_genkan.png` | **見えない。level 待ち**(下の「他担当への依頼」5)。人影そのものは `_diag_genkan.png` で存在を確認済み |
+| 22 | `vending_cats` | 外、03:00 以降。猫が居るとき | なし | 未撮影(自販機前に猫 5 匹。`Cat.sit_at` 任せ) |
+| 23 | `guest_book_self_name` | 受付の芳名帳を 00:00 以降に見たとき | なし | **テキストのみ**(最後の行 + 独白) |
+| 24 | `spawn_figure`(23:00 のモニター) | 23:00 | `monitor_figure_cctv.png` | 見える。CCTV に座った人影 |
+| 25 | `set_moonlight` | 04:00 の全消灯と同時 | `set_moonlight.png` | 見える。非常灯の緑 + 月明かりで「暗いが輪郭は追える」 |
+
+音のみのものは画面に出ないのが仕様なので、直す対象からは外してある。
 
 ## 未解決・判断したこと
 
@@ -172,7 +228,7 @@ autoplay(speed 8)で測った実際の距離:
 - `Building.set_emergency_lights(true)`(緑の非常灯)。**level が入れたら効く**ように
   `has_method` で守ってある。現時点の `building.gd` にはまだ無いので呼ばれない。
 - `Scares.set_moonlight(true)`。窓 7 か所(玄関・事務所・トイレ・廊下 2 か所・勝手口・式場)に
-  弱い青い `OmniLight3D`(energy 0.55)。定数は `Scares.MOONLIGHT`。灯し直しに成功したら消す。
+  弱い青い `OmniLight3D`(energy 0.38)。定数は `Scares.MOONLIGHT`。灯し直しに成功したら消す。
 
 非常灯が入ったら月明かりを下げる方向で再調整したほうがよい。
 
@@ -242,8 +298,18 @@ director 側の保険(`_walk` / `face_off` の `teleport_to` フォールバッ�
 
 社長の 1 行は 0ebc634 で script.md に追記された。
 
+### 5. level — 玄関の監視カメラが庇の中に埋まっている
+
+`Anchor_Cam_Genkan (-11.4, 2.56, 2.4)` は玄関ポーチの庇の内側にあるらしく、
+モニターの玄関チャンネルは画面の大半が黒い庇で埋まる。
+そこへ人影を置いても映らない(`out/director/scares/monitor_ghost_genkan.png`)。
+人影自体は正しい場所に出ている(`out/director/scares/_diag_genkan.png` で確認)。
+
+カメラを庇より下(y = 2.2 くらい)へ下げるか、狙いを玄関の内側へ振ってほしい。
+ついでにポーチに弱い灯りが欲しい。外が真っ暗なので、そこに立つ人影が映っても分からない。
+
 ### 4. level — 非常灯が入ったら月明かりを下げる
 
 971f77c で非常口サインの緑灯が第 3 系統として入った。director は 04:00 で
 `set_emergency_lights(true)` を呼ぶようにしてある(`has_method` で守ってある)。
-月明かりは現在 energy 0.55。非常灯と合わせて明るすぎるようなら `Scares.MOONLIGHT` を下げる。
+非常灯が入ったので月明かりは 0.38 に戻した(`out/director/scares/set_moonlight.png` で確認)。

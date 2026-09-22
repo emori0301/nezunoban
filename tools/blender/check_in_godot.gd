@@ -16,6 +16,7 @@ var expect_anims := {
 	"npc_granddaughter": ["idle", "walk", "sit", "sit_floor", "sleep"],
 	"body_risen": ["rise"],
 	"hanging_robe": ["sway", "drop"],
+	"lantern_rotating": ["spin"],
 }
 
 ## 名前で拾う約束のノード(systems / level がこの名前を使う)
@@ -26,6 +27,7 @@ var expect_nodes := {
 	"safe": ["Door"],
 	"breaker_box": ["Lever"],
 	"phone": ["Handset"],
+	"lantern_rotating": ["Inner"],
 }
 
 var fail := 0
