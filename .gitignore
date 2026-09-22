@@ -1,0 +1,7 @@
+.godot/
+*.import.tmp
+/out/
+/docs/captures/
+.DS_Store
+/tools/blender/__pycache__/
+*.blend1
