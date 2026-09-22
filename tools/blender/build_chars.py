@@ -431,6 +431,59 @@ def anim_human_sleep(ao, length=120):
     return a.finish()
 
 
+def _drink_curve(t):
+    """0..1 の周期位置から「缶を口に運ぶ」量を返す。上げる→保つ→下ろす。"""
+    if t < 0.40 or t > 0.70:
+        return 0.0
+    if t < 0.50:
+        u = (t - 0.40) / 0.10
+    elif t < 0.60:
+        return 1.0
+    else:
+        u = 1.0 - (t - 0.60) / 0.10
+    return u * u * (3.0 - 2.0 * u)
+
+
+def anim_human_sit_floor(ao, length=180):
+    """座布団の上であぐら。ループ(呼吸 + ときどき缶を口へ)。
+    腰は床から 0.20m。座布団(厚み 0.065)の上に座る想定。"""
+    a = Anim(ao, "sit_floor", length)
+    N = 24
+    for k in range(N + 1):
+        f = 1 + k * (length - 1) / float(N)
+        t = k / float(N)
+        br = math.sin(t * 2 * math.pi * 3.0)        # 呼吸(1 周期に 3 回)
+        dr = _drink_curve(t)
+
+        a.keyw_loc(f, "Hips", (0.0, 0.040, -0.750 + 0.004 * br))
+        a.keyw_mul(f, "Hips", [('X', R(-6.0)), ('Z', R(2.0) * br)])
+        a.keyw(f, "Spine", 'X', R(7.0) + R(1.2) * br)
+        a.keyw_mul(f, "Chest", [('X', R(5.0) + R(2.0) * br), ('Z', R(-2.5) * br)])
+        a.keyw_mul(f, "Neck", [('X', R(3.0) - R(9.0) * dr), ('Z', R(1.5) * br)])
+        a.keyw_mul(f, "Head", [('X', R(5.0) - R(14.0) * dr), ('Z', R(-2.0) * br)])
+
+        # あぐら: 腿を前へ倒して外へ開き、脛をたたんで内側へ
+        for (side, sgn) in (("L", 1), ("R", -1)):
+            a.keyw_mul(f, "UpperLeg." + side,
+                       [('X', R(-82.0)), ('Z', sgn * R(48.0)), ('Y', sgn * R(14.0))])
+            a.keyw_mul(f, "LowerLeg." + side,
+                       [('X', R(92.0)), ('Z', -sgn * R(66.0))])
+
+        # Y 回転は、左腕は負が外向き、右腕は正が外向き(腕は下を向いているため)
+        # 腕は体側に下ろし、前腕だけ曲げて手を腿の上へ。
+        # 肩を開きすぎると「両手を広げている」姿勢になる。
+        # 座っているので肩の位置が低い。前腕を曲げすぎると手が前に突き出す。
+        a.keyw_mul(f, "UpperArm.L", [('X', R(-7.0) + R(1.5) * br), ('Y', R(-12.0))])
+        a.keyw_mul(f, "LowerArm.L", [('X', R(-42.0)), ('Z', R(16.0))])
+        # 右手は缶を持ち、ときどき口へ運ぶ
+        a.keyw_mul(f, "UpperArm.R",
+                   [('X', R(-8.0) + R(18.0) * dr + R(1.5) * br),
+                    ('Y', R(11.0) - R(6.0) * dr)])
+        a.keyw_mul(f, "LowerArm.R",
+                   [('X', R(-44.0) - R(86.0) * dr), ('Z', -R(16.0) + R(8.0) * dr)])
+    return a.finish()
+
+
 def build_human(name, spec):
     """spec の中のマテリアルは reset_scene() の後に作ること(参照が無効になる)。"""
     s = spec["s"]
@@ -438,10 +491,11 @@ def build_human(name, spec):
     mesh = bld.build()
     ao = make_armature(name, BONES, scale=s)
     human_bind(mesh, ao, idx, s)
-    set_scene_frames(120)
+    set_scene_frames(180)
     anim_human_idle(ao)
     anim_human_walk(ao)
     anim_human_sit(ao)
+    anim_human_sit_floor(ao)
     anim_human_sleep(ao)
     emit(name, [ao, mesh], animations=True)
 
