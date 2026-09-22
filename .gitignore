@@ -5,3 +5,4 @@
 .DS_Store
 /tools/blender/__pycache__/
 *.blend1
+/tools/audio/__pycache__/

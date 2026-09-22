@@ -4,6 +4,39 @@ extends Node
 ## 実装は audio 担当エージェントが差し替える。ここは他エージェントが依存できる最小 API。
 
 const DIR := "res://assets/audio/"
+## 音ごとの推奨ゲイン(docs/previews/audio_report.md の最終列から生成)。play/play_at の volume_db に加算される。
+const GAIN_DB := {
+	&"breath_close": -12.0,
+	&"cat_purr": -16.0,
+	&"coffin_scratch": -6.0,
+	&"footstep_ceiling_1": -8.0,
+	&"footstep_ceiling_2": -8.0,
+	&"footstep_ceiling_3": -8.0,
+	&"heartbeat": -10.0,
+	&"incense_hiss": -24.0,
+	&"page_turn": -10.0,
+	&"paper_rustle": -10.0,
+	&"phone_breath": -8.0,
+	&"step_concrete_1": -14.0,
+	&"step_concrete_2": -14.0,
+	&"step_concrete_3": -14.0,
+	&"step_concrete_4": -14.0,
+	&"step_lino_1": -14.0,
+	&"step_lino_2": -14.0,
+	&"step_lino_3": -14.0,
+	&"step_lino_4": -14.0,
+	&"step_tatami_1": -14.0,
+	&"step_tatami_2": -14.0,
+	&"step_tatami_3": -14.0,
+	&"step_tatami_4": -14.0,
+	&"tv_static": -14.0,
+	&"ui_back": -18.0,
+	&"ui_confirm": -16.0,
+	&"ui_select": -18.0,
+	&"whisper_1": -20.0,
+	&"whisper_2": -20.0,
+	&"whisper_3": -20.0,
+}
 var _cache: Dictionary = {}
 var _ambient_players: Dictionary = {}   # name -> AudioStreamPlayer
 var _pool: Array[AudioStreamPlayer] = []
@@ -20,6 +53,19 @@ func _ready() -> void:
 		p3.bus = &"SFX" if AudioServer.get_bus_index("SFX") >= 0 else &"Master"
 		add_child(p3)
 		_pool3d.append(p3)
+
+func _exit_tree() -> void:
+	for p in _ambient_players.values():
+		p.stop()
+		p.stream = null
+	_ambient_players.clear()
+	for p in _pool:
+		p.stop()
+		p.stream = null
+	for p in _pool3d:
+		p.stop()
+		p.stream = null
+	_cache.clear()
 
 func _load(name: StringName) -> AudioStream:
 	if _cache.has(name):
@@ -43,7 +89,7 @@ func play(name: StringName, volume_db: float = 0.0, pitch: float = 1.0) -> Audio
 	for p in _pool:
 		if not p.playing:
 			p.stream = s
-			p.volume_db = volume_db
+			p.volume_db = volume_db + float(GAIN_DB.get(name, 0.0))
 			p.pitch_scale = pitch
 			p.play()
 			return p
@@ -58,7 +104,7 @@ func play_at(name: StringName, position: Vector3, volume_db: float = 0.0, pitch:
 		if not p.playing:
 			p.stream = s
 			p.global_position = position
-			p.volume_db = volume_db
+			p.volume_db = volume_db + float(GAIN_DB.get(name, 0.0))
 			p.pitch_scale = pitch
 			p.max_distance = max_distance
 			p.play()
