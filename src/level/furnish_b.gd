@@ -72,34 +72,29 @@ static func _shikijo(b: Building) -> void:
 	b.add_anchor_prop(R, "Anchor_IncenseBox", "incense_box", Vector3(14.78, 0.48, -0.5), 90.0,
 		Vector3(0.12, 0.05, 0.22), Color(0.55, 0.42, 0.28), false)
 
-	# 燭台(左右)。消灯してもここの暖色だけは残る。
-	b.add_prop(R, "CandleStandL", "candle_stand", Vector3(18.1, 0.0, -1.95), 90.0,
-		Vector3(0.22, 1.05, 0.22), Color(0.45, 0.38, 0.18))
+	# 燭台(左右)。glb は高さ 0.46m で原点が床なので、アンカーも床(y=0)に置く。
+	# 灯明の光だけは炎より上の 0.9m に保つ(消灯しても祭壇まわりが完全に沈まないため)。
+	var candle := b.add_anchor_prop(R, "Anchor_Candle", "candle_stand",
+		Vector3(18.1, 0.0, -1.95), 90.0, Vector3(0.22, 0.46, 0.22), Color(0.45, 0.38, 0.18), false)
 	b.add_prop(R, "CandleStandR", "candle_stand", Vector3(18.1, 0.0, 0.95), 90.0,
-		Vector3(0.22, 1.05, 0.22), Color(0.45, 0.38, 0.18))
-	var candle := b.add_anchor(R, "Anchor_Candle", Vector3(18.1, 0.72, -1.95), 90.0)
+		Vector3(0.22, 0.46, 0.22), Color(0.45, 0.38, 0.18), false)
 	var cl := OmniLight3D.new()
 	cl.name = "Light"        # systems がロウソクを消すときに使う
 	cl.light_color = CANDLE
 	cl.light_energy = 1.45
 	cl.omni_range = 5.2
 	cl.omni_attenuation = 1.8
-	# 燭台は床から 0.9m と低いので、影を出すと棺と祭壇の影が天井一面に伸びる。
-	# 灯明は「暖かい光が届く」ことが役目なので影は切る。
+	# 燭台は床置きで低いので、影を出すと棺と祭壇の影が天井一面に伸びる。
 	cl.shadow_enabled = false
 	cl.light_specular = 0.0
-	cl.position = Vector3(0, 0.18, 0)
+	cl.position = Vector3(0, 0.9, 0)
 	candle.add_child(cl)
-	LevelBuild.box(candle, Vector3(0, 0.06, 0), Vector3(0.035, 0.05, 0.035),
-		LevelMaterials.emissive(Color(1.0, 0.82, 0.5), 2.2), false, "", false)
-	# 右の燭台。Anchor_Candle の子なので systems は灯明をまとめて扱える。
+	# 右の燭台。yaw 90 なのでローカル -X が世界 +Z。
 	var cl2: OmniLight3D = cl.duplicate()
 	cl2.name = "Light2"
 	cl2.light_energy = 1.2
-	cl2.position = Vector3(-2.9, 0.18, 0)
+	cl2.position = Vector3(-2.9, 0.9, 0)
 	candle.add_child(cl2)
-	LevelBuild.box(candle, Vector3(-2.9, 0.06, 0), Vector3(0.035, 0.05, 0.035),
-		LevelMaterials.emissive(Color(1.0, 0.82, 0.5), 2.2), false, "", false)
 
 	# 供花スタンド(左右)
 	b.add_anchor_prop(R, "Anchor_FlowerL", "flower_stand", Vector3(19.0, 0.0, -3.5), 90.0,

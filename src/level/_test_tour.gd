@@ -302,6 +302,36 @@ func _check(b: Node3D) -> void:
 		print("  [%s] %-36s %5.1f m  投影ずれ %.2f m  家具に当たる点 %d" % [
 			"OK " if ok else "NG ", np[0], dd, off, hit])
 
+	# アンカーの高さ。モデルの原点は底面中央なので、真下の面と一致しているか見る。
+	# 壁付け(分電盤)と天井付け(CCTV)は床までの距離が出るので別扱い。
+	print("--- anchor 接地面 ---")
+	# 床や天板に載らないアンカー(壁付け・天井付け・他の物の内部)は接地判定の対象外。
+	var wall_mounted := {&"Anchor_Breaker": "壁", &"Anchor_Cam_Shikijo": "天井",
+		&"Anchor_Cam_Genkan": "天井", &"Anchor_Iei": "祭壇の枠の中",
+		&"Anchor_IncenseBox": "焼香台の引き出しの中"}
+	var rp := PhysicsRayQueryParameters3D.new()
+	rp.collision_mask = 1
+	for an in ["Anchor_Coffin", "Anchor_Altar", "Anchor_Iei", "Anchor_IncenseStand", "Anchor_IncenseBox",
+			"Anchor_Candle", "Anchor_FlowerL", "Anchor_FlowerR", "Anchor_Sink", "Anchor_Phone",
+			"Anchor_Monitor", "Anchor_Freezer", "Anchor_Breaker", "Anchor_Safe", "Anchor_Futon",
+			"Anchor_TV", "Anchor_GuestBook", "Anchor_Matches", "Anchor_BossDesk"]:
+		var nd: Node3D = b.get_anchor(StringName(an))
+		if nd == null:
+			continue
+		var ap := nd.global_position
+		rp.from = ap + Vector3(0, 0.03, 0)
+		rp.to = ap - Vector3(0, 3.0, 0)
+		var hit := space.intersect_ray(rp)
+		if wall_mounted.has(StringName(an)):
+			print("  [--] %-20s y=%.2f  (%s)" % [an, ap.y, wall_mounted[StringName(an)]])
+		elif hit.is_empty():
+			print("  [NG] %-20s y=%.2f  真下に面が無い" % [an, ap.y])
+		else:
+			var gap: float = ap.y - float(hit["position"].y)
+			var ok: bool = absf(gap) < 0.12
+			print("  [%s] %-20s y=%.2f  真下の面 y=%.2f  差 %+.2f m" % [
+				"OK " if ok else "NG ", an, ap.y, hit["position"].y, gap])
+
 	# 距離の実測(式場 <-> 事務所 / 式場 <-> バックヤード)
 	print("--- distances ---")
 	for pair in [["焼香台→事務所の電話", Vector3(14.3, 0, -0.5), Vector3(-9.4, 0, 6.6)],
