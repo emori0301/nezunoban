@@ -24,6 +24,8 @@ signal took_target(target: Node3D)               ## go_to_and_take の到着
 @export var retreat_speed: float = 4.0
 @export var catch_distance: float = 1.2
 @export var catch_freeze: float = 1.0
+## 一度掴んだあと、プレイヤーがこの距離まで離れるまで掴み直さない。
+@export var catch_rearm_distance: float = 2.4
 @export var sight_fov_deg: float = 100.0
 @export var sight_range: float = 26.0
 @export var retreat_idle_seconds: float = 10.0
@@ -41,7 +43,7 @@ var player_sees_me: bool = false
 var _gen: int = 0
 var _crawl_t: float = 0.0
 var _repath_t: float = 0.0
-var _caught_done: bool = false
+var _caught_armed: bool = true
 var _free_anim: bool = false
 
 
@@ -50,7 +52,7 @@ func _init() -> void:
 	npc_id = &"kasha"
 	move_speed = 3.0
 	agent_radius = 0.45
-	body_radius = 0.38
+	body_radius = 0.33
 	body_height = 0.90
 	head_height = 0.62
 	arrive_distance = 0.6
@@ -61,7 +63,13 @@ func _init() -> void:
 	talkable = false
 	start_active = false
 	loop_anims = [&"idle", &"crawl"]
+	anim_sit = &""
+	anim_sit_floor = &""
+	anim_sleep = &""
 	anim_walk = &"crawl"
+	# Spawn_Kasha (7.3, -11.0) は湯灌室のステンレス台(x 6.25〜8.35, z -10.38〜-9.43)と
+	# 棚(x 5.45〜5.85)に挟まれている。ナビメッシュは家具を見ていないので、台の東を回って出る。
+	spawn_exit_route = [Vector3(8.82, 0.0, -10.9), Vector3(8.82, 0.0, -8.6)]
 
 
 func _ready() -> void:
@@ -77,7 +85,7 @@ func _ready() -> void:
 
 
 func _locomotion_anim_enabled() -> bool:
-	return not _free_anim
+	return not _free_anim and super._locomotion_anim_enabled()
 
 
 # ============================================================ 公開 API
@@ -92,7 +100,7 @@ func activate() -> void:
 			spawn = a.global_position
 	set_active(true)
 	teleport_to(NpcUtil.snap(get_world_3d(), spawn), 180.0)
-	_caught_done = false
+	_caught_armed = true
 	set_eye_glow(eye_energy)
 	play_anim(anim_crawl)
 	# 湯灌室の戸を開けて出る
@@ -102,6 +110,10 @@ func activate() -> void:
 			d.set_locked(false)
 			d.open()
 	Audio.play_at(&"kasha_screech", global_position, 0.0, 1.0, 30.0)
+	# 台の東を回って湯灌室を出てから追跡に入る
+	await walk_spawn_exit_route()
+	if not is_active:
+		return
 	start_chase()
 
 
@@ -204,13 +216,15 @@ func _tick_chase(delta: float) -> void:
 	_repath_t -= delta
 	if _repath_t <= 0.0:
 		_repath_t = 0.3
-		walk_to(p.global_position)
-	if not _caught_done and distance_to_player() <= catch_distance:
+		retarget(p.global_position)
+	if _caught_armed and distance_to_player() <= catch_distance:
 		_catch()
+	elif not _caught_armed and distance_to_player() > catch_rearm_distance:
+		_caught_armed = true
 
 
 func _catch() -> void:
-	_caught_done = true
+	_caught_armed = false
 	stop()
 	set_scripted(true)
 	_free_anim = true
@@ -223,7 +237,6 @@ func _catch() -> void:
 		return
 	set_scripted(false)
 	_free_anim = false
-	_caught_done = false
 
 
 ## プレイヤーの視界(FOV 100°・遮蔽なし)に入っているか。

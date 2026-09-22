@@ -13,7 +13,7 @@ func _init() -> void:
 	model_name = "npc_boss"
 	npc_id = &"boss"
 	move_speed = 1.2
-	body_radius = 0.30
+	body_radius = 0.26
 	body_height = 1.71
 	head_height = 1.58
 	agent_radius = 0.32

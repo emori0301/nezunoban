@@ -7,7 +7,8 @@ extends Node3D
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=boss_leave
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=kasha_chase
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=son_sleep
-##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=api      # API だけ叩く
+##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=api      # API と演出 API
+##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=facing   # 正面の向きの確認
 ##
 ## --out=out/npc で出力先を変えられる。--free で自由に見回す(カメラは WASD + マウス)。
 
@@ -67,6 +68,7 @@ func _ready() -> void:
 		"kasha_chase": await _kasha_chase()
 		"son_sleep": await _son_sleep()
 		"api": await _api()
+		"facing": await _facing()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
@@ -122,11 +124,13 @@ func _cat_shoo() -> void:
 	print("追い払う prompt=%s enabled=%s" % [cat.talk.get_prompt(), cat.talk.enabled])
 	cat.shoo()
 	print("猫の状態=%s" % cat.state_name())
-	await get_tree().create_timer(2.5).timeout
-	await _shot("shoo_02_running", cat.global_position + Vector3(0.0, 2.4, -3.2), cat.global_position)
-	await _wait_state(cat, Cat.State.OUTSIDE_IDLE, 40.0)
+	await get_tree().create_timer(2.0).timeout
+	print("追い払われた直後 pos=%v 速度=%.2f" % [cat.global_position,
+		Vector2(cat.velocity.x, cat.velocity.z).length()])
+	await _shot("shoo_02_running", Vector3(11.0, 1.5, -2.6), cat.global_position + Vector3(0, 0.2, 0))
+	await _wait_state(cat, Cat.State.OUTSIDE_IDLE, 45.0)
 	print("猫の状態=%s  pos=%v  is_inside=%s" % [cat.state_name(), cat.global_position, cat.is_inside])
-	await _shot("shoo_03_outside", cat.global_position + Vector3(2.0, 2.4, -3.0), cat.global_position)
+	await _shot("shoo_03_outside", cat.global_position + Vector3(1.6, 1.1, -2.2), cat.global_position + Vector3(0, 0.2, 0))
 	print("cat_shooed が出たか: %s" % events_seen.has("cat_shooed"))
 
 
@@ -136,14 +140,17 @@ func _boss_leave() -> void:
 	assert(boss != null, "boss が置かれていない")
 	boss.set_talkable(true)
 	print("社長 pos=%v talk=%s" % [boss.global_position, boss.talk.get_prompt()])
-	await _shot("boss_01_start", Vector3(-6.0, 1.7, -1.0), boss.global_position + Vector3(0, 1.2, 0))
+	await _shot("boss_01_start", Vector3(-6.2, 1.55, -0.9), boss.global_position + Vector3(0, 1.3, 0))
 	var t0 := Time.get_ticks_msec()
 	boss.leave_via_genkan()
-	await get_tree().create_timer(3.5).timeout
-	await _shot("boss_02_walking", Vector3(-7.5, 1.7, 2.6), boss.global_position + Vector3(0, 1.2, 0))
+	for i in 7:
+		await get_tree().create_timer(0.5).timeout
+		_dump(boss)
+		if i == 5:
+			await _shot("boss_02_walking", Vector3(-6.9, 1.7, 1.6), Vector3(-10.15, 0.95, -2.3))
 	await _wait_until(func() -> bool: return not boss.is_active, 30.0)
 	print("社長 despawn 済み  pos=%v  所要 %.1f 秒" % [boss.global_position, (Time.get_ticks_msec() - t0) / 1000.0])
-	await _shot("boss_03_gone", Vector3(-8.0, 1.7, 1.2), Vector3(-11.5, 1.0, 0.0))
+	await _shot("boss_03_gone", Vector3(-7.6, 1.6, 0.0), Vector3(-11.6, 1.1, 0.0))
 	print("npc_left が出たか: %s" % events_seen.has("npc_left"))
 
 
@@ -151,45 +158,57 @@ func _boss_leave() -> void:
 func _kasha_chase() -> void:
 	var kasha := NpcInstaller.find(&"kasha") as Kasha
 	assert(kasha != null, "kasha が置かれていない")
-	player.global_position = Vector3(9.5, 0.0, -0.5)
-	if player.has_method("teleport"):
-		player.teleport(Vector3(9.5, 0.0, -0.5), 90.0, 0.0)
+	player.teleport(Vector3(9.5, 0.0, -0.5), 90.0, 0.0)
+	# 終盤の暗さを再現しつつ、廊下と式場だけは見えるようにしておく
 	building.set_all_lights(false)
 	building.set_room_lights(&"Room_Hall", true)
+	building.set_room_lights(&"Room_Shikijo", true)
+	building.set_room_lights(&"Room_Yukan", true)
 	await get_tree().create_timer(0.3).timeout
 
 	kasha.activate()
-	print("火車 pos=%v is_chasing=%s" % [kasha.global_position, kasha.is_chasing])
-	await get_tree().create_timer(2.0).timeout
-	await _shot("kasha_01_yukan", Vector3(6.4, 1.5, -4.0), kasha.global_position + Vector3(0, 0.5, 0))
+	print("火車 pos=%v" % kasha.global_position)
+	var map := get_world_3d().navigation_map
+	var path := NavigationServer3D.map_get_path(map, kasha.global_position, player.global_position, true)
+	print("湯灌室→式場 のナビ経路: %d 点" % path.size())
 
-	await get_tree().create_timer(3.0).timeout
-	print("火車 pos=%v 見られている=%s 速度=%.2f" % [kasha.global_position, kasha.player_sees_me,
-		Vector2(kasha.velocity.x, kasha.velocity.z).length()])
-	await _shot("kasha_02_hall", Vector3(6.4, 1.6, 1.4), kasha.global_position + Vector3(0, 0.5, 0))
+	# 湯灌室を出て廊下の突き当たりへ来るまで
+	await _wait_until(func() -> bool: return kasha.global_position.z > -7.4, 20.0)
+	print("廊下に出た pos=%v is_chasing=%s" % [kasha.global_position, kasha.is_chasing])
+	await _shot("kasha_01_hall_far", Vector3(6.4, 1.5, -1.6), Vector3(6.4, 0.45, -6.5))
 
+	# 廊下を上がってくる途中
+	await _wait_until(func() -> bool: return kasha.global_position.z > -4.0, 20.0)
+	print("追跡中 pos=%v 見られている=%s 速度=%.2f" % [kasha.global_position,
+		kasha.player_sees_me, Vector2(kasha.velocity.x, kasha.velocity.z).length()])
+	await _shot("kasha_02_hall_near", Vector3(6.4, 1.5, -0.6), kasha.global_position + Vector3(0, 0.4, 0))
+
+	# 天井を這う
 	kasha.set_ceiling_mode(true)
-	await get_tree().create_timer(2.0).timeout
-	print("天井モード y=%.2f" % kasha.global_position.y)
-	await _shot("kasha_03_ceiling", kasha.global_position + Vector3(0, -0.3, 4.0),
-		kasha.global_position + Vector3(0, 0.3, 0))
+	await get_tree().create_timer(1.2).timeout
+	print("天井モード y=%.2f (廊下の天井 2.5)" % kasha.global_position.y)
+	await _shot("kasha_03_ceiling", Vector3(6.4, 1.2, -0.4), kasha.global_position + Vector3(0, 0.2, 0))
 	kasha.set_ceiling_mode(false)
 
-	# 捕まるまで待つ
-	var caught := false
-	kasha.caught.connect(func() -> void: caught = true)
-	await _wait_until(func() -> bool: return caught, 25.0)
-	print("捕まえた=%s  距離=%.2f" % [caught, kasha.distance_to_player()])
-	await _shot("kasha_04_caught", player.global_position + Vector3(0, 1.6, 0) - Vector3(2.5, 0, 0),
-		kasha.global_position + Vector3(0, 0.5, 0))
+	# 捕まるまで待つ(GDScript のラムダはローカルを値でキャプチャするので配列で受ける)
+	var caught := [false]
+	kasha.caught.connect(func() -> void: caught[0] = true)
+	await _wait_until(func() -> bool: return caught[0], 25.0)
+	print("捕まえた=%s 距離=%.2f pos=%v" % [caught[0], kasha.distance_to_player(), kasha.global_position])
+	await _shot("kasha_04_caught", Vector3(11.4, 1.5, -2.6), kasha.global_position + Vector3(0, 0.45, 0))
 
 	# 灯し直し成功 → 退却 → 再追跡
 	Events.emit_event(&"relight_success", {"n": 1})
-	await get_tree().create_timer(3.0).timeout
-	print("退却中 is_retreating=%s pos=%v" % [kasha.is_retreating, kasha.global_position])
-	await _shot("kasha_05_retreat", Vector3(6.4, 1.6, -3.0), kasha.global_position + Vector3(0, 0.5, 0))
+	await get_tree().create_timer(0.5).timeout
+	print("退却 is_retreating=%s is_chasing=%s" % [kasha.is_retreating, kasha.is_chasing])
+	await _wait_until(func() -> bool: return kasha.global_position.z < -4.0, 15.0)
+	print("退却中 pos=%v 速度=%.2f" % [kasha.global_position,
+		Vector2(kasha.velocity.x, kasha.velocity.z).length()])
+	await _shot("kasha_05_retreat", Vector3(6.4, 1.5, -0.6), kasha.global_position + Vector3(0, 0.4, 0))
 	kasha.stop_chase()
-	print("stop_chase 後 is_chasing=%s" % kasha.is_chasing)
+	await get_tree().create_timer(0.4).timeout
+	print("stop_chase 後 is_chasing=%s 速度=%.2f" % [kasha.is_chasing,
+		Vector2(kasha.velocity.x, kasha.velocity.z).length()])
 
 
 ## 息子が控室の座布団で寝る。
@@ -197,18 +216,32 @@ func _son_sleep() -> void:
 	var son := NpcInstaller.find(&"son") as NpcSon
 	assert(son != null, "son が置かれていない")
 	son.set_active(true)
-	son.teleport_to(Vector3(-1.35, 0.0, 1.5), 180.0)
-	print("息子 drunk=%s pos=%v" % [son.drunk, son.global_position])
+	# 廊下から入らせる。控室の戸は閉まっているので、自分で開けられるかも見る。
+	son.teleport_to(Vector3(-2.2, 0.0, 0.2), 180.0)
+	var door := building.get_door(&"Door_Hikaeshitsu")
+	print("息子 drunk=%s pos=%v / 控室の戸 is_open=%s" % [son.drunk, son.global_position, door.is_open])
 	await son.go_to_hikaeshitsu()
-	print("控室に到着 pos=%v" % son.global_position)
-	await _shot("son_01_walk", Vector3(-3.2, 1.6, 1.4), son.global_position + Vector3(0, 1.2, 0))
+	print("控室に到着 pos=%v / 戸 is_open=%s / 詰まった=%s" % [son.global_position, door.is_open, son.last_move_failed])
+	await _shot("son_01_walk", Vector3(-1.1, 1.6, 4.3), son.global_position + Vector3(0, 1.0, 0))
+	son.drink_on_zabuton()
+	await get_tree().create_timer(2.0).timeout
+	print("あぐら posture=%s anim=%s pos=%v" % [son.posture, son.current_anim(), son.global_position])
+	await _shot("son_02_drinking", Vector3(-2.35, 1.05, 4.15), Vector3(-1.35, 0.45, 2.2))
 	son.sleep()
 	await get_tree().create_timer(2.0).timeout
-	print("is_sleeping=%s anim=%s speed=%.2f フラグ=%s" % [son.is_sleeping, son.current_anim(),
-		son.anim.speed_scale, Game.get_flag(&"son_asleep")])
-	await _shot("son_02_sleeping", Vector3(-2.6, 1.3, 1.1), son.global_position + Vector3(0, 0.9, 0))
+	print("is_sleeping=%s posture=%s anim=%s speed=%.2f フラグ=%s pos=%v" % [son.is_sleeping,
+		son.posture, son.current_anim(), son.anim.speed_scale,
+		Game.get_flag(&"son_asleep"), son.global_position])
+	await _shot("son_03_sleeping", Vector3(-2.35, 1.05, 4.15), Vector3(-1.35, 0.30, 2.2))
+	await _shot("son_04_sleeping2", Vector3(-0.85, 1.15, 1.30), Vector3(-1.35, 0.30, 2.2))
+	# 孫娘が椅子に座る(sit アニメ)ところも一緒に見る
+	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
+	gd.sit_on_chair(Vector3(10.9, 0.0, 1.1), -90.0)
+	await get_tree().create_timer(1.0).timeout
+	print("孫娘 posture=%s anim=%s" % [gd.posture, gd.current_anim()])
+	await _shot("son_05_granddaughter_sit", Vector3(13.2, 1.35, 1.1), Vector3(10.9, 0.85, 1.1))
 	await get_tree().create_timer(5.0).timeout
-	print("5 秒後も寝ている=%s" % son.is_sleeping)
+	print("5 秒後も寝ている=%s 頭=%v" % [son.is_sleeping, son.head_position()])
 
 
 ## API が一通り生きているかだけ確認する(スクショなし)。
@@ -234,8 +267,60 @@ func _api() -> void:
 	await br.rise()
 	print("  body_risen.rise() 完了")
 
+	# 演出 API: 猫 5 匹を自販機(-11.5, 6.2)の前に並べて座らせる
+	var cats := NpcInstaller.find_all(&"cat")
+	for i in cats.size():
+		var c := cats[i] as Cat
+		c.sit_at(Vector3(-12.5, 0.0, 4.9 + i * 0.62), Vector3(-11.5, 0.2, 4.9 + i * 0.62))
+	await get_tree().create_timer(0.8).timeout
+	print("  sit_at: 猫 %d 匹  state=%s  先頭 pos=%v" % [cats.size(),
+		(cats[0] as Cat).state_name(), (cats[0] as Node3D).global_position])
+	await _shot("api_01_cats_vending", Vector3(-14.6, 1.3, 5.9), Vector3(-11.8, 0.6, 6.0))
+
+	# 真エンド: 火車が控室で寝ている息子を連れて行く
+	var son := NpcInstaller.find(&"son") as NpcSon
+	son.set_active(true)
+	son.teleport_to(son.sleep_position, son.sleep_yaw_deg)
+	son.sleep()
+	var k2 := NpcInstaller.find(&"kasha") as Kasha
+	k2.set_active(true)
+	k2.teleport_to(Vector3(-2.2, 0.0, -0.4), 180.0)
+	building.get_door(&"Door_Hikaeshitsu").open()
+	var took := [false]
+	k2.took_target.connect(func(_t: Node3D) -> void: took[0] = true)
+	k2.go_to_and_take(son)
+	await _wait_until(func() -> bool: return took[0], 25.0)
+	print("  go_to_and_take: took_target=%s 火車 pos=%v 息子 pos=%v" % [took[0],
+		k2.global_position, son.global_position])
+	await _shot("api_02_kasha_takes_son", Vector3(-3.45, 1.15, 1.55), Vector3(-1.5, 0.4, 2.25))
+
+
+## 正面の向きの確認。猫と社長を「+X を向け」と指示して、-X 側と +X 側の両方から撮る。
+func _facing() -> void:
+	building.set_all_lights(true)
+	var cat := NpcInstaller.find(&"cat", 0) as Cat
+	cat.sit_at(Vector3(12.0, 0.0, -0.5), Vector3(19.0, 0.2, -0.5))
+	var boss := NpcInstaller.find(&"boss") as NpcBoss
+	boss.set_active(true)
+	boss.teleport_to(Vector3(12.0, 0.0, 0.6))
+	boss.face_now(Vector3(19.0, 0.0, 0.6))
+	await get_tree().create_timer(1.0).timeout
+	print("猫 rot.y=%.1f 社長 rot.y=%.1f (どちらも +X を向けと指示)" % [
+		rad_to_deg(cat.rotation.y), rad_to_deg(boss.rotation.y)])
+	await _shot("facing_cat_from_minus_x", Vector3(10.6, 0.35, -0.5), Vector3(12.0, 0.2, -0.5))
+	await _shot("facing_cat_from_plus_x", Vector3(13.4, 0.35, -0.5), Vector3(12.0, 0.2, -0.5))
+
 
 # ==================================================================== 補助
+
+## 動かないときの切り分け用。
+func _dump(n: NpcBase) -> void:
+	print("   [%s] pos=%v moving=%s vel=%.2f nav_finished=%s next=%v blocked=%s stuck_fail=%s active=%s" % [
+		n.name, n.global_position, n.is_moving,
+		Vector2(n.velocity.x, n.velocity.z).length(),
+		n.agent.is_navigation_finished(), n.agent.get_next_path_position(),
+		n.blocked_door_name, n.last_move_failed, n.is_active])
+
 
 func _wait_state(cat: Cat, want: int, timeout: float) -> void:
 	await _wait_until(func() -> bool: return cat.state == want, timeout)

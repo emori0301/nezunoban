@@ -11,7 +11,7 @@ func _init() -> void:
 	model_name = "npc_granddaughter"
 	npc_id = &"granddaughter"
 	move_speed = 1.2
-	body_radius = 0.28
+	body_radius = 0.26
 	body_height = 1.63
 	head_height = 1.50
 	agent_radius = 0.30

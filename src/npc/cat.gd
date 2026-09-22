@@ -29,7 +29,6 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 @export var meow_interval: Vector2 = Vector2(20.0, 40.0)
 @export var see_player_distance: float = 16.0
 @export var hide_seconds: float = 20.0
-@export var anim_sit: StringName = &"sit"
 
 var state: State = State.OUTSIDE_IDLE
 var is_inside: bool = false
@@ -39,6 +38,7 @@ var _gen: int = 0
 var _free_anim: bool = false      ## true の間は idle/walk の自動切り替えをしない
 var _shoo_hiss: bool = false
 var _cross_marker: Area3D = null
+var _on_perch: bool = false       ## 棺の蓋の上に乗っているか
 
 
 ## 既定値は _init で入れる(.tscn の @export がこの後に適用されるので上書きできる)。
@@ -56,6 +56,9 @@ func _init() -> void:
 	look_at_player_when_near = false
 	start_active = false
 	loop_anims = [&"idle", &"walk", &"sit"]
+	anim_sit = &"sit"
+	# cat.glb は頭が +Z 側。ほかのキャラ(-Z 正面)と揃えるため見た目だけ 180 度回す。
+	model_yaw_offset_deg = 180.0
 
 
 func _ready() -> void:
@@ -84,7 +87,7 @@ func _build_cross_marker() -> void:
 
 
 func _locomotion_anim_enabled() -> bool:
-	return not _free_anim
+	return not _free_anim and super._locomotion_anim_enabled()
 
 
 func _process(delta: float) -> void:
@@ -186,6 +189,13 @@ func _alive(g: int) -> bool:
 
 
 func _run_state(s: State, g: int) -> void:
+	# 棺の上から別の行動に移るときは、まず床へ飛び降りる。
+	# 蓋のトライメッシュにカプセルがめり込んだままだと move_and_slide が動かなくなる。
+	if _on_perch and s != State.ON_COFFIN:
+		_on_perch = false
+		await _hop_down(g)
+		if not _alive(g):
+			return
 	match s:
 		State.OUTSIDE_IDLE:
 			await _state_outside_idle(g)
@@ -337,7 +347,7 @@ func _scratch_at_blocked_door(g: int) -> void:
 ## 蓋の上へ 0.4 秒で飛び乗って座る。
 func _state_on_coffin(g: int) -> void:
 	var base := coffin_position()
-	var land := Vector3(base.x, coffin_top_y(), base.z)
+	var land := Vector3(base.x, coffin_top_y() + 0.02, base.z)
 	face_now(Vector3(base.x - 1.0, land.y, base.z))
 	set_scripted(true)
 	_free_anim = true
@@ -356,8 +366,36 @@ func _state_on_coffin(g: int) -> void:
 	global_position = land
 	set_scripted(false)
 	set_flying(true)        # 蓋の上から滑り落ちないように Y を固定する
+	_on_perch = true
 	play_anim(anim_sit)
 	Audio.play_at(&"cat_purr", global_position, 0.0, 1.0, 8.0)
+
+
+## 棺の蓋から床へ飛び降りる。
+func _hop_down(g: int) -> void:
+	set_flying(false)
+	if global_position.y < 0.25:
+		return
+	var base := coffin_position()
+	var land := Vector3(base.x, 0.02, base.z - 1.35)
+	var from := global_position
+	face_now(land)
+	set_scripted(true)
+	_free_anim = true
+	play_anim(anim_walk, 1.6)
+	var tw := create_tween()
+	tw.set_trans(Tween.TRANS_SINE)
+	tw.tween_method(func(t: float) -> void:
+		var p := from.lerp(land, t)
+		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * 0.12
+		global_position = p, 0.0, 1.0, 0.35)
+	await tw.finished
+	if not _alive(g):
+		set_scripted(false)
+		return
+	global_position = land
+	set_scripted(false)
+	_free_anim = false
 
 
 func _state_shooed(g: int) -> void:

@@ -10,22 +10,26 @@ extends NpcBase
 ##     await son.enter_from_genkan(Vector3(9.0, 0.0, -0.5))   # 玄関から入って式場へ
 ##     son.set_talkable(true)
 ##     await son.go_to_hikaeshitsu()
-##     son.sleep()                                            # いびきをかいて寝る
+##     son.drink_on_zabuton()                                 # 座布団にあぐらで飲み続ける
+##     son.sleep()                                            # 横になっていびきをかく
 ##     if son.is_sleeping: 火車を控室へ通せる
 
 signal fell_asleep
 
 @export_group("息子")
-## 座布団の上。furnish_a.gd の Zabuton_-13_22 の位置。
+## 座布団の上。furnish_a.gd の Zabuton_-13_22(-1.35, 2.2)。座布団の厚みは 0.07m で、
+## models の sit_floor / sleep はその厚みを見込んだ高さで作られている。
 @export var sleep_position: Vector3 = Vector3(-1.35, 0.0, 2.2)
 @export var sleep_yaw_deg: float = 180.0
-@export var sleep_anim_speed: float = 0.32
+## 寝息のアニメをゆっくり回す。
+@export var sleep_anim_speed: float = 0.55
 ## いびき。audio に専用の音が無いので breath_close を低いピッチで流している。
 @export var snore_sound: StringName = &"breath_close"
 @export var snore_interval: float = 4.0
 @export var snore_pitch: float = 0.72
 
 var is_sleeping: bool = false
+var is_drinking: bool = false
 
 var _snore_gen: int = 0
 
@@ -34,7 +38,7 @@ func _init() -> void:
 	model_name = "npc_son"
 	npc_id = &"son"
 	move_speed = 1.1
-	body_radius = 0.30
+	body_radius = 0.27
 	body_height = 1.75
 	head_height = 1.62
 	agent_radius = 0.32
@@ -49,26 +53,28 @@ func _ready() -> void:
 	add_to_group(&"npc_human")
 
 
-func _locomotion_anim_enabled() -> bool:
-	return not is_sleeping
-
-
 ## 控室の座布団まで歩く。
 func go_to_hikaeshitsu() -> void:
 	await go_to(sleep_position + Vector3(0.0, 0.0, -0.9))
 
 
-## 座布団の上で寝る。idle をごく遅く回し、4 秒周期でいびきを鳴らす。
+## 座布団にあぐらで座って飲み続ける(00:30 で「断る」を選んだあと)。
+func drink_on_zabuton() -> void:
+	is_drinking = true
+	is_sleeping = false
+	set_talkable(true)
+	sit_on_floor(sleep_position, sleep_yaw_deg)
+
+
+## 座布団の上で寝る。sleep アニメ(うつ伏せ寄りの寝姿)をゆっくり回し、
+## 4 秒周期でいびきを鳴らす。
 func sleep() -> void:
 	if is_sleeping:
 		return
-	stop()
 	set_talkable(false)
-	global_position = Vector3(sleep_position.x, global_position.y, sleep_position.z)
-	rotation.y = deg_to_rad(sleep_yaw_deg)
-	_target_yaw = rotation.y
+	is_drinking = false
 	is_sleeping = true
-	play_anim(anim_idle, sleep_anim_speed)
+	lie_down(sleep_position, sleep_yaw_deg, sleep_anim_speed)
 	Game.set_flag(&"son_asleep", true)
 	fell_asleep.emit()
 	_snore_gen += 1
@@ -76,12 +82,13 @@ func sleep() -> void:
 
 
 func wake() -> void:
-	if not is_sleeping:
+	if not is_sleeping and not is_drinking:
 		return
 	is_sleeping = false
+	is_drinking = false
 	_snore_gen += 1
 	Game.set_flag(&"son_asleep", false)
-	play_anim(anim_idle, 1.0)
+	stand_up()
 
 
 func _snore_loop(g: int) -> void:
