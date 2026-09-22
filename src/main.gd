@@ -15,6 +15,7 @@ const DIRECTOR_PATH := "res://src/director/director.tscn"
 const INSTALLER_PATH := "res://src/systems/installer.tscn"   # Anchor_* に systems のプレハブを置く
 const NPC_INSTALLER_PATH := "res://src/npc/installer.tscn"   # Spawn_* に NPC/猫を置く
 const TITLE_PATH := "res://src/ui/title.tscn"
+const EYE_HEIGHT := 1.6   # viewpoints.json / --pos は目線の高さ
 
 @onready var viewport: SubViewport = %GameViewport
 @onready var world: Node3D = %World
@@ -121,7 +122,8 @@ func _place_camera_from_args() -> void:
 		if v.size() == 3:
 			var pos := Vector3(float(v[0]), float(v[1]), float(v[2]))
 			if Game.player and Game.player.has_method("teleport"):
-				Game.player.teleport(pos, float(args.get("yaw", "0")), float(args.get("pitch", "0")))
+				# --pos は目線の高さで指定する。プレイヤーの原点は足元なので EYE_HEIGHT ぶん下げる
+				Game.player.teleport(pos - Vector3(0, EYE_HEIGHT, 0), float(args.get("yaw", "0")), float(args.get("pitch", "0")))
 			else:
 				target.global_position = pos
 	if not (Game.player and Game.player.has_method("teleport")):
@@ -157,7 +159,7 @@ func _do_tour(dir: String) -> void:
 			Clock.skip_to(Clock.minutes_from_hhmm(String(vp["time"])))
 		var pos: Array = vp["pos"]
 		if Game.player and Game.player.has_method("teleport"):
-			Game.player.teleport(Vector3(pos[0], pos[1], pos[2]), float(vp.get("yaw", 0)), float(vp.get("pitch", 0)))
+			Game.player.teleport(Vector3(pos[0], pos[1] - EYE_HEIGHT, pos[2]), float(vp.get("yaw", 0)), float(vp.get("pitch", 0)))
 		await get_tree().create_timer(float(vp.get("wait", 0.6))).timeout
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
