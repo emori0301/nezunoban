@@ -30,6 +30,12 @@ func _process(delta: float) -> void:
 func start() -> void:
 	running = true
 
+func reset() -> void:
+	running = false
+	game_minutes = 0.0
+	speed = 1.0
+	_last_whole = -1
+
 func stop() -> void:
 	running = false
 

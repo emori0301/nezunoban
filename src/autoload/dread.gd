@@ -15,6 +15,10 @@ func add(amount: int, reason: StringName = &"") -> void:
 	if level() != before_level:
 		level_changed.emit(level())
 
+func reset() -> void:
+	value = 0
+	log.clear()
+
 func level() -> int:
 	if value >= 6:
 		return 2

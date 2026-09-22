@@ -57,3 +57,8 @@ func reset() -> void:
 	ending_reached = &""
 	player = null
 	level = null
+	Clock.reset()
+	Dread.reset()
+	Tasks.clear()
+	Events.clear()
+	Audio.stop_all_ambient(0.5)

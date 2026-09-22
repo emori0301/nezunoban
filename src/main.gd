@@ -21,9 +21,17 @@ const TITLE_PATH := "res://src/ui/title.tscn"
 
 var args: Dictionary = {}
 
+var _vhs: Node = null
+
 func _ready() -> void:
 	args = _parse_args()
 	Game.debug = args.has("debug")
+	# VHS はタイトルにも乗せるので最初に付ける
+	if ResourceLoader.exists(VHS_PATH):
+		_vhs = load(VHS_PATH).instantiate()
+		add_child(_vhs)
+		if _vhs.has_method("attach"):
+			_vhs.attach(%GameViewportContainer)
 	if args.has("skip-title") or args.has("screenshot") or args.has("tour") or not ResourceLoader.exists(TITLE_PATH):
 		start_game()
 	else:
@@ -65,12 +73,6 @@ func start_game() -> void:
 	if ResourceLoader.exists(HUD_PATH):
 		var hud: Node = load(HUD_PATH).instantiate()
 		viewport.add_child(hud)
-	# VHS はメイン Viewport 側(SubViewportContainer のマテリアル)に付ける
-	if ResourceLoader.exists(VHS_PATH):
-		var vhs: Node = load(VHS_PATH).instantiate()
-		add_child(vhs)
-		if vhs.has_method("attach"):
-			vhs.attach(%GameViewportContainer)
 	# director (夜の進行台本)
 	if ResourceLoader.exists(DIRECTOR_PATH):
 		var d: Node = load(DIRECTOR_PATH).instantiate()
