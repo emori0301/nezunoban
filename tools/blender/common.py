@@ -558,6 +558,20 @@ class Builder:
         return ob
 
 
+def build_at(builder, origin, location=None, parent=None, shade_flat=True):
+    """頂点を origin が (0,0,0) になるようずらして作り、オブジェクトを
+    location(既定は origin)に置く。**オブジェクトの原点 = 蝶番の位置**になるので、
+    Godot 側で rotation を変えるだけで開閉できる。
+    parent を渡すと、見た目の位置を保ったまま親子付けする。"""
+    ob = builder.build(shade_flat=shade_flat, origin=origin)
+    ob.location = location if location is not None else origin
+    if parent is not None:
+        bpy.context.view_layer.update()
+        ob.parent = parent
+        ob.matrix_parent_inverse = parent.matrix_world.inverted()
+    return ob
+
+
 def new_object(name, geo, mat, uvscale=1.0, uv=None):
     b = Builder(name)
     b.add(geo, mat, uvscale=uvscale, uv=uv)

@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
 from common import (reset_scene, material, Builder, emit, dump_report,
                     box, box_mm, box_taper, cyl, sphere, prism, tr,
-                    loft_rings, donut, oval_cyl)
+                    loft_rings, donut, oval_cyl, build_at)
 
 UVQ = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -339,30 +339,51 @@ def build_tv_crt():
 # ---------------------------------------------------------------- バックヤード
 
 def build_freezer_chest():
-    """横型の冷凍庫。"""
+    """横型の冷凍庫。蓋は別ノード `Lid`(原点 = 奥側の蝶番)。X 回転で開く。"""
     reset_scene()
     m = M()
     white = material("FreezerBody", "metal_gray", color=(0.70, 0.70, 0.68), rough=0.5)
-    b = Builder("freezer_chest")
     W, D, H = 1.22, 0.66, 0.86
-    b.add(box_mm(-W / 2, W / 2, -D / 2, D / 2, 0.045, H - 0.075), white, 1.4)
+    LID_Z = H - 0.075
+
+    frost = material("FreezerInner", "styrofoam", color=(0.80, 0.83, 0.85), rough=0.85)
+    WT = 0.075                                   # 断熱壁の厚み
+
+    b = Builder("freezer_chest")
+    # 蓋を開けたときに中が見えるよう、天面は開けて 4 枚の壁で組む
+    b.add(box_mm(-W / 2, W / 2, -D / 2, D / 2, 0.045, 0.26), white, 1.4)   # 下半分は詰まった台
+    for (x0, x1, y0, y1) in ((-W / 2, W / 2, -D / 2, -D / 2 + WT),
+                             (-W / 2, W / 2, D / 2 - WT, D / 2),
+                             (-W / 2, -W / 2 + WT, -D / 2 + WT, D / 2 - WT),
+                             (W / 2 - WT, W / 2, -D / 2 + WT, D / 2 - WT)):
+        b.add(box_mm(x0, x1, y0, y1, 0.26, LID_Z), white, 1.4)
+    # 庫内(霜のついた内張り)
+    b.add(box_mm(-W / 2 + WT, W / 2 - WT, -D / 2 + WT, D / 2 - WT, 0.26, 0.285), frost, 2.4)
+    for (x0, x1, y0, y1) in ((-W / 2 + WT, W / 2 - WT, -D / 2 + WT, -D / 2 + WT + 0.010),
+                             (-W / 2 + WT, W / 2 - WT, D / 2 - WT - 0.010, D / 2 - WT),
+                             (-W / 2 + WT, -W / 2 + WT + 0.010, -D / 2 + WT, D / 2 - WT),
+                             (W / 2 - WT - 0.010, W / 2 - WT, -D / 2 + WT, D / 2 - WT)):
+        b.add(box_mm(x0, x1, y0, y1, 0.285, LID_Z), frost, 2.4)
     b.add(box_mm(-W / 2 + 0.03, W / 2 - 0.03, -D / 2 + 0.03, D / 2 - 0.03, 0.0, 0.045),
           m["dark"], 2.5)
-    # 蓋
-    b.add(box_mm(-W / 2 - 0.012, W / 2 + 0.012, -D / 2 - 0.012, D / 2 + 0.012,
-                 H - 0.075, H), white, 1.4)
-    b.add(box_mm(-W / 2 - 0.012, W / 2 + 0.012, -D / 2 - 0.016, -D / 2 - 0.006,
-                 H - 0.055, H - 0.018), m["steel"], 3.0)
-    # ハンドル
-    b.add(box_mm(-0.16, 0.16, -D / 2 - 0.045, -D / 2 - 0.014, H - 0.055, H - 0.028),
-          m["steel"], 6.0)
-    # 温度計と表示ランプ
+    # 温度計と表示ランプ(本体側)
     b.add(box_mm(W / 2 - 0.26, W / 2 - 0.10, -D / 2 - 0.014, -D / 2 - 0.004, 0.58, 0.68),
           m["dark"], 5.0)
     b.add(box_mm(W / 2 - 0.235, W / 2 - 0.125, -D / 2 - 0.018, -D / 2 - 0.012, 0.605, 0.655),
           material("FreezerLed", None, color=(0.9, 0.25, 0.2),
                    emission=(1.0, 0.22, 0.15), emission_strength=2.0), 8.0)
-    emit("freezer_chest", [b.build()])
+    body = b.build()
+
+    # --- 蓋(奥の長辺が蝶番) ---
+    lid = Builder("Lid")
+    lid.add(box_mm(-W / 2 - 0.012, W / 2 + 0.012, -D / 2 - 0.012, D / 2 + 0.012,
+                   LID_Z, H), white, 1.4)
+    lid.add(box_mm(-W / 2 - 0.012, W / 2 + 0.012, -D / 2 - 0.016, -D / 2 - 0.006,
+                   H - 0.055, H - 0.018), m["steel"], 3.0)
+    lid.add(box_mm(-0.16, 0.16, -D / 2 - 0.045, -D / 2 - 0.014, H - 0.055, H - 0.028),
+            m["steel"], 6.0)                                   # ハンドル
+    lid_ob = build_at(lid, (0.0, D / 2 + 0.012, LID_Z))
+    emit("freezer_chest", [body, lid_ob])
 
 
 def build_dry_ice_box():
@@ -424,11 +445,16 @@ def build_vending_machine():
 
 
 def build_breaker_box():
-    """分電盤。原点は床(壁付けは level 側で持ち上げる)。"""
+    """分電盤。原点は箱の下端中央(level が壁の高さ 推奨 1.40m へ置く)。
+    主幹ブレーカーのレバーは別ノード `Lever`(原点 = 回転軸)。X 回転で上下。"""
     reset_scene()
     m = M()
-    b = Builder("breaker_box")
     W, D, H = 0.42, 0.11, 0.32
+    LVX = -W / 2 + 0.070          # 主幹レバーの中心
+    LVZ = 0.210                   # 回転軸の高さ
+    LVY = -0.006                  # 盤面(レバーはここから手前 -Y へ出る)
+
+    b = Builder("breaker_box")
     b.add(box_mm(-W / 2, W / 2, 0.0, D, 0.0, H), m["gray"], 3.0)
     # 扉(開いた状態: 左に 100 度)
     v, f = box_mm(0, W - 0.03, 0, 0.014, 0.012, H - 0.012)
@@ -437,40 +463,65 @@ def build_breaker_box():
     # 内部のブレーカ列
     b.add(box_mm(-W / 2 + 0.025, W / 2 - 0.025, 0.0, 0.006, 0.03, H - 0.03), m["dark"], 4.0)
     b.add(box_mm(-W / 2 + 0.035, -W / 2 + 0.105, -0.010, 0.006, 0.16, 0.26),
-          m["beige"], 8.0)
-    b.add(box_mm(-W / 2 + 0.050, -W / 2 + 0.090, -0.018, -0.006, 0.19, 0.23),
-          m["dark"], 12.0)
+          m["beige"], 8.0)                                    # 主幹ブレーカーの本体
     for k in range(8):
         x = -W / 2 + 0.135 + k * 0.032
         b.add(box_mm(x, x + 0.024, -0.008, 0.006, 0.14, 0.24), m["beige"], 12.0)
         b.add(box_mm(x + 0.004, x + 0.020, -0.014, -0.006, 0.175, 0.205), m["dark"], 18.0)
-    emit("breaker_box", [b.build()])
+    body = b.build()
+
+    # --- 主幹レバー(原点は回転軸。X 回転で上下に倒れる) ---
+    lv = Builder("Lever")
+    lv.add(box_mm(LVX - 0.018, LVX + 0.018, LVY - 0.024, LVY, LVZ - 0.014, LVZ + 0.014),
+           m["dark"], 16.0)
+    lv.add(box_mm(LVX - 0.014, LVX + 0.014, LVY - 0.030, LVY - 0.022,
+                  LVZ - 0.010, LVZ + 0.010), m["dark"], 20.0)
+    lever = build_at(lv, (LVX, LVY, LVZ))
+    emit("breaker_box", [body, lever])
 
 
 def build_safe():
-    """事務所の金庫。"""
+    """事務所の金庫。扉は別ノード `Door`(原点 = 左側の蝶番)。Z 回転で開く。"""
     reset_scene()
     m = M()
     dark = material("SafeBody", "metal_dark", color=(0.16, 0.17, 0.17), rough=0.55)
-    b = Builder("safe")
     W, D, H = 0.46, 0.48, 0.58
-    b.add(box_mm(-W / 2, W / 2, -D / 2, D / 2, 0.02, H), dark, 2.2)
+    DX0 = -W / 2 + 0.025          # 扉の左端 = 蝶番
+    DY = -D / 2 - 0.014           # 扉の前面
+
+    WT = 0.05                     # 金庫の壁厚
+    inner = material("SafeInner", "metal_dark", color=(0.09, 0.09, 0.10), rough=0.9)
+
+    b = Builder("safe")
+    # 扉を開けたときに中が見えるよう、前面は開けて 5 枚で組む
+    for (x0, x1, y0, y1, z0, z1) in (
+            (-W / 2, W / 2, -D / 2 + WT, D / 2, 0.02, H),               # 奥と側面をまとめた塊
+            (-W / 2, -W / 2 + WT, -D / 2, -D / 2 + WT, 0.02, H),        # 前面の左枠
+            (W / 2 - WT, W / 2, -D / 2, -D / 2 + WT, 0.02, H),          # 前面の右枠
+            (-W / 2 + WT, W / 2 - WT, -D / 2, -D / 2 + WT, 0.02, 0.07),  # 前面の下枠
+            (-W / 2 + WT, W / 2 - WT, -D / 2, -D / 2 + WT, H - 0.05, H)):  # 前面の上枠
+        b.add(box_mm(x0, x1, y0, y1, z0, z1), dark, 2.2)
     b.add(box_mm(-W / 2 + 0.02, W / 2 - 0.02, -D / 2 + 0.02, D / 2 - 0.02, 0.0, 0.02),
           m["dark"], 4.0)
-    # 扉
-    b.add(box_mm(-W / 2 + 0.025, W / 2 - 0.025, -D / 2 - 0.014, -D / 2 + 0.01, 0.05, H - 0.03),
-          dark, 2.6)
-    # ダイヤル
-    b.add(cyl(0.062, 0.014, 10, (-0.03, -D / 2 - 0.021, 0.36), axis='Y'), m["steel"], 6.0)
-    b.add(cyl(0.048, 0.010, 10, (-0.03, -D / 2 - 0.028, 0.36), axis='Y'), m["dark"], 7.0)
-    b.add(box_mm(-0.034, -0.026, -D / 2 - 0.034, -D / 2 - 0.026, 0.36, 0.405), m["steel"], 18.0)
-    # ハンドル
-    b.add(cyl(0.012, 0.11, 6, (0.13, -D / 2 - 0.025, 0.30)), m["steel"], 10.0)
-    b.add(cyl(0.010, 0.07, 6, (0.13, -D / 2 - 0.025, 0.30), axis='X'), m["steel"], 10.0)
-    b.add(cyl(0.024, 0.020, 8, (0.13, -D / 2 - 0.018, 0.30), axis='Y'), m["steel"], 10.0)
-    # 銘板
-    b.add(box_mm(-0.06, 0.06, -D / 2 - 0.018, -D / 2 - 0.014, 0.50, 0.53), m["steel"], 10.0)
-    emit("safe", [b.build()])
+    # 庫内(奥と棚板)
+    b.add(box_mm(-W / 2 + WT, W / 2 - WT, -D / 2 + WT, -D / 2 + WT + 0.008, 0.07, H - 0.05),
+          inner, 3.0)
+    b.add(box_mm(-W / 2 + WT, W / 2 - WT, -D / 2 + WT, D / 2 - WT, 0.07, 0.085), inner, 3.0)
+    b.add(box_mm(-W / 2 + WT, W / 2 - WT, -D / 2 + WT, D / 2 - WT, 0.30, 0.315), dark, 3.0)
+    body = b.build()
+
+    # --- 扉(ダイヤル・ハンドル・銘板も扉側) ---
+    d = Builder("Door")
+    d.add(box_mm(DX0, W / 2 - 0.025, DY, -D / 2 + 0.01, 0.05, H - 0.03), dark, 2.6)
+    d.add(cyl(0.062, 0.014, 10, (-0.03, DY - 0.007, 0.36), axis='Y'), m["steel"], 6.0)
+    d.add(cyl(0.048, 0.010, 10, (-0.03, DY - 0.014, 0.36), axis='Y'), m["dark"], 7.0)
+    d.add(box_mm(-0.034, -0.026, DY - 0.020, DY - 0.012, 0.36, 0.405), m["steel"], 18.0)
+    d.add(cyl(0.012, 0.11, 6, (0.13, DY - 0.011, 0.30)), m["steel"], 10.0)
+    d.add(cyl(0.010, 0.07, 6, (0.13, DY - 0.011, 0.30), axis='X'), m["steel"], 10.0)
+    d.add(cyl(0.024, 0.020, 8, (0.13, DY - 0.004, 0.30), axis='Y'), m["steel"], 10.0)
+    d.add(box_mm(-0.06, 0.06, DY - 0.004, DY, 0.50, 0.53), m["steel"], 10.0)
+    door_ob = build_at(d, (DX0, DY, 0.05))
+    emit("safe", [body, door_ob])
 
 
 def build_sink():

@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
 from common import (reset_scene, material, Builder, new_object, emit, dump_report,
-                    box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads)
+                    box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads,
+                    build_at)
 
 UV01 = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -26,70 +27,100 @@ WIN_X0, WIN_X1 = 0.48, 0.80        # 小窓の開口(頭側 = +X)
 WIN_Y = 0.125
 
 
+# 蓋の蝶番は足側の長辺(-Y)の上端。ここを原点に Lid を回すと蓋が開く。
+LID_HINGE = (0.0, -(COF_W / 2 + 0.01), LID_Z0)
+
+
 def _coffin(name, lid_slide=0.0):
+    """棺を 3 つのノードに分けて返す。
+
+      <name>   本体(台輪・胴・内壁・白布の底)
+      `Lid`    蓋。**小窓の位置には実際に穴が開いている**。
+               原点は蝶番(足側の長辺の上端)。X 回転で開く
+      `Window` 小窓の板。Lid の子。visible=false にすると穴から中が見える
+    """
     wood = material("CoffinWood", "white_wood", color=(0.85, 0.80, 0.70), rough=0.8)
     trim = material("CoffinTrim", "wood_dark", color=(0.15, 0.11, 0.08), rough=0.7)
     cloth = material("CoffinCloth", "white_cloth", color=(0.88, 0.87, 0.84), rough=0.95)
     dark = material("CoffinInner", "wood_dark", color=(0.05, 0.04, 0.04), rough=1.0)
 
-    b = Builder(name)
     hl, hw = COF_L / 2, COF_W / 2
 
+    # ---------------- 本体(上面は開いている) ----------------
+    # 一枚の箱にすると天面が塞がって、小窓の穴から中が見えない。
+    # 4 枚の側壁 + 底 で組んで、中を空洞にしておく。
+    WALL = 0.055
+    b = Builder(name)
     # 台輪(下の一段)
     b.add(box_mm(-hl, hl, -hw, hw, 0.0, 0.045), trim, 2.0)
-    # 本体(上がわずかに広い)
-    b.add(box_taper(COF_L - 0.06, COF_W - 0.06, COF_L, COF_W, BODY_H - 0.045,
-                    (0, 0, (0.045 + BODY_H) / 2)), wood, 1.6)
-    # 側面の羽目板を表現する帯(上下の見切り)
+    # 底(中身が詰まった台。上面に白布を敷く)
+    b.add(box_mm(-hl + 0.02, hl - 0.02, -hw + 0.02, hw - 0.02, 0.045, 0.160), wood, 2.0)
+    b.add(box_mm(-hl + WALL, hl - WALL, -hw + WALL, hw - WALL, 0.160, 0.185), cloth, 3.0)
+    # 側壁 4 枚(外は白木)
+    walls = ((-hl, hl, -hw, -hw + WALL),
+             (-hl, hl, hw - WALL, hw),
+             (-hl, -hl + WALL, -hw + WALL, hw - WALL),
+             (hl - WALL, hl, -hw + WALL, hw - WALL))
+    for (x0, x1, y0, y1) in walls:
+        b.add(box_mm(x0, x1, y0, y1, 0.045, BODY_H), wood, 1.6)
+    # 内壁(空洞の内側を暗く)
+    inner = ((-hl + WALL, hl - WALL, -hw + WALL, -hw + WALL + 0.008),
+             (-hl + WALL, hl - WALL, hw - WALL - 0.008, hw - WALL),
+             (-hl + WALL, -hl + WALL + 0.008, -hw + WALL, hw - WALL),
+             (hl - WALL - 0.008, hl - WALL, -hw + WALL, hw - WALL))
+    for (x0, x1, y0, y1) in inner:
+        b.add(box_mm(x0, x1, y0, y1, 0.185, BODY_H), dark, 2.0)
+    # 側面の羽目板を表現する帯(上下の見切り)。
+    # 一枚の箱にすると中を塞いでしまうので、周囲 4 本の帯にする。
     for zz in (0.09, BODY_H - 0.035):
-        b.add(box_mm(-hl - 0.005, hl + 0.005, -hw - 0.005, hw + 0.005, zz, zz + 0.018), trim, 3.0)
+        for (x0, x1, y0, y1) in ((-hl - 0.005, hl + 0.005, -hw - 0.005, -hw + 0.022),
+                                 (-hl - 0.005, hl + 0.005, hw - 0.022, hw + 0.005),
+                                 (-hl - 0.005, -hl + 0.022, -hw + 0.022, hw - 0.022),
+                                 (hl - 0.022, hl + 0.005, -hw + 0.022, hw - 0.022)):
+            b.add(box_mm(x0, x1, y0, y1, zz, zz + 0.018), trim, 3.0)
     # 縦の桟(側面に 4 本ずつ)
     for sx in (-0.62, -0.21, 0.21, 0.62):
         for sy in (-1, 1):
             b.add(box_mm(sx - 0.018, sx + 0.018, sy * hw - 0.006, sy * hw + 0.006,
                          0.105, BODY_H - 0.04), trim, 4.0)
-    # 内側(白布を敷いた底)
-    b.add(box_mm(-hl + 0.05, hl - 0.05, -hw + 0.05, hw - 0.05, 0.16, 0.185), cloth, 3.0)
-    # 内壁(暗く)
-    b.add(box_mm(-hl + 0.04, -hl + 0.05, -hw + 0.04, hw - 0.04, 0.185, LID_Z0), dark, 2.0)
-    b.add(box_mm(hl - 0.05, hl - 0.04, -hw + 0.04, hw - 0.04, 0.185, LID_Z0), dark, 2.0)
-    for sy in (-1, 1):
-        b.add(box_mm(-hl + 0.04, hl - 0.04, sy * (hw - 0.05), sy * (hw - 0.04),
-                     0.185, LID_Z0), dark, 2.0)
+    body_ob = b.build()
 
-    # --- 蓋(小窓の穴を空けた 4 枚 + 縁) ---
-    s = lid_slide
-    lx0, lx1 = -hl - 0.01 + s, hl + 0.01 + s
+    # ---------------- 蓋(小窓の穴あき) ----------------
+    # 開口のまわりを 4 枚の板で囲むので、Window を消すと本当に貫通する。
+    lid = Builder("Lid")
+    lx0, lx1 = -hl - 0.01, hl + 0.01
     ly0, ly1 = -hw - 0.01, hw + 0.01
-    wx0, wx1 = WIN_X0 + s, WIN_X1 + s
+    wx0, wx1 = WIN_X0, WIN_X1
     wy0, wy1 = -WIN_Y, WIN_Y
-    b.add(box_mm(lx0, wx0, ly0, ly1, LID_Z0, LID_Z1), wood, 1.6)        # 足側
-    b.add(box_mm(wx1, lx1, ly0, ly1, LID_Z0, LID_Z1), wood, 1.6)        # 頭の先
-    b.add(box_mm(wx0, wx1, ly0, wy0, LID_Z0, LID_Z1), wood, 1.6)        # 窓の脇
-    b.add(box_mm(wx0, wx1, wy1, ly1, LID_Z0, LID_Z1), wood, 1.6)
+    lid.add(box_mm(lx0, wx0, ly0, ly1, LID_Z0, LID_Z1), wood, 1.6)      # 足側
+    lid.add(box_mm(wx1, lx1, ly0, ly1, LID_Z0, LID_Z1), wood, 1.6)      # 頭の先
+    lid.add(box_mm(wx0, wx1, ly0, wy0, LID_Z0, LID_Z1), wood, 1.6)      # 窓の脇
+    lid.add(box_mm(wx0, wx1, wy1, ly1, LID_Z0, LID_Z1), wood, 1.6)
     # 蓋の縁飾り
-    b.add(box_mm(lx0, lx1, ly0, ly0 + 0.022, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
-    b.add(box_mm(lx0, lx1, ly1 - 0.022, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
-    b.add(box_mm(lx0, lx0 + 0.022, ly0, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
-    b.add(box_mm(lx1 - 0.022, lx1, ly0, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
+    lid.add(box_mm(lx0, lx1, ly0, ly0 + 0.022, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
+    lid.add(box_mm(lx0, lx1, ly1 - 0.022, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
+    lid.add(box_mm(lx0, lx0 + 0.022, ly0, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
+    lid.add(box_mm(lx1 - 0.022, lx1, ly0, ly1, LID_Z1, LID_Z1 + 0.016), trim, 3.0)
     # 小窓の枠(開口のまわりに一段高い縁)
     fv, ff = frame_quads(WIN_X1 - WIN_X0 + 0.07, WIN_Y * 2 + 0.07,
                          WIN_X1 - WIN_X0 + 0.005, WIN_Y * 2 + 0.005,
                          LID_Z1, LID_Z1 + 0.014,
-                         c=((WIN_X0 + WIN_X1) / 2 + s, 0, 0))
+                         c=((WIN_X0 + WIN_X1) / 2, 0, 0))
     fv = [(v[0], v[2], v[1]) for v in fv]        # frame_quads は XZ 面なので入れ替え
-    b.add((fv, ff), trim, 4.0)
+    lid.add((fv, ff), trim, 4.0)
+    # 蓋ずれ版は、メッシュは同じで Lid ノードを +X にずらすだけ
+    lid_ob = build_at(lid, LID_HINGE,
+                      location=(LID_HINGE[0] + lid_slide, LID_HINGE[1], LID_HINGE[2]))
 
-    ob = b.build()
-
-    # --- 小窓の板(別オブジェクト `Window`。非表示にすると中が見える) ---
+    # ---------------- 小窓の板(Lid の子) ----------------
     w = Builder("Window")
     w.add(box_mm(wx0 - 0.004, wx1 + 0.004, wy0 - 0.004, wy1 + 0.004,
                  LID_Z1 + 0.002, LID_Z1 + 0.018), wood, 3.0)
     w.add(box_mm(wx0 + 0.02, wx1 - 0.02, wy0 + 0.02, wy1 - 0.02,
                  LID_Z1 + 0.018, LID_Z1 + 0.024), trim, 5.0)
-    wob = w.build()
-    return [ob, wob]
+    win_ob = build_at(w, ((WIN_X0 + WIN_X1) / 2, 0.0, LID_Z1), parent=lid_ob)
+
+    return [body_ob, lid_ob, win_ob]
 
 
 def build_coffin():

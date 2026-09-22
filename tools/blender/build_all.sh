@@ -30,6 +30,11 @@ run build_arch.py
 run build_chars.py
 
 if [ "$RENDER" = "1" ]; then
+  echo "=== decal_sheet.py ==="
+  "$BLENDER" --background --python tools/blender/decal_sheet.py 2>&1 | grep -E "decals sheet" || true
+  echo "=== coffin_window_test.py ==="
+  "$BLENDER" --background --python tools/blender/coffin_window_test.py 2>&1 \
+    | grep -E "coffin window proof|body_face world" || true
   echo "=== render_previews.py ==="
   "$BLENDER" --background --python tools/blender/render_previews.py 2>&1 \
     | grep -E "^engine|^  preview|^  anim |^contact_sheet|^anim_sheet|FAILED" || true
