@@ -79,7 +79,9 @@ godot --path . -- --skip-title --time=01:00 --debug   # デバッグ: F2/F3 で�
 
 ## モデル名一覧(models が生成、level が `Prop` の model_name で置く)
 
-`coffin`(棺、蓋に小窓)`coffin_lid_open`(蓋ずれ版)`body_face`(白布と顔、小窓越し用)`altar`(三段祭壇、白布)`iei_frame`(遺影・黒縁・リボン)`incense_stand`(香炉)`candle_stand`(燭台)`flower_stand`(供花スタンド)`folding_chair` `low_table` `zabuton` `futon` `tv_crt` `office_desk` `office_chair` `phone` `monitor_crt` `freezer_chest` `dry_ice_box` `vending_machine` `breaker_box` `safe` `door_wood` `door_steel` `window_frame` `sink` `shelf` `cabinet` `kettle` `guest_book_stand` `umbrella_stand` `slippers` `wall_clock` `fire_extinguisher` `notice_board` `sake_bottle` `beer_can` `matches` `incense_box` `coil_incense` `hearse` `tree` `fence` `lantern` `cat`(アニメ: idle/walk/sit)`kasha`(アニメ: crawl/idle)`npc_boss` `npc_son` `npc_granddaughter`(アニメ: idle/walk)`body_risen`(起き上がった故人)
+`coffin`(棺、蓋に小窓)`coffin_lid_open`(蓋ずれ版)`body_face`(白布と顔、小窓越し用)`altar`(三段祭壇、白布)`iei_frame`(遺影・黒縁・リボン)`incense_stand`(香炉)`candle_stand`(燭台)`flower_stand`(供花スタンド)`folding_chair` `low_table` `zabuton` `futon` `tv_crt` `office_desk` `office_chair` `phone` `monitor_crt` `freezer_chest` `dry_ice_box` `vending_machine` `breaker_box` `safe` `door_wood` `door_steel` `window_frame` `sink` `shelf` `cabinet` `kettle` `guest_book_stand` `umbrella_stand` `slippers` `wall_clock` `fire_extinguisher` `notice_board` `sake_bottle` `beer_can` `matches` `incense_box` `coil_incense` `hearse` `tree` `fence` `lantern` `cat`(アニメ: idle/walk/sit)`kasha`(アニメ: crawl/idle)`npc_boss` `npc_son` `npc_granddaughter`(アニメ: idle/walk)`body_risen`(起き上がった故人)`hanging_robe`(湯灌室の白装束。アニメ: sway/drop)
+デカール: `assets/textures/paw_print.png`(濡れた猫の足跡)`handprint.png`(小窓の内側の手形)
+各モデルの使い方の注意(小窓の `Window` メッシュ、扉の原点、発光マテリアル名、顔テクスチャの対応表)は `docs/previews/models_notes.md`。
 単位: メートル、Y-up、原点は接地面の中心。テクスチャは 128〜256px、`assets/textures/`。PSX 風(ローポリ、頂点数は小物 50〜400、人物 600〜1500)。
 
 ## コーディング規約
