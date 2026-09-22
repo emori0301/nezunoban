@@ -67,6 +67,10 @@ func start_game() -> void:
 		if spawn:
 			p.global_transform = spawn.global_transform
 		Game.register_player(p)
+		# systems 側が先に Camera3D を足していても、描画は必ずプレイヤーのカメラで行う
+		var pcam: Camera3D = p.get_camera() if p.has_method("get_camera") else p.find_child("Camera3D", true, false)
+		if pcam:
+			pcam.make_current()
 	else:
 		_add_debug_camera()
 	# HUD (SubViewport 内に入れて VHS フィルタの下に置く)
