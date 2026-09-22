@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/ending.gd" id="1_ending"]
+
+[node name="Ending" type="CanvasLayer" groups=["ending"]]
+layer = 20
+script = ExtResource("1_ending")
