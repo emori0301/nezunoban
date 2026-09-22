@@ -82,7 +82,9 @@ static func _shikijo(b: Building) -> void:
 	cl.light_energy = 1.45
 	cl.omni_range = 5.2
 	cl.omni_attenuation = 1.8
-	cl.shadow_enabled = true
+	# 燭台は床から 0.9m と低いので、影を出すと棺と祭壇の影が天井一面に伸びる。
+	# 灯明は「暖かい光が届く」ことが役目なので影は切る。
+	cl.shadow_enabled = false
 	cl.light_specular = 0.0
 	cl.position = Vector3(0, 0.18, 0)
 	candle.add_child(cl)
