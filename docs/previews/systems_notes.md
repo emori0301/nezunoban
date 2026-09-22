@@ -9,6 +9,21 @@ API と使い方の例はスクリプト冒頭の doc コメントに書いて�
 プレハブ側の `screen_offset` / `photo_offset` もその前提で入っている。
 アンカーの向きもこれに合わせること(式場のスクリーンショットで確認済み)。
 
+## プレハブの向き(2026-09-23 の向き監査で対応)
+
+アンカーの規約は「-Z がプレイヤーの立つ側」、models のモデルは多くが前面 +Z。
+ただし **一律 +180 では合わない**(棺・供花・線香立て・流し・布団・マッチは 0 が正しい)。
+
+systems 側で表を二重に持つとずれるので、**level のプレースホルダ
+`"<Anchor 名>_Prop"` の向きをそのまま踏襲する**ようにした
+(`SystemsInstaller._facing_for()`)。level が `add_anchor_prop(..., prop_yaw)` を
+変えれば systems も自動で追従する。プレースホルダが無いアンカー
+(`Anchor_BossDesk` / `Anchor_Candle`)だけ既定の +180 を当てている。
+
+19個すべてについて、置いたノードの yaw が level のプレースホルダと一致することを
+数値で確認済み(`Anchor_BossDesk` は `Desk_Boss` の yaw 0 と一致、`Anchor_Candle` は
+祭壇まわりと同じ -90)。
+
 ## level への依頼
 
 - アンカーは 19 個すべて見つかった。`Anchor_Cam_Shikijo` / `Anchor_Cam_Genkan` も解決済みで、
@@ -95,7 +110,12 @@ API と使い方の例はスクリプト冒頭の doc コメントに書いて�
    `--systems-demo`(全照明 on)でも扉が開いたかどうか画面では判別できない。
    動作自体はロジックテストで確認済み。照明は level の担当なので確認してほしい。
    再現: `godot --path . -- --skip-title --systems-demo --pos=-9.7,0.75,8.5 --yaw=142 --pitch=-19`
-3. `godot --headless --path . --quit` が終了時に `1 resources still in use at exit` を出す。
+3. モニターは本体を `player_hidden`(レイヤー11)へ移していたため、
+   プレイヤーのカメラからも見えなくなっていた。既定をやめ、`hide_from_cctv`
+   という export にした(既定 false)。式場/玄関のカメラは事務所を映さないので
+   入れ子にはならない。監視カメラの `cull_mask` も「11 以外すべて」に広げた。
+   level が別のレンダーレイヤーを使っても映像が真っ暗にならないようにするため。
+4. `godot --headless --path . --quit` が終了時に `1 resources still in use at exit` を出す。
    `src/systems/installer.tscn` を外しても同じメッセージが出るので systems 由来ではない。
 
 ## 検証の落とし穴(全担当向け)

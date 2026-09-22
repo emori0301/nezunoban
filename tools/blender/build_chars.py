@@ -18,7 +18,8 @@ from mathutils import Vector, Quaternion
 from common import (reset_scene, material, Builder, emit, dump_report,
                     box, box_mm, box_taper, cyl, sphere, tr,
                     make_armature, bind, auto_groups, chain_weights, loft_rings,
-                    ring, Anim, BONES, set_scene_frames)
+                    ring, tube, add_chain_weights, add_rigid_weights, bind_weights,
+                    Anim, BONES, set_scene_frames)
 
 R = math.radians
 FPS = 30
@@ -36,158 +37,293 @@ def setup_fps():
 
 # ================================================================ 人物
 
-HUMAN_RULES_Z = [
-    # (bone, 判定) 上から順に最初に当たったものを使う
+# 頭の正面だけに顔テクスチャを貼る(128x128 の全面が顔)
+FACE_QUAD_UV = [[(1.0, 0.0), (0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]]
+
+# 頭。箱にすると「積み木」に見えるので、断面を並べた丸い形にして、
+# 顔テクスチャはその前面に沿わせた格子に貼る。
+# (z, cy, rx, ry, v)
+HEAD_ROWS = [
+    (1.772, -0.004, 0.058, 0.062),
+    (1.752, -0.004, 0.086, 0.094),
+    (1.712, -0.004, 0.097, 0.105),
+    (1.660, -0.004, 0.095, 0.103),
+    (1.610, -0.003, 0.086, 0.093),
+    (1.570, -0.001, 0.069, 0.075),
+    (1.546, 0.003, 0.049, 0.055),
 ]
+FACE_Z0 = 1.556                          # 顎
+FACE_TOP = 1.706                         # 生え際
+
+
+def _head_at(z):
+    """その高さでの頭の (cy, rx, ry) を線形補間で返す。"""
+    rows = HEAD_ROWS
+    if z >= rows[0][0]:
+        return rows[0][1:]
+    if z <= rows[-1][0]:
+        return rows[-1][1:]
+    for i in range(len(rows) - 1):
+        z0, z1 = rows[i][0], rows[i + 1][0]
+        if z1 <= z <= z0:
+            t = (z0 - z) / (z0 - z1)
+            return tuple(rows[i][k + 1] + t * (rows[i + 1][k + 1] - rows[i][k + 1])
+                         for k in range(3))
+    return rows[-1][1:]
+
+
+def _face_grid(s, nc=5, nr=6, out=0.011):
+    """顔テクスチャを頭の前面に沿わせた格子。(verts, faces, uvs) を返す。
+    平らな板に貼るとシールに見えるので、頭の丸みに乗せる。"""
+    verts, uvs_g = [], []
+    for i in range(nr):
+        z = FACE_TOP - (FACE_TOP - FACE_Z0) * i / (nr - 1.0)
+        cy, rx, ry = _head_at(z)
+        v = 1.0 - i / (nr - 1.0)
+        for j in range(nc):
+            t = j / (nc - 1.0)
+            x = (t - 0.5) * 2.0 * rx * 0.88
+            k = min(1.0, abs(x) / max(rx, 1e-6))
+            y = cy - (ry + out) * math.sqrt(max(0.0, 1.0 - k * k))
+            verts.append((x * s, y * s, z * s))
+            uvs_g.append((1.0 - t, v))
+    faces, uvs = [], []
+    for i in range(nr - 1):
+        for j in range(nc - 1):
+            a = i * nc + j
+            b2 = i * nc + j + 1
+            c = (i + 1) * nc + j + 1
+            d = (i + 1) * nc + j
+            faces.append((a, b2, c, d))
+            uvs.append([uvs_g[a], uvs_g[b2], uvs_g[c], uvs_g[d]])
+    return verts, faces, uvs
+
+
+def _tube_sections(rows, s):
+    """[(z, cx, cy, rx, ry, v), ...] を倍率 s でスケールして tube() へ渡す形にする。
+    tube() は (cx, cy, cz, rx, ry, v) の順で、z の降順に並べる。"""
+    return [(cx * s, cy * s, z * s, rx * s, ry * s, v)
+            for (z, cx, cy, rx, ry, v) in rows]
 
 
 def human_mesh(name, spec):
-    """spec:
-        cloth   : 服のマテリアル
-        skin    : 肌のマテリアル
-        face    : 頭のマテリアル(顔テクスチャ、左半分が顔)
-        hair    : 髪のマテリアル
-        s       : 全体の倍率(1.0 = 身長 1.77m)
-        belly   : 腹の出っ張り(0..1)
-        skirt   : True ならワンピース(腰から膝までスカート、脛は素足)
-        shoulder: 肩幅の倍率
+    """人物のメッシュ。胴・腕・脚は断面を並べた筒(tube)で作り、
+    スムーズシェーディングにして「積み木」に見えないようにする。
+
+    spec:
+      s        全体の倍率(1.0 = 身長 1.77m)
+      torso    胴のマテリアル(正面中央に襟/ネクタイ/ファスナーを描いたテクスチャ)
+      skin     肌 / face 顔 / hair 髪 / shoe 靴
+      belly    腹の出っ張り 0..1
+      bust     胸のふくらみ 0..1
+      shoulder 肩幅の倍率
+      hair_*   髪の形(後退具合・長さ)
     """
     s = spec["s"]
-    cloth = spec["cloth"]
+    torso_m = spec["torso"]
     skin = spec["skin"]
     face = spec["face"]
-    hair = spec["hair"]
-    belly = spec.get("belly", 0.0)
-    skirt = spec.get("skirt", False)
+    hair_m = spec["hair"]
+    shoe_m = spec["shoe"]
+    b = spec.get("belly", 0.0)
+    bust = spec.get("bust", 0.0)
     shw = spec.get("shoulder", 1.0)
-    shoe = spec.get("shoe", cloth)
 
-    b = Builder(name)
+    bld = Builder(name)
+    idx = {}
 
-    def S(*v):
-        return tuple(x * s for x in v)
+    def mark(key, fn):
+        i0 = bld.count()
+        fn()
+        idx.setdefault(key, []).extend(range(i0, bld.count()))
 
-    def put(geo, mat, uvs=1.0, uv=None):
-        b.add(geo, mat, uvscale=uvs, uv=uv)
-
-    # ---- 脚 ----
-    for sx in (-1, 1):
-        x = sx * 0.100
-        legmat = skin if skirt else cloth
-        # 靴
-        put(box_mm(*S(x - 0.058, x + 0.058, -0.115, 0.075, 0.0, 0.052)), shoe, 8)
-        put(box_mm(*S(x - 0.052, x + 0.052, -0.090, 0.060, 0.052, 0.082)), shoe, 8)
-        # 脛(2 段)
-        put(cyl(*S(0.062), S(0.21)[0], 8, S(x, -0.010, 0.185), r_top=S(0.058)[0]), legmat, 7)
-        put(cyl(*S(0.058), S(0.21)[0], 8, S(x, -0.004, 0.395), r_top=S(0.070)[0]), legmat, 7)
-        # 腿(2 段)
-        put(cyl(*S(0.078), S(0.22)[0], 8, S(x, 0.0, 0.610), r_top=S(0.086)[0]),
-            skin if (skirt and False) else cloth, 6)
-        put(cyl(*S(0.086), S(0.22)[0], 8, S(x, 0.0, 0.830), r_top=S(0.094)[0]), cloth, 6)
-
-    # ---- 腰 ----
-    put(box_taper(*S(0.335, 0.225, 0.310, 0.215, 0.16), c=S(0, 0, 0.955)), cloth, 4)
-    skirt_idx = []
-    if skirt:
-        # スカートは脚と z が重なるので、座標ではなくインデックスで Hips に固定する
-        i0 = b.count()
-        put(box_taper(*S(0.330, 0.230, 0.460, 0.330, 0.42), c=S(0, 0, 0.83)), cloth, 2.5)
-        skirt_idx = list(range(i0, b.count()))
-    b.skirt_idx = skirt_idx
-
-    # ---- 胴 ----
-    bd = 0.235 + belly * 0.115
-    put(box_taper(*S(0.310, 0.215, 0.340, bd, 0.14), c=S(0, -belly * 0.015, 1.105)), cloth, 4)
-    put(box_taper(*S(0.340, bd, 0.355, bd - belly * 0.05, 0.15), c=S(0, -belly * 0.018, 1.250)),
-        cloth, 4)
-    put(box_taper(*S(0.355, 0.235, 0.375, 0.230, 0.14), c=S(0, 0, 1.395)), cloth, 4)
-    # 肩
-    put(box_taper(*S(0.415 * shw, 0.230, 0.395 * shw, 0.215, 0.10), c=S(0, 0, 1.425)), cloth, 4)
-
-    # ---- 襟と前あわせ ----
-    put(box_mm(*S(-0.075, 0.075, -0.125, -0.095, 1.400, 1.470)), skin, 10)     # 首元
-    put(box_taper(*S(0.190, 0.060, 0.150, 0.050, 0.075), c=S(0, -0.095, 1.442)), cloth, 8)
-    if not skirt:
-        for sx in (-1, 1):
-            v, f = box(*S(0.085, 0.030, 0.230), c=(0, 0, 0))
-            v = tr(v, rot=(0, sx * 0.16, 0), t=S(sx * 0.068, -0.118, 1.300))
-            put((v, f), cloth, 8)
-        # ネクタイ
-        put(box_mm(*S(-0.026, 0.026, -0.134, -0.122, 1.170, 1.390)),
-            spec.get("tie", cloth), 10)
-        put(box_mm(*S(-0.030, 0.030, -0.138, -0.124, 1.390, 1.425)),
-            spec.get("tie", cloth), 14)
-
-    # ---- 首と頭 ----
-    put(cyl(*S(0.052), S(0.13)[0], 8, S(0, -0.005, 1.505)), skin, 10)
-    put(box_taper(*S(0.175, 0.195, 0.205, 0.225, 0.205), c=S(0, -0.010, 1.672)),
-        face, uv=HEAD_UV)
-    # 頭頂と後頭部の髪
-    put(box_taper(*S(0.208, 0.228, 0.165, 0.180, 0.045), c=S(0, -0.010, 1.792)), hair, 8)
-    put(box_mm(*S(-0.104, 0.104, 0.030, 0.108, 1.570, 1.780)), hair, 6)
-    if spec.get("long_hair"):
-        put(box_mm(*S(-0.112, 0.112, 0.045, 0.125, 1.330, 1.600)), hair, 5)
-        for sx in (-1, 1):
-            put(box_mm(*S(sx * 0.100 - 0.024, sx * 0.100 + 0.024, -0.100, 0.110,
-                          1.420, 1.790)), hair, 6)
-    # 耳
-    for sx in (-1, 1):
-        put(box_mm(*S(sx * 0.104 - 0.012, sx * 0.104 + 0.012, -0.030, 0.030,
-                      1.630, 1.700)), skin, 14)
-    # 鼻
-    put(box_mm(*S(-0.018, 0.018, -0.132, -0.112, 1.655, 1.690)), skin, 16)
-
-    # ---- 腕 ----
-    for sx in (-1, 1):
-        x = sx * 0.235
-        put(box_taper(*S(0.105 * shw, 0.105, 0.095, 0.095, 0.09), c=S(x * 0.92, 0, 1.415)),
-            cloth, 8)
-        put(cyl(*S(0.049), S(0.14)[0], 8, S(x, 0, 1.300), r_top=S(0.046)[0]), cloth, 8)
-        put(cyl(*S(0.046), S(0.13)[0], 8, S(x + sx * 0.010, 0, 1.165), r_top=S(0.044)[0]),
-            cloth, 8)
-        put(cyl(*S(0.044), S(0.13)[0], 8, S(x + sx * 0.018, 0, 1.035), r_top=S(0.041)[0]),
-            cloth, 8)
-        put(cyl(*S(0.041), S(0.12)[0], 8, S(x + sx * 0.024, 0, 0.910), r_top=S(0.038)[0]),
-            cloth, 8)
-        # 手
-        put(box_taper(*S(0.070, 0.048, 0.062, 0.042, 0.115), c=S(x + sx * 0.028, 0, 0.792)),
-            skin, 10)
-    return b
-
-
-def human_groups(mesh_obj, arm_obj, s, skirt=False, force_idx=None):
-    def zz(co):
-        return co.z / s
-
-    def xx(co):
-        return co.x / s
-
-    rules = [
-        ("Head", lambda c: zz(c) >= 1.555),
-        ("Neck", lambda c: zz(c) >= 1.455),
-        ("UpperArm.L", lambda c: xx(c) > 0.185 and zz(c) >= 1.135),
-        ("LowerArm.L", lambda c: xx(c) > 0.185 and zz(c) >= 0.70),
-        ("UpperArm.R", lambda c: xx(c) < -0.185 and zz(c) >= 1.135),
-        ("LowerArm.R", lambda c: xx(c) < -0.185 and zz(c) >= 0.70),
-        ("Chest", lambda c: zz(c) >= 1.245),
-        ("Spine", lambda c: zz(c) >= 1.085),
-        ("Hips", lambda c: zz(c) >= 0.915 or (skirt and zz(c) >= 0.66)),
-        ("UpperLeg.L", lambda c: xx(c) >= 0 and zz(c) >= 0.50),
-        ("UpperLeg.R", lambda c: xx(c) < 0 and zz(c) >= 0.50),
-        ("LowerLeg.L", lambda c: xx(c) >= 0),
-        ("LowerLeg.R", lambda c: True),
+    # ---------------- 胴(n=14 の筒) ----------------
+    # (z, cx, cy, rx, ry, v)  v=1 が肩、v=0 が腰
+    torso_rows = [
+        (1.480, 0, 0.000, 0.132 * shw, 0.088, 1.00),
+        (1.440, 0, 0.000, 0.192 * shw, 0.106, 0.95),
+        (1.375, 0, 0.000, 0.196 * shw, 0.114 + bust * 0.010, 0.86),
+        (1.290, 0, -b * 0.010 - bust * 0.014, 0.178, 0.117 + b * 0.022 + bust * 0.026, 0.74),
+        (1.195, 0, -b * 0.022, 0.163, 0.111 + b * 0.052, 0.62),
+        (1.100, 0, -b * 0.030, 0.150 + b * 0.034 - bust * 0.008,
+         0.101 + b * 0.076, 0.50),
+        (1.010, 0, -b * 0.018, 0.164 + b * 0.020, 0.106 + b * 0.046, 0.36),
+        (0.935, 0, 0.000, 0.178, 0.112, 0.22),
+        (0.880, 0, 0.000, 0.170, 0.105, 0.10),
+        (0.840, 0, 0.000, 0.152, 0.096, 0.00),
     ]
-    return auto_groups(mesh_obj, arm_obj, rules, force_idx=force_idx)
+    mark("torso", lambda: bld.add(
+        tube(_tube_sections(torso_rows, s), n=14), torso_m, smooth=True))
+
+    # ---------------- 首 ----------------
+    neck_rows = [
+        (1.575, 0, -0.004, 0.050, 0.047, 1.0),
+        (1.500, 0, -0.004, 0.054, 0.051, 0.5),
+        (1.425, 0, -0.002, 0.062, 0.058, 0.0),
+    ]
+    mark("head", lambda: bld.add(
+        tube(_tube_sections(neck_rows, s), n=10, cap_start=False), skin,
+        uvscale=8.0, smooth=True))
+
+    # ---------------- 頭(丸い筒 + 前面に沿わせた顔) ----------------
+    head_rows = [(z, 0.0, cy, rx, ry, 1.0 - k / (len(HEAD_ROWS) - 1.0))
+                 for k, (z, cy, rx, ry) in enumerate(HEAD_ROWS)]
+    mark("head", lambda: bld.add(
+        tube(_tube_sections(head_rows, s), n=10), skin, uvscale=7.0, smooth=True))
+    mark("head", lambda: bld.add(_face_grid(s), face, smooth=True))
+    # 耳(頭に沿わせる。出っ張らせると板が浮いて見える)
+    for sx in (-1, 1):
+        mark("head", lambda sx=sx: bld.add(
+            box_taper(0.012 * s, 0.026 * s, 0.009 * s, 0.034 * s, 0.048 * s,
+                      (sx * 0.0885 * s, 0.006 * s, 1.646 * s)), skin, uvscale=16.0))
+
+    # ---------------- 髪 ----------------
+    back = spec.get("hair_back", 0.0)         # 後退具合(社長は大きい)
+    z0 = spec.get("hair_z0", 1.800)
+    z1 = spec.get("hair_z1", FACE_TOP - 0.004)
+    # 頭(半幅 0.097 / 半奥 0.104)より少しだけ大きい程度に収める
+    hair_rows = [
+        (z0, 0, back * 0.4 - 0.004, 0.046, 0.050, 1.00),
+        (z0 - 0.018, 0, back * 0.5 - 0.004, 0.080, 0.086, 0.88),
+        (z0 - 0.046, 0, back * 0.7 - 0.004, 0.098, 0.106, 0.66),
+        (z0 - 0.086, 0, back * 0.9 - 0.004, 0.102, 0.110, 0.38),
+        (z1, 0, back - 0.004, 0.099, 0.107, 0.08),
+    ]
+    mark("head", lambda: bld.add(
+        tube(_tube_sections(hair_rows, s), n=12, cap_end=False), hair_m,
+        uvscale=6.0, smooth=True))
+    # 後頭部(短い髪でも後ろは残る)
+    mark("head", lambda: bld.add(
+        box_taper(0.168 * s, 0.090 * s, 0.184 * s, 0.104 * s, 0.106 * s,
+                  (0, 0.046 * s, 1.686 * s)), hair_m, uvscale=6.0))
+    if spec.get("long_hair"):
+        # 肩にかかる黒髪。頭に沿わせ、下ほど広がる
+        # 前に回り込むと顎まで隠れるので、下ほど後ろへ寄せる
+        long_rows = [
+            (1.712, 0, 0.046, 0.098, 0.098, 1.00),
+            (1.640, 0, 0.058, 0.104, 0.100, 0.74),
+            (1.540, 0, 0.070, 0.110, 0.102, 0.40),
+            (1.452, 0, 0.078, 0.114, 0.104, 0.00),
+        ]
+        mark("head", lambda: bld.add(
+            tube(_tube_sections(long_rows, s), n=10, cap_start=False),
+            hair_m, uvscale=3.4, smooth=True))
+        for sx in (-1, 1):
+            mark("head", lambda sx=sx: bld.add(
+                box_taper(0.030 * s, 0.072 * s, 0.036 * s, 0.086 * s, 0.216 * s,
+                          (sx * 0.100 * s, 0.048 * s, 1.572 * s)), hair_m, uvscale=4.0))
+
+    # ---------------- 腕 ----------------
+    for sx in (-1, 1):
+        side = "L" if sx > 0 else "R"
+        arm_rows = [
+            (1.438, sx * 0.148, 0, 0.070, 0.070, 1.00),
+            (1.400, sx * 0.205, 0, 0.058, 0.058, 0.90),
+            (1.300, sx * 0.222, 0, 0.050, 0.050, 0.72),
+            (1.180, sx * 0.238, 0, 0.044, 0.046, 0.52),
+            (1.060, sx * 0.250, 0, 0.040, 0.041, 0.32),
+            (0.955, sx * 0.258, 0, 0.035, 0.036, 0.14),
+            (0.900, sx * 0.262, 0, 0.031, 0.032, 0.00),
+        ]
+        mark("arm" + side, lambda sx=sx, r=arm_rows: bld.add(
+            tube(_tube_sections(r, s), n=10, cap_start=False), torso_m,
+            uvscale=1.0, smooth=True))
+        # 袖口
+        mark("arm" + side, lambda sx=sx: bld.add(
+            cyl(0.034 * s, 0.022 * s, 10, (sx * 0.262 * s, 0, 0.908 * s)),
+            torso_m, uvscale=9.0))
+        # 手(指なしの手袋型)
+        mark("hand" + side, lambda sx=sx: bld.add(
+            box_taper(0.056 * s, 0.034 * s, 0.052 * s, 0.032 * s, 0.070 * s,
+                      (sx * 0.264 * s, -0.006 * s, 0.862 * s)), skin, uvscale=11.0))
+        mark("hand" + side, lambda sx=sx: bld.add(
+            box_taper(0.052 * s, 0.032 * s, 0.034 * s, 0.024 * s, 0.038 * s,
+                      (sx * 0.264 * s, -0.010 * s, 0.808 * s)), skin, uvscale=13.0))
+        mark("hand" + side, lambda sx=sx: bld.add(
+            box_taper(0.020 * s, 0.026 * s, 0.015 * s, 0.020 * s, 0.046 * s,
+                      (sx * 0.232 * s, -0.012 * s, 0.856 * s)), skin, uvscale=16.0))
+
+    # ---------------- 脚 ----------------
+    for sx in (-1, 1):
+        side = "L" if sx > 0 else "R"
+        leg_rows = [
+            (0.955, sx * 0.100, 0, 0.098, 0.101, 1.00),
+            (0.860, sx * 0.100, 0, 0.096, 0.099, 0.90),
+            (0.720, sx * 0.100, 0, 0.085, 0.090, 0.74),
+            (0.590, sx * 0.100, 0, 0.071, 0.076, 0.58),
+            (0.500, sx * 0.100, 0, 0.065, 0.069, 0.46),
+            (0.425, sx * 0.100, 0.006, 0.070, 0.077, 0.36),
+            (0.300, sx * 0.100, 0.004, 0.058, 0.063, 0.24),
+            (0.180, sx * 0.100, 0, 0.046, 0.049, 0.12),
+            (0.085, sx * 0.100, 0, 0.039, 0.043, 0.00),
+        ]
+        mark("leg" + side, lambda sx=sx, r=leg_rows: bld.add(
+            tube(_tube_sections(r, s), n=12, cap_start=False), spec.get("legmat", torso_m),
+            uvscale=1.0, smooth=True))
+        # 靴
+        sh_w, sh_l = spec.get("shoe_w", 0.096), spec.get("shoe_l", 0.238)
+        mark("shoe" + side, lambda sx=sx, w=sh_w, l=sh_l: bld.add(
+            box_taper(w * s, l * s, (w - 0.006) * s, (l - 0.010) * s, 0.024 * s,
+                      (sx * 0.100 * s, -0.028 * s, 0.012 * s)), shoe_m, uvscale=6.0))
+        mark("shoe" + side, lambda sx=sx, w=sh_w, l=sh_l: bld.add(
+            box_taper((w - 0.006) * s, (l - 0.010) * s, (w - 0.026) * s,
+                      (l - 0.076) * s, 0.042 * s,
+                      (sx * 0.100 * s, -0.030 * s, 0.045 * s)), shoe_m, uvscale=7.0))
+        mark("shoe" + side, lambda sx=sx, w=sh_w, l=sh_l: bld.add(
+            box_taper((w - 0.024) * s, (l - 0.120) * s, (w - 0.032) * s,
+                      (l - 0.150) * s, 0.038 * s,
+                      (sx * 0.100 * s, 0.026 * s, 0.084 * s)), shoe_m, uvscale=9.0))
+
+    # ---------------- スカート・ベルト ----------------
+    if spec.get("skirt"):
+        skirt_rows = [
+            (0.910, 0, 0, 0.176, 0.116, 1.0),
+            (0.830, 0, 0, 0.196, 0.133, 0.7),
+            (0.710, 0, 0, 0.224, 0.154, 0.35),
+            (0.628, 0, 0, 0.234, 0.162, 0.0),
+        ]
+        mark("skirt", lambda: bld.add(
+            tube(_tube_sections(skirt_rows, s), n=12, cap_start=False),
+            spec["skirt"], uvscale=2.6, smooth=True))
+    if spec.get("belt"):
+        mark("torso", lambda: bld.add(
+            tube(_tube_sections([
+                (1.075, 0, -b * 0.028, 0.156 + b * 0.034, 0.106 + b * 0.074, 1.0),
+                (1.030, 0, -b * 0.024, 0.160 + b * 0.030, 0.108 + b * 0.062, 0.0),
+            ], s), n=14, cap_start=False, cap_end=False),
+            spec["belt"], uvscale=3.0, smooth=True))
+    return bld, idx
+
+
+def human_bind(mesh, ao, idx, s):
+    """胴は背骨に沿って、腕脚はそれぞれの鎖に沿って滑らかに配分する。
+    肘や膝が 90 度曲がっても裂けない。"""
+    g = {}
+    z = lambda c: c.z / s
+    add_chain_weights(g, mesh, idx["torso"],
+                      [("Hips", 0.90), ("Spine", 1.09), ("Chest", 1.33),
+                       ("Neck", 1.47)], z)
+    add_rigid_weights(g, idx["head"], "Head")
+    if "skirt" in idx:
+        add_rigid_weights(g, idx["skirt"], "Hips")
+    for side in ("L", "R"):
+        add_chain_weights(g, mesh, idx["arm" + side],
+                          [("LowerArm." + side, 1.04), ("UpperArm." + side, 1.32)], z)
+        add_rigid_weights(g, idx["hand" + side], "LowerArm." + side)
+        add_chain_weights(g, mesh, idx["leg" + side],
+                          [("LowerLeg." + side, 0.42), ("UpperLeg." + side, 0.63)], z)
+        add_rigid_weights(g, idx["shoe" + side], "LowerLeg." + side)
+    bind_weights(mesh, ao, g)
+    return g
 
 
 ARMS = ["UpperArm.L", "UpperArm.R", "LowerArm.L", "LowerArm.R"]
 LEGS = ["UpperLeg.L", "UpperLeg.R", "LowerLeg.L", "LowerLeg.R"]
 SPINE = ["Hips", "Spine", "Chest", "Neck", "Head"]
-ALL_B = SPINE + ARMS + LEGS
 
 
 def anim_human_idle(ao, length=90):
-    """呼吸で上下 + わずかな重心移動。"""
+    """立ち。呼吸で上下 + わずかな重心移動。"""
     a = Anim(ao, "idle", length)
     N = 6
     for k in range(N + 1):
@@ -202,9 +338,9 @@ def anim_human_idle(ao, length=90):
         a.keyw_mul(f, "Neck", [('X', R(1.2) * ph), ('Z', R(1.8) * ph2)])
         a.keyw_mul(f, "Head", [('X', R(0.8) * ph2), ('Z', R(-2.4) * ph2)])
         for (bn, sgn) in (("UpperArm.L", 1), ("UpperArm.R", -1)):
-            a.keyw_mul(f, bn, [('X', R(2.0) * ph), ('Y', sgn * R(3.0))])
+            a.keyw_mul(f, bn, [('X', R(2.0) * ph), ('Y', sgn * R(4.0))])
         for bn in ("LowerArm.L", "LowerArm.R"):
-            a.keyw(f, bn, 'X', R(-9.0) + R(1.5) * ph)
+            a.keyw(f, bn, 'X', R(-10.0) + R(1.5) * ph)
         for bn in LEGS:
             a.keyw(f, bn, 'X', 0.0)
     return a.finish()
@@ -218,21 +354,18 @@ def anim_human_walk(ao, length=30, amp=24.0):
         f = 1 + k * (length - 1) / float(N)
         t = k / float(N)
         w = 2 * math.pi * t
-        sl = math.sin(w)              # 左脚: 正 = 前
+        sl = math.sin(w)
         sr = -sl
-        # 膝は後ろに振り出すときに曲げる
         kl = max(0.0, -math.sin(w + 0.9)) * R(38)
         kr = max(0.0, -math.sin(w + math.pi + 0.9)) * R(38)
         a.keyw(f, "UpperLeg.L", 'X', R(-amp) * sl)
         a.keyw(f, "UpperLeg.R", 'X', R(-amp) * sr)
         a.keyw(f, "LowerLeg.L", 'X', kl)
         a.keyw(f, "LowerLeg.R", 'X', kr)
-        # 腕は脚と逆位相
-        a.keyw_mul(f, "UpperArm.L", [('X', R(amp * 0.55) * sl), ('Y', R(4))])
-        a.keyw_mul(f, "UpperArm.R", [('X', R(amp * 0.55) * sr), ('Y', R(-4))])
+        a.keyw_mul(f, "UpperArm.L", [('X', R(amp * 0.55) * sl), ('Y', R(5))])
+        a.keyw_mul(f, "UpperArm.R", [('X', R(amp * 0.55) * sr), ('Y', R(-5))])
         a.keyw(f, "LowerArm.L", 'X', R(-14) - R(10) * max(0.0, sl))
         a.keyw(f, "LowerArm.R", 'X', R(-14) - R(10) * max(0.0, sr))
-        # 腰の上下と捻り
         a.keyw_loc(f, "Hips", (0.0, 0.0, -0.022 * abs(math.cos(w))))
         a.keyw_mul(f, "Hips", [('Z', R(-5) * sl), ('Y', R(2.5) * math.cos(w))])
         a.keyw_mul(f, "Chest", [('Z', R(5) * sl), ('X', R(2.0))])
@@ -241,59 +374,127 @@ def anim_human_walk(ao, length=30, amp=24.0):
     return a.finish()
 
 
+def anim_human_sit(ao, length=90):
+    """椅子に座る。腰を落として腿を前へ、脛は下へ。ループ(呼吸)。"""
+    HIP_X = -9.0
+    a = Anim(ao, "sit", length)
+    N = 6
+    for k in range(N + 1):
+        f = 1 + k * (length - 1) / N
+        t = k / float(N)
+        ph = math.sin(t * 2 * math.pi)
+        # 腰を座面の高さへ落とす(腿の付け根が z=0.50 になる)
+        a.keyw_loc(f, "Hips", (0.0, 0.020, -0.430))
+        a.keyw_mul(f, "Hips", [('X', R(HIP_X)), ('Z', R(1.2) * ph)])
+        a.keyw(f, "Spine", 'X', R(5.0) + R(1.0) * ph)
+        a.keyw(f, "Chest", 'X', R(3.5) + R(1.8) * ph)
+        a.keyw_mul(f, "Neck", [('X', R(2.0)), ('Z', R(1.5) * ph)])
+        a.keyw_mul(f, "Head", [('X', R(4.0)), ('Z', R(-2.0) * ph)])
+        # 腿を水平に(親の傾き分を差し引く)
+        for side in ("L", "R"):
+            a.keyw_mul(f, "UpperLeg." + side,
+                       [('X', R(-84.0 - HIP_X)), ('Z', R(3.0 if side == "L" else -3.0))])
+            a.keyw(f, "LowerLeg." + side, 'X', R(80.0))
+        # 腕は腿の上に置く
+        for (side, sgn) in (("L", 1), ("R", -1)):
+            a.keyw_mul(f, "UpperArm." + side,
+                       [('X', R(-26.0) + R(1.2) * ph), ('Y', sgn * R(7.0))])
+            a.keyw(f, "LowerArm." + side, 'X', R(-46.0))
+    return a.finish()
+
+
+def anim_human_sleep(ao, length=120):
+    """座布団の上でうつ伏せ寄りに横になる。ループ(寝息)。"""
+    a = Anim(ao, "sleep", length)
+    N = 8
+    for k in range(N + 1):
+        f = 1 + k * (length - 1) / N
+        t = k / float(N)
+        br = math.sin(t * 2 * math.pi)          # 寝息
+        # 腰を床へ。X +90 でうつ伏せ(頭が -Y)、Y 回転で少し横向きに
+        a.keyw_loc(f, "Hips", (0.02, 0.10, -0.775 + 0.004 * br))
+        a.keyw_mul(f, "Hips", [('X', R(90.0)), ('Y', R(24.0)), ('Z', R(4.0))])
+        a.keyw_mul(f, "Spine", [('X', R(-6.0) + R(1.4) * br), ('Z', R(-5.0))])
+        a.keyw_mul(f, "Chest", [('X', R(-8.0) + R(2.2) * br), ('Z', R(-7.0))])
+        a.keyw_mul(f, "Neck", [('X', R(-6.0)), ('Z', R(16.0))])
+        a.keyw_mul(f, "Head", [('X', R(-4.0)), ('Z', R(30.0)), ('Y', R(-12.0))])
+        # 右腕は頭の横へ折り、左腕は体の下へ
+        a.keyw_mul(f, "UpperArm.R", [('X', R(-96.0)), ('Y', R(-26.0)), ('Z', R(12.0))])
+        a.keyw(f, "LowerArm.R", 'X', R(-62.0))
+        a.keyw_mul(f, "UpperArm.L", [('X', R(18.0)), ('Y', R(16.0))])
+        a.keyw(f, "LowerArm.L", 'X', R(-38.0))
+        # 片脚を曲げる
+        a.keyw_mul(f, "UpperLeg.L", [('X', R(-16.0)), ('Z', R(-22.0))])
+        a.keyw(f, "LowerLeg.L", 'X', R(64.0))
+        a.keyw_mul(f, "UpperLeg.R", [('X', R(4.0)), ('Z', R(4.0))])
+        a.keyw(f, "LowerLeg.R", 'X', R(14.0))
+    return a.finish()
+
+
 def build_human(name, spec):
     """spec の中のマテリアルは reset_scene() の後に作ること(参照が無効になる)。"""
     s = spec["s"]
-    b = human_mesh(name, spec)
-    skirt_idx = getattr(b, "skirt_idx", [])
-    mesh = b.build()
+    bld, idx = human_mesh(name, spec)
+    mesh = bld.build()
     ao = make_armature(name, BONES, scale=s)
-    human_groups(mesh, ao, s, spec.get("skirt", False),
-                 force_idx={"Hips": skirt_idx} if skirt_idx else None)
-    set_scene_frames(90)
+    human_bind(mesh, ao, idx, s)
+    set_scene_frames(120)
     anim_human_idle(ao)
     anim_human_walk(ao)
+    anim_human_sit(ao)
+    anim_human_sleep(ao)
     emit(name, [ao, mesh], animations=True)
 
 
 def build_npc_boss():
+    """社長 60 代。黒いスーツ、腹が出ている、髪は薄い。"""
     reset_scene()
     setup_fps()
     build_human("npc_boss", dict(
         s=0.945, belly=0.85, shoulder=1.06,
-        cloth=material("BossSuit", "suit_black", color=(0.11, 0.11, 0.13), rough=0.85),
-        tie=material("BossTie", "metal_dark", color=(0.18, 0.16, 0.20), rough=0.7),
+        hair_back=0.034, hair_z0=1.806, hair_z1=1.716,
+        torso=material("BossSuit", "torso_suit", color=(0.11, 0.11, 0.13), rough=0.85),
+        legmat=material("BossTrouser", "suit_black", color=(0.11, 0.11, 0.13), rough=0.88),
+        belt=material("BossBelt", "shoe_leather", color=(0.08, 0.08, 0.08), rough=0.5),
         skin=material("BossSkin", "skin_pale", color=(0.70, 0.57, 0.48), rough=0.8),
         face=material("BossFace", "face_boss", color=(0.75, 0.62, 0.53), rough=0.8),
-        hair=material("BossHair", "metal_dark", color=(0.11, 0.10, 0.10), rough=0.9),
-        shoe=material("BossShoe", "car_black", color=(0.07, 0.07, 0.08), rough=0.35),
+        hair=material("BossHair", "hair_thin", color=(0.13, 0.12, 0.11), rough=0.9),
+        shoe=material("BossShoe", "shoe_leather", color=(0.07, 0.07, 0.08), rough=0.35),
     ))
 
 
 def build_npc_son():
+    """息子 60 代。くたびれたジャンパー、赤ら顔、白髪混じりの短髪。"""
     reset_scene()
     setup_fps()
     build_human("npc_son", dict(
         s=0.965, belly=0.45, shoulder=1.0,
-        cloth=material("SonJumper", "jumper", color=(0.20, 0.23, 0.29), rough=0.9),
-        tie=material("SonShirt", "white_cloth", color=(0.72, 0.70, 0.64), rough=0.95),
+        hair_back=0.006, hair_z0=1.800, hair_z1=1.698,
+        torso=material("SonJumper", "torso_jumper", color=(0.20, 0.23, 0.29), rough=0.9),
+        legmat=material("SonTrouser", "jumper", color=(0.22, 0.22, 0.24), rough=0.92),
+        belt=material("SonBelt", "shoe_leather", color=(0.12, 0.10, 0.09), rough=0.6),
         skin=material("SonSkin", "skin_pale", color=(0.74, 0.55, 0.46), rough=0.8),
         face=material("SonFace", "face_son", color=(0.78, 0.58, 0.48), rough=0.8),
-        hair=material("SonHair", "metal_dark", color=(0.14, 0.13, 0.12), rough=0.95),
-        shoe=material("SonShoe", "metal_dark", color=(0.16, 0.15, 0.14), rough=0.85),
+        hair=material("SonHair", "hair_salt", color=(0.16, 0.15, 0.14), rough=0.95),
+        shoe=material("SonShoe", "shoe_leather", color=(0.16, 0.15, 0.14), rough=0.7),
     ))
 
 
 def build_npc_granddaughter():
+    """孫娘 20 代。黒いワンピース、肩にかかる黒い長髪。"""
     reset_scene()
     setup_fps()
     build_human("npc_granddaughter", dict(
-        s=0.900, belly=0.0, shoulder=0.90, skirt=True, long_hair=True,
-        cloth=material("GdDress", "dress_black", color=(0.09, 0.09, 0.11), rough=0.92),
+        s=0.900, belly=0.0, bust=0.85, shoulder=0.90, long_hair=True,
+        hair_back=0.004, hair_z0=1.806, hair_z1=1.700,
+        shoe_w=0.082, shoe_l=0.230,
+        torso=material("GdDress", "torso_dress", color=(0.09, 0.09, 0.11), rough=0.92),
+        skirt=material("GdSkirt", "dress_black", color=(0.09, 0.09, 0.11), rough=0.92),
+        legmat=material("GdLeg", "skin_pale", color=(0.80, 0.68, 0.61), rough=0.75),
         skin=material("GdSkin", "skin_pale", color=(0.80, 0.68, 0.61), rough=0.75),
         face=material("GdFace", "face_granddaughter", color=(0.82, 0.70, 0.63), rough=0.75),
-        hair=material("GdHair", "suit_black", color=(0.07, 0.07, 0.08), rough=0.85),
-        shoe=material("GdShoe", "car_black", color=(0.07, 0.07, 0.08), rough=0.4),
+        hair=material("GdHair", "hair_long", color=(0.07, 0.07, 0.08), rough=0.85),
+        shoe=material("GdShoe", "shoe_leather", color=(0.07, 0.07, 0.08), rough=0.4),
     ))
 
 

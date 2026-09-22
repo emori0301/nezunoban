@@ -11,9 +11,9 @@ const DIR := "res://assets/models"
 var expect_anims := {
 	"cat": ["idle", "walk", "sit"],
 	"kasha": ["crawl", "idle"],
-	"npc_boss": ["idle", "walk"],
-	"npc_son": ["idle", "walk"],
-	"npc_granddaughter": ["idle", "walk"],
+	"npc_boss": ["idle", "walk", "sit", "sleep"],
+	"npc_son": ["idle", "walk", "sit", "sleep"],
+	"npc_granddaughter": ["idle", "walk", "sit", "sleep"],
 	"body_risen": ["rise"],
 	"hanging_robe": ["sway", "drop"],
 }
