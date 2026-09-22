@@ -10,6 +10,10 @@ signal finished
 
 var ui: Node = null
 var busy: bool = false
+## 自動プレイ(QA)用: true なら UI を待たず短時間で進める。choose は auto_chooser があればそれで決める。
+var auto_advance: bool = false
+var auto_line_seconds: float = 0.15
+var auto_chooser: Callable = Callable()   # func(prompt: String, options: Array) -> int
 
 func register_ui(node: Node) -> void:
 	ui = node
@@ -20,7 +24,11 @@ func is_ready() -> bool:
 func say(speaker: String, text: String) -> void:
 	busy = true
 	line_shown.emit(speaker, text)
-	if ui and ui.has_method("show_line"):
+	if auto_advance:
+		if Game.debug:
+			print("[say] %s: %s" % [speaker, text])
+		await get_tree().create_timer(auto_line_seconds).timeout
+	elif ui and ui.has_method("show_line"):
 		await ui.show_line(speaker, text)
 	else:
 		print("[say] %s: %s" % [speaker, text])
@@ -36,7 +44,11 @@ func say_lines(lines: Array) -> void:
 func choose(prompt: String, options: Array) -> int:
 	busy = true
 	var result := 0
-	if ui and ui.has_method("show_choice"):
+	if auto_advance:
+		if auto_chooser.is_valid():
+			result = int(auto_chooser.call(prompt, options))
+		await get_tree().create_timer(auto_line_seconds).timeout
+	elif ui and ui.has_method("show_choice"):
 		result = await ui.show_choice(prompt, options)
 	else:
 		print("[choose] %s %s -> 0" % [prompt, options])
@@ -47,7 +59,9 @@ func choose(prompt: String, options: Array) -> int:
 ## 手紙・日記などの全文表示。閉じるまで待つ。
 func note(title: String, body: String) -> void:
 	busy = true
-	if ui and ui.has_method("show_note"):
+	if auto_advance:
+		await get_tree().create_timer(auto_line_seconds).timeout
+	elif ui and ui.has_method("show_note"):
 		await ui.show_note(title, body)
 	else:
 		print("[note] %s\n%s" % [title, body])
