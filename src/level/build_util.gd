@@ -170,20 +170,22 @@ static func prop(parent: Node, node_name: String, model: String, pos: Vector3,
 	return p
 
 ## 世界に置く文字(看板・貼り紙)。DotGothic16 ではなく明朝(看板向き)。
+## font_px を大きくするほど文字のテクスチャが高解像度になる。
+## 640x360 に縮小されるので、NEAREST だと画数の多い漢字が潰れる。ここだけ LINEAR + mipmap。
 static func sign_text(parent: Node, text: String, pos: Vector3, yaw_deg: float,
-		size_m: float, color: Color, mincho: bool = true) -> Label3D:
+		size_m: float, color: Color, mincho: bool = true, font_px: int = 256) -> Label3D:
 	var l := Label3D.new()
 	l.text = text
 	l.position = pos
 	l.rotation_degrees.y = yaw_deg
-	l.font_size = 96
-	l.pixel_size = size_m / 96.0
+	l.font_size = font_px
+	l.pixel_size = size_m / float(font_px)
 	l.modulate = color
 	l.outline_size = 0
 	l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	l.double_sided = false
 	l.shaded = true
-	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var fpath := "res://assets/fonts/ShipporiMincho-Regular.ttf" if mincho else "res://assets/fonts/DotGothic16-Regular.ttf"
 	if ResourceLoader.exists(fpath):
 		l.font = load(fpath)

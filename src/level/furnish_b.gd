@@ -14,6 +14,21 @@ static func build(b: Building) -> void:
 	_outside(b)
 
 
+## glb の中の特定マテリアルの発光量だけ後から変える(Prop が複製した override を書き換える)。
+static func _tune_emission(p: Prop, mat_name: String, energy: float) -> void:
+	var inst := p.get_instance()
+	if inst == null:
+		return
+	for n in inst.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		for i in mi.get_surface_override_material_count():
+			var m := mi.get_surface_override_material(i)
+			if m is BaseMaterial3D and String(m.resource_name).findn(mat_name) >= 0:
+				var bm := m as BaseMaterial3D
+				bm.emission_enabled = true
+				bm.emission_energy_multiplier = energy
+
+
 static func _aim(m: Node3D, target: Vector3) -> void:
 	if m.is_inside_tree():
 		m.look_at(target, Vector3.UP)
@@ -166,7 +181,6 @@ static func _yukan(b: Building) -> void:
 	const R := &"Room_Yukan"
 	var node := b.room_of(R)
 	var steel := LevelMaterials.get_mat("steel", 1.0)
-	var cloth := LevelMaterials.get_mat("white_cloth", 1.0)
 
 	# ステンレスの台
 	LevelBuild.box(node, Vector3(7.3, 0.4, -9.9), Vector3(2.0, 0.8, 0.85), steel)
@@ -181,14 +195,14 @@ static func _yukan(b: Building) -> void:
 		LevelMaterials.plain(Color(0.5, 0.45, 0.35)))
 
 	# 白装束が吊られたハンガー。director が揺らせるよう Node3D をピボットにする。
+	# ピボットはモデルのフック(原点から +Y 2.0m)と同じ高さに置いてあるので、
+	# Yukan_Robe を X / Z 軸まわりに回すとフックを支点に振れる。
 	var robe := Node3D.new()
 	robe.name = "Yukan_Robe"
-	robe.position = Vector3(8.65, 1.95, -10.5)
+	robe.position = Vector3(8.65, 2.0, -10.5)
 	node.add_child(robe)
-	LevelBuild.box(robe, Vector3(0, 0.03, 0), Vector3(0.5, 0.03, 0.03),
-		LevelMaterials.plain(Color(0.5, 0.5, 0.5)), false, "", false)
-	LevelBuild.box(robe, Vector3(0, -0.12, 0), Vector3(0.42, 0.22, 0.09), cloth, false, "", false)
-	LevelBuild.box(robe, Vector3(0, -0.75, 0), Vector3(0.56, 1.1, 0.07), cloth, false, "", false)
+	LevelBuild.prop(robe, "Robe", "hanging_robe", Vector3(0, -2.0, 0), 0.0,
+		Vector3(0.56, 1.5, 0.1), Color(0.82, 0.81, 0.78), false)
 	# 吊り下げレール
 	LevelBuild.box(node, Vector3(8.65, 2.0, -10.0), Vector3(0.04, 0.04, 1.6),
 		LevelMaterials.plain(Color(0.45, 0.46, 0.48)), false, "", false)
@@ -231,14 +245,25 @@ static func _outside(b: Building) -> void:
 	LevelBuild.box(node, Vector3(-11.1, 2.62, 0.0), Vector3(0.07, 0.52, 3.0),
 		LevelMaterials.plain(Color(0.12, 0.12, 0.13)), false, "", false)
 	LevelBuild.sign_text(node, "やすらぎ会館", Vector3(-11.15, 2.62, 0.0), -90.0,
-		0.34, Color(0.86, 0.82, 0.70))
+		0.34, Color(0.86, 0.82, 0.70), true, 320)
 
-	# 自販機(光る)
-	b.add_prop(R, "VendingMachine", "vending_machine", Vector3(-11.65, 0.0, 6.2), 90.0,
+	# 自販機。前面は glb の Panel マテリアル(vending_panel テクスチャ)が光るので板を重ねない。
+	# glb の前面(Panel)はローカル +Z 側なので、西を向かせるには yaw = -90。
+	var vend := b.add_prop(R, "VendingMachine", "vending_machine", Vector3(-11.5, 0.0, 6.2), -90.0,
 		Vector3(1.15, 1.9, 0.75), Color(0.30, 0.16, 0.16))
-	LevelBuild.box(node, Vector3(-12.05, 1.22, 6.2), Vector3(0.03, 1.1, 0.88),
-		LevelMaterials.emissive(Color(1.0, 0.95, 0.82), 2.6), false, "", false)
-	b.add_bulb(R, Vector3(-12.5, 1.3, 6.2), Color(1.0, 0.94, 0.80), 1.15, 5.5, true)
+	_tune_emission(vend, "Panel", 1.3)
+	# 商品見本を照らす弱い光。自販機の手前に置いて足元だけ照らす(影は切って壁に黒板が出ないように)
+	var vl := OmniLight3D.new()
+	vl.name = "VendingGlow"
+	vl.position = Vector3(-12.7, 0.95, 6.2)
+	vl.light_color = Color(0.86, 0.92, 1.0)
+	vl.light_energy = 1.0
+	vl.omni_range = 4.2
+	vl.omni_attenuation = 1.7
+	vl.shadow_enabled = false
+	vl.light_specular = 0.0
+	node.add_child(vl)
+	b.add_light(R, vl)
 
 	# 霊柩車
 	b.add_prop(R, "Hearse", "hearse", Vector3(-17.8, 0.0, -3.2), 6.0,

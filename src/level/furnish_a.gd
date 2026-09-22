@@ -53,12 +53,12 @@ static func _genkan(b: Building) -> void:
 		Vector3(1.3, 0.95, 0.07), Color(0.32, 0.3, 0.26), false)
 
 	# 案内看板「故 春日 キヨ 儀 葬儀式場」。入ってすぐ正面に見える向き(西向き)。
-	LevelBuild.box(node, Vector3(-8.5, 0.45, 1.7), Vector3(0.09, 0.9, 0.85), wood)
-	LevelBuild.box(node, Vector3(-8.5, 1.52, 1.7), Vector3(0.09, 1.25, 1.42), wood)
-	LevelBuild.box(node, Vector3(-8.56, 1.52, 1.7), Vector3(0.02, 1.08, 1.28),
+	LevelBuild.box(node, Vector3(-8.5, 0.45, 1.4), Vector3(0.09, 0.9, 0.85), wood)
+	LevelBuild.box(node, Vector3(-8.5, 1.52, 1.4), Vector3(0.09, 1.25, 1.62), wood)
+	LevelBuild.box(node, Vector3(-8.56, 1.52, 1.4), Vector3(0.02, 1.08, 1.48),
 		LevelMaterials.plain(Color(0.88, 0.86, 0.8)), false)
-	LevelBuild.sign_text(node, "故　春日　キヨ　儀\n葬儀式場", Vector3(-8.58, 1.55, 1.7), -90.0,
-		0.115, Color(0.06, 0.06, 0.07))
+	LevelBuild.sign_text(node, "故 春日 キヨ 儀\n葬儀式場", Vector3(-8.58, 1.55, 1.4), -90.0,
+		0.165, Color(0.03, 0.03, 0.04), true, 384)
 
 	# 受付まわりの小物
 	b.add_prop(R, "ReceptionFlower", "flower_stand", Vector3(-6.3, 0.0, -3.3), 180.0,
@@ -128,7 +128,7 @@ static func _office(b: Building) -> void:
 	# 社長の番号を貼った紙(電話の上の壁)
 	LevelBuild.box(node, Vector3(-10.91, 1.5, 6.2), Vector3(0.02, 0.22, 0.16), paper, false, "", false)
 	LevelBuild.sign_text(node, "090-2214-0077", Vector3(-10.895, 1.5, 6.2), 90.0,
-		0.035, Color(0.1, 0.1, 0.12), false)
+		0.035, Color(0.1, 0.1, 0.12), false, 192)
 
 	# ホワイトボード・カレンダー・書類棚
 	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.12), Vector3(1.6, 1.0, 0.05),
@@ -264,8 +264,8 @@ static func _toilet(b: Building) -> void:
 	var white := LevelMaterials.plain(Color(0.78, 0.78, 0.75))
 	var tile := LevelMaterials.get_mat("concrete", 2.0)
 
-	LevelBuild.box(node, Vector3(1.15, 0.2, 2.85), Vector3(0.38, 0.4, 0.58), white)
-	LevelBuild.box(node, Vector3(1.15, 0.5, 3.2), Vector3(0.42, 0.62, 0.2), white)
+	b.add_prop(R, "Toilet", "toilet", Vector3(1.35, 0.0, 3.05), 0.0,
+		Vector3(0.4, 0.78, 0.68), Color(0.78, 0.78, 0.75))
 	LevelBuild.box(node, Vector3(1.5, 0.4, 1.65), Vector3(0.36, 0.8, 0.34), white)
 	LevelBuild.box(node, Vector3(1.69, 1.35, 1.65), Vector3(0.03, 0.52, 0.44),
 		LevelMaterials.plain(Color(0.42, 0.46, 0.48), 0.25), false, "", false)
