@@ -43,10 +43,10 @@ func begin() -> void:
 	Dialogue.auto_chooser = Callable(self, "choose")
 	Clock.speed = maxf(speed, 0.1)
 	# 線香・ロウソクは実秒タイマーなので、倍速ぶんだけ短くする(ゲーム内の長さを保つ)
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
 		inc.set(&"burn_seconds", 180.0 / maxf(speed, 0.1))
-	var cnd := dir.sys(&"candle")
+	var cnd: Node = dir.sys(&"candle")
 	if cnd:
 		cnd.set(&"burn_seconds", 720.0 / maxf(speed, 0.1))
 	Game.night_ended.connect(_on_ended)
@@ -115,7 +115,7 @@ func _act() -> void:
 		if spot and await _use(spot, 1.2):
 			return
 	# 3. 電話
-	var ph := dir.sys(&"phone")
+	var ph: Node = dir.sys(&"phone")
 	if ph and bool(ph.get(&"is_ringing")) and mode != &"kasha":
 		if await _use(ph, 1.0):
 			return
@@ -133,13 +133,13 @@ func _act() -> void:
 			return
 	# 7. ロウソク(終盤以外)
 	if not dir.timeline.finale_running() and mode != &"kasha":
-		var cnd := dir.sys(&"candle")
+		var cnd: Node = dir.sys(&"candle")
 		if cnd and not bool(cnd.get(&"is_lit")) and not bool(cnd.get(&"require_matches")):
 			await _use(cnd, 1.0)
 
 
 func _keep_incense() -> bool:
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc == null:
 		return false
 	var burning := bool(inc.get(&"is_burning"))
@@ -147,7 +147,7 @@ func _keep_incense() -> bool:
 	if burning and ratio >= 0.35:
 		return false
 	if int(Game.get_flag(&"incense_sticks", 0)) <= 0:
-		var box := dir.stock_box()
+		var box: Node = dir.stock_box()
 		if box == null:
 			dir.enable_stock_box()
 			box = dir.stock_box()

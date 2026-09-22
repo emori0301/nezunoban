@@ -50,12 +50,14 @@ func run(id: StringName) -> void:
 	var p := Game.player
 	if p and p.has_method(&"set_locked"):
 		p.set_locked(true)
-	if id == Game.ENDING_PORTRAIT:
+	if Game.get_flag(&"skip_prologue", false):
+		pass                              # QA(--ending=)は画面だけ見たいので前口上を飛ばす
+	elif id == Game.ENDING_PORTRAIT:
 		await _portrait_prologue()
 	else:
 		await _morning_prologue(id)
 	Audio.stop_all_ambient(1.4)
-	var hud := dir.hud()
+	var hud: Node = dir.hud()
 	if hud and hud.has_method(&"fade_out"):
 		await hud.fade_out(1.6)
 	else:
@@ -68,11 +70,11 @@ func _morning_prologue(id: StringName) -> void:
 	Audio.play(&"crow_morning", -2.0)
 	await get_tree().create_timer(2.2).timeout
 	Audio.play(&"chime_dawn", -4.0)
-	var b := dir.building()
+	var b: Building = dir.building()
 	if b:
 		b.set_all_lights(true)
 	if id == Game.ENDING_KASHA:
-		var coffin := dir.sys(&"coffin")
+		var coffin: Node = dir.sys(&"coffin")
 		if coffin:
 			coffin.call(&"set_open", true)
 	await get_tree().create_timer(2.6).timeout
@@ -80,26 +82,26 @@ func _morning_prologue(id: StringName) -> void:
 
 ## 布団で休んだとき。目覚めたら 05:00、遺影が自分の顔になっている。
 func _portrait_prologue() -> void:
-	var hud := dir.hud()
+	var hud: Node = dir.hud()
 	if hud and hud.has_method(&"fade_out"):
 		await hud.fade_out(1.4)
 	await get_tree().create_timer(1.6).timeout
 	Clock.skip_to(480)
 	# 目覚めた式場の状態を作る
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
-		inc.call(&"force_out")
-	var cnd := dir.sys(&"candle")
+		dir.quench(&"incense_stand")
+	var cnd: Node = dir.sys(&"candle")
 	if cnd:
-		cnd.call(&"force_out")
-	var coffin := dir.sys(&"coffin")
+		dir.quench(&"candle")
+	var coffin: Node = dir.sys(&"coffin")
 	if coffin:
 		coffin.call(&"set_open", true)
-	var b := dir.building()
+	var b: Building = dir.building()
 	if b:
 		b.set_all_lights(false)
 		b.set_room_lights(&"Room_Shikijo", false)
-	var iei := dir.sys(&"iei")
+	var iei: Node = dir.sys(&"iei")
 	var tex: Texture2D = SystemUtil.load_texture("iei_photo_player")
 	if iei:
 		iei.call(&"set_face_down", false)
@@ -131,7 +133,7 @@ func _show_screen(id: StringName) -> void:
 	vp.add_child(e)
 	if id == Game.ENDING_PORTRAIT and e.has_method(&"show_portrait"):
 		e.show_portrait(SystemUtil.load_texture("iei_photo_player"))
-	var hud := dir.hud()
+	var hud: Node = dir.hud()
 	if hud and hud.has_method(&"set_fade"):
 		hud.set_fade(0.0)
 		hud.set_rec(false)

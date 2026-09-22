@@ -50,50 +50,50 @@ func register(from_minutes: int) -> void:
 ## --time= で途中から始めたとき、それより前のイベントの結果だけを反映する。
 func apply_past(m: int) -> void:
 	var b: Building = dir.building()
-	if m >= 40:
+	if m > 40:
 		# 供花は替え済み
 		for f in SystemsInstaller.find_all(&"flower_stand"):
 			f.call(&"set_wilted", false)
-	if m >= 60:
+	if m > 60:
 		# 窓は閉めたあと
 		var w: WindowPane = b.get_window_pane(&"Window_Shikijo") if b else null
 		if w and w.is_open:
 			w.close()
-	if m >= 120:
+	if m > 120:
 		scares.chair_pulled_out()
 		if Dread.value >= 3:
 			scares.zabuton_before_coffin()
-	if m >= 140:
+	if m > 140:
 		dir.cats_enabled = true
 		_cat_visits_left = 3
 		_activate_cats()
-	if m >= 180:
+	if m > 180:
 		Game.set_flag(&"breaker_restored", true)
-	if m >= 210:
+	if m > 210:
 		# 息子は断られて控室で飲んでいる(真エンドの前提)
 		Game.set_flag(&"son_refused", true)
 		dir.spawn_son_asleep()
-	if m >= 240:
-		var c := dir.sys(&"coffin")
+	if m > 240:
+		var c: Node = dir.sys(&"coffin")
 		if c:
 			c.call(&"set_face_state", 1)
-	if m >= 270:
+	if m > 270:
 		dir.enable_office_note(true)
-	if m >= 300:
+	if m > 300:
 		var d: Door = b.get_door(&"Door_Yukan") if b else null
 		if d:
 			d.set_locked(false)
 		dir.enable_yukan_note(true)
-	if m >= 380:
-		var desk := dir.sys(&"boss_desk")
+	if m > 380:
+		var desk: Node = dir.sys(&"boss_desk")
 		if desk:
 			desk.call(&"enable_key", true)
 		_prepare_safe()
-	if m >= 400:
-		var fz := dir.sys(&"freezer")
+	if m > 400:
+		var fz: Node = dir.sys(&"freezer")
 		if fz:
 			fz.call(&"set_empty", true)
-		var c2 := dir.sys(&"coffin")
+		var c2: Node = dir.sys(&"coffin")
 		if c2:
 			c2.call(&"set_face_state", 3)
 		scares.paw_prints()
@@ -116,7 +116,7 @@ func ev_window() -> void:
 	var w: WindowPane = b.get_window_pane(&"Window_Shikijo") if b else null
 	if w:
 		w.open(true)
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
 		inc.set(&"burn_multiplier", 3.0)
 		inc.call(&"set_wind", Vector3(-0.8, 0, -0.5))
@@ -126,14 +126,14 @@ func ev_window() -> void:
 
 ## Director が window_closed{Window_Shikijo} を受けて呼ぶ
 func on_shikijo_window_closed() -> void:
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
 		inc.set(&"burn_multiplier", 1.0)
 		inc.call(&"set_wind", Vector3.ZERO)
 	Tasks.complete(&"window")
 	# 閉めた瞬間、外の駐車場に猫が1匹座ってこちらを見ている
 	await get_tree().create_timer(0.7).timeout
-	var cat := dir.npc(&"cat", 0)
+	var cat: Node = dir.npc(&"cat", 0)
 	if cat and cat.has_method(&"sit_at"):
 		cat.call(&"set_active", true)
 		cat.call(&"sit_at", Vector3(13.0, 0.0, 5.6), Vector3(0, 0, -1))
@@ -147,7 +147,7 @@ func on_shikijo_window_closed() -> void:
 
 func ev_phone_silent() -> void:
 	dir.log_event("ev_phone_silent")
-	var ph := dir.sys(&"phone")
+	var ph: Node = dir.sys(&"phone")
 	if ph == null:
 		return
 	ph.call(&"ring", 30.0)
@@ -155,7 +155,7 @@ func ev_phone_silent() -> void:
 
 
 func play_silent_call() -> void:
-	var ph := dir.sys(&"phone")
+	var ph: Node = dir.sys(&"phone")
 	await Dialogue.monologue(ScriptText.M_PHONE_HELLO)
 	Audio.play(&"phone_breath", -2.0)
 	await get_tree().create_timer(3.0).timeout
@@ -164,7 +164,7 @@ func play_silent_call() -> void:
 	await Dialogue.monologue(ScriptText.M_PHONE_CUT)
 	# 受話器を置くと受付の芳名帳のページがめくれる
 	await get_tree().create_timer(0.8).timeout
-	var gb := dir.sys(&"guest_book")
+	var gb: Node = dir.sys(&"guest_book")
 	if gb:
 		gb.call(&"rustle")
 	scares.glitch(0.25)
@@ -178,7 +178,7 @@ func ev_monitor_figure() -> void:
 	dir.log_event("ev_monitor_figure")
 	# 後列の椅子に座る人影。render layer 10 なので CCTV にだけ映る。
 	_monitor_ghost = scares.spawn_figure("npc_son", Vector3(12.9, 0.0, 1.1), -90.0, true)
-	var mon := dir.sys(&"monitor")
+	var mon: Node = dir.sys(&"monitor")
 	if mon:
 		mon.set(&"auto_switch", false)
 		mon.call(&"switch_feed", 0)
@@ -193,7 +193,7 @@ func on_shikijo_reveal() -> void:
 	if _monitor_ghost and is_instance_valid(_monitor_ghost):
 		_monitor_ghost.queue_free()
 		_monitor_ghost = null
-	var mon := dir.sys(&"monitor")
+	var mon: Node = dir.sys(&"monitor")
 	if mon:
 		mon.set(&"auto_switch", true)
 		mon.call(&"set_static", 0.1)
@@ -216,7 +216,7 @@ func ev_cats_begin() -> void:
 
 
 func _activate_cats() -> void:
-	var c := dir.npc(&"cat", 0)
+	var c: Node = dir.npc(&"cat", 0)
 	if c == null:
 		return
 	if c.has_method(&"activate"):
@@ -261,7 +261,7 @@ func _entry_pos(entry: StringName) -> Vector3:
 
 func ev_tv() -> void:
 	dir.log_event("ev_tv")
-	var tv := dir.sys(&"tv")
+	var tv: Node = dir.sys(&"tv")
 	if tv == null:
 		return
 	tv.call(&"turn_on")
@@ -271,7 +271,7 @@ func ev_tv() -> void:
 
 ## 控室に入る / TV に近づいたとき
 func on_tv_approach() -> void:
-	var tv := dir.sys(&"tv")
+	var tv: Node = dir.sys(&"tv")
 	if tv == null:
 		return
 	await get_tree().create_timer(0.5).timeout
@@ -287,7 +287,7 @@ func on_tv_approach() -> void:
 func ev_blackout() -> void:
 	dir.log_event("ev_blackout")
 	var b: Building = dir.building()
-	var br := dir.sys(&"breaker")
+	var br: Node = dir.sys(&"breaker")
 	if b:
 		# 廊下の蛍光灯が1本ずつ落ちる
 		b.flicker(&"Room_Hall", 1.6)
@@ -314,13 +314,13 @@ func on_breaker_restored() -> void:
 
 ## 復旧して式場に戻ったとき
 func on_blackout_reveal() -> void:
-	var inc := dir.sys(&"incense_stand")
-	var cnd := dir.sys(&"candle")
-	var iei := dir.sys(&"iei")
+	var inc: Node = dir.sys(&"incense_stand")
+	var cnd: Node = dir.sys(&"candle")
+	var iei: Node = dir.sys(&"iei")
 	if inc:
-		inc.call(&"force_out")
+		dir.quench(&"incense_stand")
 	if cnd:
-		cnd.call(&"force_out")
+		dir.quench(&"candle")
 	if iei:
 		iei.call(&"set_face_down", true)
 	scares.glitch(0.5)
@@ -336,7 +336,7 @@ func ev_son() -> void:
 	for i in 3:
 		Audio.play_at(StringName("door_knock_%d" % (i + 1)), Vector3(-11.4, 1.2, 0.0), 2.0, 1.0, 26.0)
 		await get_tree().create_timer(0.55).timeout
-	var son := dir.npc(&"son")
+	var son: Node = dir.npc(&"son")
 	if son and son.has_method(&"enter_from_genkan"):
 		son.call(&"set_active", true)
 		await son.call(&"enter_from_genkan", Vector3(-8.6, 0.0, -0.6))
@@ -377,7 +377,7 @@ func ev_son_sleeps() -> void:
 	dir.log_event("ev_son_sleeps")
 	if not Game.get_flag(&"son_refused", false):
 		return
-	var son := dir.npc(&"son")
+	var son: Node = dir.npc(&"son")
 	if son and son.has_method(&"sleep"):
 		son.call(&"sleep")
 	Game.set_flag(&"son_asleep", true)
@@ -385,7 +385,7 @@ func ev_son_sleeps() -> void:
 
 
 func _son_allowed(son) -> void:
-	var coffin := dir.sys(&"coffin")
+	var coffin: Node = dir.sys(&"coffin")
 	if coffin:
 		coffin.set(&"allow_open_window", true)
 		coffin.call(&"set_face_state", 2)
@@ -404,7 +404,7 @@ func _son_allowed(son) -> void:
 func ev_dry_ice() -> void:
 	dir.log_event("ev_dry_ice")
 	Tasks.set_task(&"dry_ice", ScriptText.TASK_DRY_ICE)
-	var fz := dir.sys(&"freezer")
+	var fz: Node = dir.sys(&"freezer")
 	if fz:
 		fz.call(&"set_empty", false)
 
@@ -424,7 +424,7 @@ func on_dry_ice_carried() -> void:
 func on_dry_ice_replaced() -> void:
 	scares.set_second_footsteps(false)
 	Tasks.complete(&"dry_ice")
-	var coffin := dir.sys(&"coffin")
+	var coffin: Node = dir.sys(&"coffin")
 	if coffin and int(coffin.get(&"face_state")) < 1:
 		coffin.call(&"set_face_state", 1)
 	await get_tree().create_timer(0.4).timeout
@@ -482,7 +482,7 @@ func on_yukan_entered() -> void:
 
 func ev_phone_wet() -> void:
 	dir.log_event("ev_phone_wet")
-	var ph := dir.sys(&"phone")
+	var ph: Node = dir.sys(&"phone")
 	if ph == null:
 		return
 	ph.call(&"ring", 30.0)
@@ -490,16 +490,16 @@ func ev_phone_wet() -> void:
 
 
 func play_wet_call() -> void:
-	var ph := dir.sys(&"phone")
+	var ph: Node = dir.sys(&"phone")
 	await Dialogue.monologue(ScriptText.M_PHONE_HELLO)
 	Audio.play(&"phone_voice_wet", 0.0)
 	await Dialogue.say("", ScriptText.PHONE_WET_LINE)
 	await get_tree().create_timer(1.0).timeout
 	if ph:
 		ph.call(&"hang_up")
-	var inc := dir.sys(&"incense_stand")
+	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
-		inc.call(&"force_out")
+		dir.quench(&"incense_stand")
 	scares.glitch(0.5)
 	await Dialogue.monologue(ScriptText.M_PHONE_WET_AFTER)
 
@@ -523,14 +523,14 @@ func ev_ushimitsu() -> void:
 			c.call(&"set_target_entry", CAT_ENTRIES[i % CAT_ENTRIES.size()])
 	# 20 ゲーム分のあいだ、4 回 火を消す(実時間では速度で割る)
 	var step := 5.0 * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
-	var coffin := dir.sys(&"coffin")
+	var coffin: Node = dir.sys(&"coffin")
 	for i in 4:
 		await get_tree().create_timer(step).timeout
 		if Game.state == Game.State.ENDING:
 			return
-		var inc := dir.sys(&"incense_stand")
+		var inc: Node = dir.sys(&"incense_stand")
 		if inc:
-			inc.call(&"force_out")
+			dir.quench(&"incense_stand")
 		if coffin:
 			coffin.call(&"scratch")
 		if b:
@@ -538,9 +538,9 @@ func ev_ushimitsu() -> void:
 		Audio.play_at(&"coffin_scratch", coffin.global_position if coffin else Vector3.ZERO, 0.0)
 		scares.glitch(0.5)
 		if i == 3:
-			var cnd := dir.sys(&"candle")
+			var cnd: Node = dir.sys(&"candle")
 			if cnd:
-				cnd.call(&"force_out")
+				dir.quench(&"candle")
 			if coffin:
 				coffin.call(&"creak")
 	await get_tree().create_timer(step * 0.6).timeout
@@ -554,14 +554,14 @@ func ev_ushimitsu() -> void:
 
 func ev_safe() -> void:
 	dir.log_event("ev_safe")
-	var desk := dir.sys(&"boss_desk")
+	var desk: Node = dir.sys(&"boss_desk")
 	if desk:
 		desk.call(&"enable_key", true)
 	_prepare_safe()
 
 
 func _prepare_safe() -> void:
-	var sf := dir.sys(&"safe")
+	var sf: Node = dir.sys(&"safe")
 	if sf:
 		sf.call(&"set_note", ScriptText.PAGE4_TITLE, ScriptText.PAGE4_BODY, 4)
 
@@ -576,10 +576,10 @@ func on_ledger_read() -> void:
 
 func ev_freezer_empty() -> void:
 	dir.log_event("ev_freezer_empty")
-	var fz := dir.sys(&"freezer")
+	var fz: Node = dir.sys(&"freezer")
 	if fz:
 		fz.call(&"set_empty", true)
-	var coffin := dir.sys(&"coffin")
+	var coffin: Node = dir.sys(&"coffin")
 	if coffin:
 		coffin.call(&"set_face_state", 3)
 	scares.paw_prints()
@@ -594,40 +594,42 @@ func ev_finale() -> void:
 	_finale_running = true
 	dir.log_event("ev_finale")
 	var b: Building = dir.building()
-	var inc := dir.sys(&"incense_stand")
-	var cnd := dir.sys(&"candle")
-	var coffin := dir.sys(&"coffin")
+	var inc: Node = dir.sys(&"incense_stand")
+	var cnd: Node = dir.sys(&"candle")
+	var coffin: Node = dir.sys(&"coffin")
 	if b:
 		b.set_all_lights(false)           # 外(自販機・外灯)は残る
+	scares.set_moonlight(true)            # 窓からの月明かりだけ残す(真っ暗だと歩けない)
 	if inc:
-		inc.call(&"force_out")
+		dir.quench(&"incense_stand")
 	if cnd:
-		cnd.call(&"force_out")
+		dir.quench(&"candle")
 	if coffin:
 		coffin.call(&"set_lid_ajar", true)
 	Audio.stop_ambient(&"amb_drone_low", 1.0)
 	Audio.ambient(&"amb_drone_high", -6.0, 1.0)
 	scares.glitch(0.9)
-	await Dialogue.monologue(ScriptText.M_LIGHTS_OUT)
 	# マッチが要る
 	if cnd:
 		cnd.set(&"require_matches", true)
-	var m := dir.matches_pickup()
+	var m: Node = dir.matches_pickup()
 	if m:
 		m.set(&"enabled", true)
 		m.set(&"visible", true)
-	await Dialogue.monologue(ScriptText.M_MATCHES)
 	Tasks.set_task(&"relight", ScriptText.TASK_RELIGHT)
 	# 控室の戸を「開けるか」に差し替える(息子が寝ているとき)
 	_install_hikaeshitsu_choice()
-	# 火車
-	var k := dir.npc(&"kasha")
+	# 火車。独白は「送りっぱなし」にする。
+	# (Dialogue.say はプレイヤーが送るまで返らないので、await すると火車が出てこない)
+	var k: Node = dir.npc(&"kasha")
 	if k and k.has_method(&"activate"):
 		k.call(&"set_active", true)
-		k.call(&"activate")
+		k.call(&"activate")       # Kasha 側が chase_started を出す
 	else:
 		dir.start_fallback_chase()
-	Events.emit_event(&"chase_started")
+		Events.emit_event(&"chase_started")
+	await Dialogue.monologue(ScriptText.M_LIGHTS_OUT)
+	await Dialogue.monologue(ScriptText.M_MATCHES)
 
 
 ## relight_success を受ける
@@ -637,7 +639,7 @@ func on_relight(n: int) -> void:
 	_finale_relights = n
 	Tasks.complete(&"relight")
 	Dialogue.monologue(ScriptText.M_RELIGHT_OK)
-	var k := dir.npc(&"kasha")
+	var k: Node = dir.npc(&"kasha")
 	if n >= 3:
 		_finish_finale()
 		return
@@ -648,12 +650,12 @@ func on_relight(n: int) -> void:
 	await get_tree().create_timer(18.0 / maxf(Clock.speed, 0.01)).timeout
 	if not _finale_running or Game.state == Game.State.ENDING:
 		return
-	var cnd := dir.sys(&"candle")
+	var cnd: Node = dir.sys(&"candle")
 	if cnd:
 		# 3 回目は異変度が高ければ必ず失敗する
 		if n == 2 and (Dread.is_doomed() or Game.get_flag(&"cat_crossed_coffin", false)):
 			cnd.set(&"fail_next", true)
-		cnd.call(&"force_out")
+		dir.quench(&"candle")
 	Audio.play(&"kasha_growl", -4.0)
 	scares.glitch(0.6)
 	Tasks.set_task(&"relight", ScriptText.TASK_RELIGHT)
@@ -676,16 +678,18 @@ func on_relight_failed() -> void:
 
 func _finish_finale() -> void:
 	_finale_running = false
-	var k := dir.npc(&"kasha")
+	var k: Node = dir.npc(&"kasha")
 	if k and k.has_method(&"stop_chase"):
 		k.call(&"stop_chase")
 	dir.set_fallback_chase(false)
-	Events.emit_event(&"chase_ended")
+	if k == null or not k.has_method(&"stop_chase"):
+		Events.emit_event(&"chase_ended")
 	Audio.stop_ambient(&"amb_drone_high", 2.0)
 	var b: Building = dir.building()
 	if b:
 		b.set_room_lights(&"Room_Hall", true)
 		b.set_room_lights(&"Room_Genkan", true)
+	scares.set_moonlight(false)
 	Tasks.set_task(&"last_incense", ScriptText.TASK_LAST_INCENSE)
 	if int(Clock.game_minutes) < 460:
 		Clock.skip_to(460)

@@ -14,8 +14,8 @@ const INCENSE_BOX_SCENE := "res://src/systems/incense_box.tscn"
 
 ## 位置(src/level の --api 出力から取った実測値)
 const POS_RECEPTION := Vector3(-8.0, 0.0, -3.7)
-const POS_OFFICE_DESK := Vector3(-9.2, 0.0, 7.3)
-const POS_SHIKIJO_COFFIN := Vector3(15.6, 0.0, -1.5)
+const POS_OFFICE_DESK := Vector3(-7.0, 0.0, 5.2)
+const POS_SHIKIJO_COFFIN := Vector3(15.2, 0.0, -1.9)
 const POS_SHIKIJO_BACK := Vector3(10.35, 0.0, 1.1)
 const POS_GENKAN_INSIDE := Vector3(-9.6, 0.0, 0.0)
 const POS_HIKAESHITSU_ZABUTON := Vector3(-1.35, 0.0, 3.8)
@@ -83,13 +83,33 @@ func _boot() -> void:
 	start_minutes = int(Clock.game_minutes)
 	_npc_installer = _find_npc_installer()
 	_connect_events()
+	# QA 用: --dread=4 で異変度を先に積む(座布団や遺影の追従を撮るため)
+	if args.has("dread"):
+		Dread.add(int(String(args["dread"])), &"debug")
 	apply_state_for_time(start_minutes)
+	# QA 用: --ending=morning|kasha|substitute|portrait でエンディング画面だけ出す
+	if args.has("ending"):
+		var id := StringName(String(args["ending"]))
+		Game.set_flag(&"skip_prologue", true)
+		call_deferred(&"finish", id)
+		return
 	timeline.register(start_minutes)
 	set_process(true)
 	if autoplay and autoplay.has_method(&"begin"):
 		autoplay.call(&"begin")
-	var skip_intro: bool = args.has("screenshot") or args.has("tour") or start_minutes > 0
+	# --screenshot / --tour / --time は撮影と QA のためのフックなので導入演出を飛ばす。
+	# (導入はフェードインと会話で数分かかるので、撮ると真っ黒や会話中の画になる)
+	# --intro を付けると撮影時でも導入を流す(QA 用)
+	var skip_intro: bool = (args.has("screenshot") or args.has("tour") or args.has("time") \
+		or start_minutes > 0) and not args.has("intro")
 	if skip_intro:
+		var h := hud()
+		if h and h.has_method(&"set_fade"):
+			h.set_fade(0.0)
+		var p := Game.player
+		if p and p.has_method(&"set_locked"):
+			p.set_locked(false)
+		scares.set_room_ambience(building().current_room if building() else &"Room_Genkan")
 		Clock.start()
 	else:
 		await play_intro()
@@ -171,12 +191,24 @@ func matches_pickup() -> Node:
 	return sys(&"matches")
 
 
+## 台本で火を消す。プレイヤーの失敗ではないので異変度は上げない。
+## (掟「線香を絶やさぬこと」を破った判定は _on_hour の放置チェックで行う)
+func quench(name: StringName) -> void:
+	var n := sys(name)
+	if n == null:
+		return
+	var prev: int = int(n.get(&"dread_on_out"))
+	n.set(&"dread_on_out", 0)
+	n.call(&"force_out")
+	n.set(&"dread_on_out", prev)
+
+
 # ============================================================ 下ごしらえ
 
 func _setup_static() -> void:
 	var h := hud()
 	if h and h.has_method(&"set_rules"):
-		h.set_rules(ScriptText.RULES)
+		h.set_rules(ScriptText.rules())
 	Game.set_flag(&"incense_sticks", 10)
 	var inc := sys(&"incense_stand")
 	if inc:
@@ -352,6 +384,9 @@ func _connect_events() -> void:
 	var p := Game.player
 	if p and p.has_signal(&"carried_changed"):
 		p.connect(&"carried_changed", func(item: StringName): _on_carried(item))
+	var k := npc(&"kasha")
+	if k and k.has_signal(&"caught"):
+		k.connect(&"caught", Callable(self, "kasha_catches"))
 
 
 # ---------------------------------------------------------- 線香とロウソク
@@ -698,8 +733,10 @@ func play_intro() -> void:
 
 	# --- 社長が帰る ---
 	await _walk(boss, POS_GENKAN_INSIDE)
-	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_LEAVE)
+	# 「勝手口の鍵」→「式場の蛍光灯」→「じゃあな」の順で言わせる
+	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[0]))
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LIGHTS)
+	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[1]))
 	var b := building()
 	if b:
 		b.set_room_lights(&"Room_Shikijo", false)
@@ -730,6 +767,11 @@ func _walk(who, pos: Vector3) -> void:
 		await get_tree().create_timer(0.35 if Dialogue.auto_advance else 1.2).timeout
 		return
 	await who.call(&"go_to", pos)
+	# ナビが通らなかったときは位置だけ合わせる。
+	# (Spawn_Boss が受付台の裏の 0.7m の隙間にあり、ナビメッシュが届かない。npc/level に依頼済み)
+	var n3 := who as Node3D
+	if n3 and n3.global_position.distance_to(pos) > 1.6 and who.has_method(&"teleport_to"):
+		who.call(&"teleport_to", pos)
 	if who.has_method(&"face_player"):
 		who.call(&"face_player")
 

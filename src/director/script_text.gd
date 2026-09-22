@@ -8,13 +8,18 @@ extends RefCounted
 
 # ============================================================ 掟(クリップボード)
 
-const RULES := PackedStringArray([
+const RULE_LINES := [
 	"一、線香を絶やさぬこと",
 	"一、灯明を絶やさぬこと",
 	"一、猫を入れぬこと",
 	"一、棺の小窓を開けぬこと",
 	"一、眠らぬこと",
-])
+]
+
+## HUD の set_rules(PackedStringArray) に渡す形。
+## (PackedStringArray(...) は const にできないので static func にしてある)
+static func rules() -> PackedStringArray:
+	return PackedStringArray(RULE_LINES)
 
 const SPEAKER_BOSS := "社長"
 const SPEAKER_HIKARI := "ひかり"

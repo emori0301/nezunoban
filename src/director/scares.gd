@@ -109,7 +109,11 @@ func yaw_to(from: Vector3, to: Vector3) -> float:
 
 ## glb を真っ黒にした「人影」を置く。cctv_only なら監視モニターにだけ映る。
 func spawn_figure(model: String, pos: Vector3, yaw_deg: float, cctv_only: bool = false,
-		anim: StringName = &"idle") -> Node3D:
+		anim: StringName = &"idle", brightness: float = -1.0) -> Node3D:
+	# CCTV にだけ映す人影は、式場が灯明だけで真っ暗なので完全な黒だと何も見えない。
+	# わずかに明るく、ほんの少し自発光させて「暗いのに形が分かる」ところに合わせる。
+	if brightness < 0.0:
+		brightness = 0.16 if cctv_only else 0.015
 	var root := Node3D.new()
 	root.name = "Figure_" + model
 	root.position = pos
@@ -121,14 +125,14 @@ func spawn_figure(model: String, pos: Vector3, yaw_deg: float, cctv_only: bool =
 		var ap := inst.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		if ap and ap.has_animation(String(anim)):
 			ap.play(String(anim))
-		_blacken(inst)
+		_blacken(inst, brightness)
 	else:
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(0.5, 1.7, 0.3)
 		mi.mesh = bm
 		mi.position.y = 0.85
-		mi.material_override = SystemUtil.flat_material(Color(0.02, 0.02, 0.025))
+		mi.material_override = SystemUtil.flat_material(Color(brightness, brightness, brightness * 1.2))
 		root.add_child(mi)
 	for n in root.find_children("*", "VisualInstance3D", true, false):
 		var vi := n as VisualInstance3D
@@ -138,17 +142,23 @@ func spawn_figure(model: String, pos: Vector3, yaw_deg: float, cctv_only: bool =
 	return attach(root) as Node3D
 
 
-func _blacken(root: Node) -> void:
+func _blacken(root: Node, brightness: float = 0.015) -> void:
+	var col := Color(brightness, brightness, brightness * 1.15)
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
 			continue
 		for i in mi.mesh.get_surface_count():
 			var mat := StandardMaterial3D.new()
-			mat.albedo_color = Color(0.015, 0.015, 0.02)
+			mat.albedo_color = col
 			mat.roughness = 1.0
 			mat.metallic = 0.0
 			mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+			# 真っ暗な部屋でも輪郭が出るように、ごくわずかに自発光させる
+			if brightness > 0.05:
+				mat.emission_enabled = true
+				mat.emission = col
+				mat.emission_energy_multiplier = 1.2
 			mi.set_surface_override_material(i, mat)
 
 
@@ -189,6 +199,44 @@ func set_room_ambience(room: StringName) -> void:
 		Audio.stop_ambient(_ambient_room, 1.2)
 	_ambient_room = want
 	Audio.ambient(want, -12.0 if want == &"amb_fluorescent" else -9.0, 1.4)
+
+
+## 04:00 の全消灯用。館内の照明を落としたあと、窓から入る月明かりだけを足す。
+## 真っ暗だと廊下を歩けず「怖い」より「見えない」になるので、輪郭が分かる下限にしてある。
+const MOONLIGHT := [
+	[Vector3(-10.0, 2.2, 0.5), 7.0],      # 玄関(ガラス戸)
+	[Vector3(-8.0, 2.1, 8.6), 6.5],       # 事務所(窓)
+	[Vector3(0.6, 2.0, 2.4), 5.0],        # トイレ(窓)
+	[Vector3(-1.5, 2.2, 0.2), 7.0],       # 廊下(西)
+	[Vector3(6.4, 2.2, -3.2), 7.0],       # 廊下(北の枝)
+	[Vector3(0.0, 2.2, -6.6), 7.0],       # バックヤード(勝手口)
+	[Vector3(12.8, 2.1, 2.6), 8.0],       # 式場(南の窓)
+]
+
+var _moon: Array[Node3D] = []
+
+func set_moonlight(on: bool) -> void:
+	if on and _moon.is_empty():
+		var root := level_root()
+		if root == null:
+			return
+		for m in MOONLIGHT:
+			var l := OmniLight3D.new()
+			l.light_color = Color(0.52, 0.62, 0.86)
+			l.light_energy = 0.38
+			l.omni_range = float(m[1])
+			l.omni_attenuation = 1.4
+			l.shadow_enabled = false
+			l.position = m[0]
+			root.add_child(l)
+			_moon.append(l)
+			_spawned.append(l)
+	elif not on:
+		for l in _moon:
+			if is_instance_valid(l):
+				l.queue_free()
+				_spawned.erase(l)
+		_moon.clear()
 
 
 func stop_room_ambience() -> void:
@@ -245,7 +293,7 @@ func zabuton_before_coffin() -> bool:
 		return false
 	Game.set_flag(&"scare_zabuton_coffin", true)
 	for i in 3:
-		spawn_prop("zabuton", Vector3(15.05, 0.03, -1.4 + i * 0.9), 90.0)
+		spawn_prop("zabuton", Vector3(15.45, 0.03, -1.5 + i * 1.0), 90.0)
 	Dialogue.monologue(ScriptText.M_ZABUTON)
 	return true
 
@@ -468,43 +516,54 @@ func robe_drop() -> void:
 	glitch(0.5)
 
 
-## 濡れた足跡(廊下 → 式場)
+## 濡れた足跡(廊下 → 式場)。0.42m 間隔で左右に振りながら棺の前まで続く。
 func paw_prints() -> void:
 	if Game.get_flag(&"scare_paw_prints", false):
 		return
 	Game.set_flag(&"scare_paw_prints", true)
 	var tex: Texture2D = SystemUtil.load_texture("paw_print")
-	var path := [
-		Vector3(4.2, 0.0, 0.25), Vector3(6.0, 0.0, 0.05), Vector3(7.6, 0.0, -0.05),
-		Vector3(9.2, 0.0, -0.15), Vector3(10.8, 0.0, -0.25), Vector3(12.4, 0.0, -0.3),
-		Vector3(13.6, 0.0, -0.35), Vector3(14.6, 0.0, -0.4), Vector3(15.3, 0.0, -0.45),
-		Vector3(15.9, 0.0, -0.5), Vector3(16.4, 0.0, -0.55), Vector3(16.8, 0.0, -0.62),
+	var path: Array[Vector3] = [
+		Vector3(3.6, 0.0, 0.30), Vector3(7.4, 0.0, 0.05), Vector3(11.0, 0.0, -0.25),
+		Vector3(14.6, 0.0, -0.45), Vector3(16.3, 0.0, -0.58),
 	]
-	for i in path.size():
-		var pos: Vector3 = path[i]
-		var nxt: Vector3 = path[mini(i + 1, path.size() - 1)]
-		var y := yaw_to(pos, nxt) if i < path.size() - 1 else yaw_to(path[i - 1], pos)
-		var side := (1.0 if i % 2 == 0 else -1.0) * 0.07
-		var d := Decal.new()
-		d.texture_albedo = tex
-		d.size = Vector3(0.13, 0.45, 0.13)
-		d.albedo_mix = 0.95
-		d.upper_fade = 0.1
-		d.lower_fade = 0.1
-		d.position = pos + Vector3(sin(deg_to_rad(y)) * side, 0.02, cos(deg_to_rad(y)) * side)
-		d.rotation_degrees = Vector3(0, y, 0)
-		attach(d)
+	var step := 0.42
+	var left := true
+	for i in path.size() - 1:
+		var a: Vector3 = path[i]
+		var b2: Vector3 = path[i + 1]
+		var seg := b2 - a
+		var n := maxi(int(seg.length() / step), 1)
+		var y := yaw_to(a, b2)
+		var side := Vector3(cos(deg_to_rad(y)), 0.0, -sin(deg_to_rad(y)))
+		for k in n:
+			var pos: Vector3 = a + seg * (float(k) / float(n))
+			var d := _paw_decal(tex)
+			d.position = pos + side * (0.075 if left else -0.075) + Vector3(0, 0.02, 0)
+			d.rotation_degrees = Vector3(0, y, 0)
+			attach(d)
+			left = not left
 	Dialogue.monologue(ScriptText.M_PAW)
+
+
+## 濡れた足跡。暗い廊下でも見えるように、わずかに濡れ光らせる。
+func _paw_decal(tex: Texture2D) -> Decal:
+	var d := Decal.new()
+	d.texture_albedo = tex
+	d.texture_emission = tex
+	d.emission_energy = 1.1
+	d.modulate = Color(0.78, 0.88, 1.0)
+	d.size = Vector3(0.22, 0.6, 0.22)
+	d.albedo_mix = 1.0
+	d.upper_fade = 0.1
+	d.lower_fade = 0.1
+	return d
 
 
 ## 玄関の外に濡れた足跡(モニターの人影のあと)
 func paw_prints_outside() -> void:
 	var tex: Texture2D = SystemUtil.load_texture("paw_print")
 	for i in 5:
-		var d := Decal.new()
-		d.texture_albedo = tex
-		d.size = Vector3(0.13, 0.45, 0.13)
-		d.albedo_mix = 0.95
+		var d := _paw_decal(tex)
 		d.position = Vector3(-12.0 - i * 0.32, 0.02, (0.08 if i % 2 == 0 else -0.08))
 		d.rotation_degrees = Vector3(0, 90.0, 0)
 		attach(d)
@@ -559,7 +618,7 @@ func monitor_ghost_genkan() -> bool:
 func vending_cats() -> bool:
 	if Game.get_flag(&"scare_vending_cats", false):
 		return false
-	var cats := dir.npc_all(&"cat")
+	var cats: Array = dir.npc_all(&"cat")
 	if cats.is_empty():
 		return false
 	Game.set_flag(&"scare_vending_cats", true)
