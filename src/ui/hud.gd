@@ -657,7 +657,10 @@ func _just(action: StringName) -> bool:
 func _handle_input() -> void:
 	var adv := _just(&"advance")
 	var pause_just := _just(&"pause")
+	var cancel_just := _just(&"ui_cancel")
 	var clip_just := _just(&"clipboard")
+	# メニューを閉じるのは Esc / B / Start。開くのは Esc / Start だけ(B ではポーズを出さない)
+	var back: bool = pause_just or cancel_just
 	var u1 := _just(&"ui_up")
 	var u2 := _just(&"move_forward")
 	var d1 := _just(&"ui_down")
@@ -689,7 +692,7 @@ func _handle_input() -> void:
 			if adv:
 				_activate_setting()
 				return
-		if pause_just:
+		if back:
 			Audio.play(&"ui_back", -8.0)
 			_show_pause_page(0)
 			_update_pause_rows()
@@ -709,7 +712,7 @@ func _handle_input() -> void:
 			if adv:
 				_activate_pause(_pause_index)
 				return
-		if pause_just:
+		if back:
 			_close_pause()
 		return
 
@@ -718,7 +721,7 @@ func _handle_input() -> void:
 			_note_scroll.scroll_vertical -= 28
 		if down:
 			_note_scroll.scroll_vertical += 28
-		if adv or pause_just:
+		if adv or back:
 			_note_open = false
 			Audio.play(&"page_turn", -8.0)
 		return
@@ -738,7 +741,7 @@ func _handle_input() -> void:
 		return
 
 	if _clip_open:
-		if clip_just or pause_just or adv:
+		if clip_just or back or adv:
 			_clip_open = false
 			_clip.visible = false
 			Audio.play(&"paper_rustle", -10.0)
@@ -870,6 +873,7 @@ func show_note(title: String, body: String) -> void:
 	_note_open = true
 	_latch[&"advance"] = true
 	_latch[&"pause"] = true
+	_latch[&"ui_cancel"] = true
 	Audio.play(&"paper_rustle", -10.0)
 	while _note_open and is_inside_tree():
 		await get_tree().process_frame
@@ -1025,6 +1029,7 @@ func _open_pause() -> void:
 	_show_pause_page(0)
 	_pause.visible = true
 	_latch[&"pause"] = true
+	_latch[&"ui_cancel"] = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = true
 
@@ -1034,6 +1039,7 @@ func _close_pause() -> void:
 	_pause_page = 0
 	get_tree().paused = false
 	_latch[&"pause"] = true
+	_latch[&"ui_cancel"] = true
 
 func _show_pause_page(page: int) -> void:
 	_pause_page = page

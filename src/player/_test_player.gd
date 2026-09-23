@@ -719,6 +719,36 @@ func _run_selftest() -> void:
 	_check(hud._interact_key == "E", "HUD のプロンプトも E に戻る", "= %s" % hud._interact_key)
 	_pad_center()
 
+	# 18i) B はゲーム中に押してもポーズを開かない(開くのは Esc / Start だけ)
+	await get_tree().create_timer(0.3, false).timeout
+	_check(not hud.is_paused(), "前提: ポーズしていない")
+	_pad_button(JOY_BUTTON_B, true)
+	await get_tree().create_timer(0.3, false).timeout
+	_pad_button(JOY_BUTTON_B, false)
+	await get_tree().create_timer(0.2, false).timeout
+	_check(not hud.is_paused(), "B ではポーズが開かない")
+	_pad_button(JOY_BUTTON_START, true)
+	await get_tree().create_timer(0.2, true).timeout
+	_pad_button(JOY_BUTTON_START, false)
+	await get_tree().create_timer(0.2, true).timeout
+	_check(hud.is_paused(), "Start ならポーズが開く")
+
+	# 18j) メニュー内では B が「戻る」
+	hud._activate_pause(1)
+	await get_tree().create_timer(0.2, true).timeout
+	_check(hud._pause_page == 1, "前提: 設定ページ")
+	_pad_button(JOY_BUTTON_B, true)
+	await get_tree().create_timer(0.2, true).timeout
+	_pad_button(JOY_BUTTON_B, false)
+	await get_tree().create_timer(0.2, true).timeout
+	_check(hud._pause_page == 0, "設定で B を押すとポーズ本体に戻る")
+	_pad_button(JOY_BUTTON_B, true)
+	await get_tree().create_timer(0.2, true).timeout
+	_pad_button(JOY_BUTTON_B, false)
+	await get_tree().create_timer(0.2, false).timeout
+	_check(not hud.is_paused(), "ポーズ本体で B を押すと閉じる")
+	_pad_center()
+
 	print("== %s (fail %d) ==" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	get_tree().quit(0 if _fails == 0 else 1)
 
