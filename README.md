@@ -24,6 +24,14 @@
 
 エンディングは4種。周回前提。
 
+## アプリとして書き出す
+
+```bash
+./build.sh      # out/build/NezuNoBan.app(macOS universal、ad-hoc 署名)
+```
+
+初回は Godot の export テンプレート(4.7.1)が `~/Library/Application Support/Godot/export_templates/4.7.1.stable/` に必要。
+
 ## 開発
 
 設計は `docs/design.md`、台本は `docs/script.md`、実装の約束事は `CLAUDE.md`。
