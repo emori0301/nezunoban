@@ -28,6 +28,7 @@ const SCHEDULE := [
 	["03:20", "ev_safe", "金庫の台帳(収集④)/ 廊下の人影"],
 	["03:40", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡"],
 	["04:00", "ev_finale", "全消灯 / 火車 / 灯し直し x3"],
+	["04:45", "ev_dawn_light", "夜明けの光 / 鴉"],
 	["05:00", "ev_dawn", "朝 / エンディング"],
 ]
 
@@ -99,6 +100,8 @@ func apply_past(m: int) -> void:
 		if desk:
 			desk.call(&"enable_key", true)
 		_prepare_safe()
+	if m > 465:
+		scares.dawn_now()
 	if m > 420:
 		# 終盤の途中から始めたときは、終盤そのものを動かす
 		call_deferred(&"ev_finale")
@@ -743,6 +746,23 @@ func _ask_hikaeshitsu(_p: Node3D) -> void:
 
 func finale_running() -> bool:
 	return _finale_running
+
+
+# ============================================================ 04:45 夜明けの光
+
+func ev_dawn_light() -> void:
+	dir.log_event("ev_dawn_light")
+	# 15 ゲーム分かけて明るくする(実時間は速度で割る)
+	var secs := 15.0 * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
+	scares.start_dawn(secs)
+	Audio.stop_ambient(&"amb_drone_low", 3.0)
+	Audio.stop_ambient(&"amb_drone_high", 3.0)
+	# 外で鴉が鳴きはじめる
+	for i in 3:
+		await get_tree().create_timer(secs * 0.28).timeout
+		if Game.state == Game.State.ENDING:
+			return
+		Audio.play_at(&"crow_morning", Vector3(13.0, 3.0, 6.0), -10.0 + i * 3.0, 1.0, 40.0)
 
 
 # ============================================================ 05:00 朝

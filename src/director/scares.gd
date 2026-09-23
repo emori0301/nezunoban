@@ -239,6 +239,55 @@ func set_moonlight(on: bool) -> void:
 		_moon.clear()
 
 
+## 04:45〜05:00 の夜明け。窓とガラス戸の外に青白い光を置いて 0 から上げる。
+## 真っ暗のまま朝を迎えると落差が出ないので、エンディングのフェードは
+## 「明るくなった式場」から始まるようにする。
+const DAWN_LIGHTS := [
+	[Vector3(13.0, 2.1, 4.8), 2.6, 15.0],    # 式場の南窓の外
+	[Vector3(-12.3, 1.9, 0.0), 2.2, 13.0],   # 玄関のガラス戸の外
+	[Vector3(-8.0, 1.9, 11.2), 1.4, 10.0],   # 事務所の窓の外
+	[Vector3(0.7, 1.9, 4.9), 0.9, 7.0],      # トイレの窓の外
+]
+const DAWN_COLOR := Color(0.72, 0.82, 1.0)
+
+var _dawn: Array[Node3D] = []
+
+func start_dawn(duration: float) -> void:
+	if not _dawn.is_empty():
+		return
+	var root := level_root()
+	if root == null:
+		return
+	var dur := maxf(duration, 0.05)
+	for d in DAWN_LIGHTS:
+		var l := OmniLight3D.new()
+		l.light_color = DAWN_COLOR
+		l.light_energy = 0.0
+		l.omni_range = float(d[2])
+		l.omni_attenuation = 1.0
+		l.shadow_enabled = false
+		l.position = d[0]
+		root.add_child(l)
+		_dawn.append(l)
+		_spawned.append(l)
+		var tw := create_tween()
+		tw.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(l, "light_energy", float(d[1]), dur)
+	# 月明かりは引いていく
+	for m in _moon:
+		if is_instance_valid(m):
+			create_tween().tween_property(m, "light_energy", 0.0, dur * 0.8)
+	# VHS の色味を少し寒色へ
+	var v := vhs()
+	if v and v.has_method(&"set_tint"):
+		v.set_tint(Color(0.88, 0.94, 1.08))
+
+
+## --time= で 04:45 より後から始めたとき、いきなり明るい状態にする。
+func dawn_now() -> void:
+	start_dawn(0.05)
+
+
 func stop_room_ambience() -> void:
 	if _ambient_room != &"":
 		Audio.stop_ambient(_ambient_room, 0.8)

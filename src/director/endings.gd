@@ -101,6 +101,9 @@ func _portrait_prologue() -> void:
 	if b:
 		b.set_all_lights(false)
 		b.set_room_lights(&"Room_Shikijo", false)
+	# 目が覚めたら五時。館内の灯りは消えているが、窓から朝の光は入っている。
+	# (空の棺が見えないと「中は空だった」が成立しない)
+	dir.scares.dawn_now()
 	var iei: Node = dir.sys(&"iei")
 	var tex: Texture2D = SystemUtil.load_texture("iei_photo_player")
 	if iei:

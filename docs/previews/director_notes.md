@@ -41,6 +41,7 @@
 | 03:40 | `ev_freezer_empty` | `Freezer.set_empty(true)`、`Coffin.set_face_state(3)`、`paw_prints()` |
 | 04:00 | `ev_finale` | `Building.set_all_lights(false)` + 月明かり、`Candle.require_matches = true`、`matches` Pickup 有効化、`Kasha.activate`、灯し直し 3 回 |
 | 04:40 | `_finish_finale` | `Kasha.stop_chase`、`Clock.skip_to(460)`、タスク「線香を最後に一本立てる」 |
+| 04:45 | `ev_dawn_light` | `Scares.start_dawn()`。窓の外に青白い光を 15 ゲーム分かけて上げ、月明かりを引き、VHS を寒色へ。`crow_morning` を 3 回 |
 | 05:00 | `ev_dawn` | `Endings.decide()` → `Game.end_night()` |
 
 追加の脅かし(`docs/design.md` の一覧)は全部 `scares.gd` に実装してある。
@@ -236,6 +237,24 @@ systems 側を動かすものは `Director._fire_scare` の `match` に別名を
 | 26 | `_body_rises`(director) | 火車エンド直前(灯し直し失敗 / 火車に捕まった瞬間) | `body_rises.png` | 見える。棺が開いて故人が上体を起こす 2 秒のカット |
 
 音のみのものは画面に出ないのが仕様なので、直す対象からは外してある。
+
+## 夜明け(04:45〜05:00)
+
+終盤で全消灯したまま朝を迎えると、エンディングのフェードが真っ暗から始まって
+落差が出ない。04:45 から 15 ゲーム分かけて夜明けを入れている(`Scares.start_dawn`)。
+
+- 窓とガラス戸の外に青白い `OmniLight3D` を 4 つ置き、energy を 0 から上げる
+  (式場の南窓・玄関のガラス戸・事務所の窓・トイレの窓)。定数は `Scares.DAWN_LIGHTS`。
+- 月明かりは同時に引いていく。
+- VHS の tint を少し寒色(0.88, 0.94, 1.08)へ。
+- `crow_morning` を外の位置から 3 回、だんだん大きく。
+
+灯明の暖色と朝の寒色が同じ画に乗るので、式場の色の対比が出る。
+`out/director/dawn/shikijo_0444.png`(まだ暗い)と `shikijo_0458.png`(明るい)、
+`genkan_0458.png` で確認した。
+
+遺影エンドは 22:30 に 05:00 へ飛ばすので、`Endings._portrait_prologue` で
+`dawn_now()` を呼んで即座に朝の光にしている。空の棺が見えないと台本が成立しないため。
 
 ## 火車エンド直前の起き上がり
 
