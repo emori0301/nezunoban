@@ -32,6 +32,7 @@ CLAUDE_MD = os.path.join(ROOT, "CLAUDE.md")
 
 # 波形を目で見る音 (依頼された 5 つ + 各系統から代表)
 PNG_NAMES = [
+    "amb_morning", "car_arrive",
     "door_swing_open", "cat_meow_2", "cat_meow_3", "stinger_3",
     "snore_1", "snore_2", "cat_jump", "cloth_drop",
     "stinger_2", "amb_shikijo", "door_close", "cat_scratch_1", "coffin_knock",
@@ -49,6 +50,7 @@ RECOMMENDED_DB = {
     "cat_purr": -16.0, "tv_static": -14.0, "paper_rustle": -10.0,
     "page_turn": -10.0, "phone_breath": -8.0, "coffin_scratch": -6.0,
     "footstep_ceiling_1": -8.0, "footstep_ceiling_2": -8.0, "footstep_ceiling_3": -8.0,
+    "amb_morning": 0.0, "car_arrive": -4.0,
     "snore_1": -14.0, "snore_2": -14.0, "cat_jump": -6.0, "cloth_drop": -6.0,
 }
 for _pfx in ("step_lino_", "step_tatami_", "step_concrete_"):

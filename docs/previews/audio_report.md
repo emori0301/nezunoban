@@ -3,7 +3,7 @@
 `tools/audio/gen_audio.py` が自動生成する。手で編集しない。
 
 - 形式: WAV 44.1kHz / mono / 16bit。素材は一切使わず numpy で合成している。
-- 本数 **101**、合計 **330.0 秒**、**27.8 MB**(ループ 17 / 単発 84)。
+- 本数 **103**、合計 **357.0 秒**、**30.0 MB**(ループ 18 / 単発 85)。
 - ピーク正規化: 単発 -3 dBFS / 環境ループ -12 dBFS / ドローン -15 dBFS。全ファイル DC 除去済み。
 - ループ音には WAV の `smpl` チャンクを書いてある。インポータの `edit/loop_mode` は 既定の `Detect From WAV` のままでよく、ループ点は自動で付く。
 
@@ -20,14 +20,14 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 `fix_imports.py` が要るのは、Godot 4.7 の wav インポータの既定が **QOA(非可逆)**
 だから。この作品の環境音はほぼ無音に近いところで鳴るので、非可逆の粗が出ると困る。
-`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 28MB 程度。
+`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 30MB 程度。
 **順序に注意**: `.import` ファイルは Godot が import したときに初めて作られるので、
 新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。
 必ず **import -> fix_imports -> import** の順で回すこと。
 
 ## 照合結果
 
-- CLAUDE.md「音名一覧」: **101** 個
+- CLAUDE.md「音名一覧」: **103** 個
 - 欠け: **0** 
 - 一覧に無い余分な wav: **0** 
 
@@ -46,6 +46,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `amb_drone_low` | 0.000675 | 0.57 | OK |
 | `amb_fluorescent` | 0.062707 | 1.13 | 許容 |
 | `amb_freezer` | 0.006658 | 0.23 | OK |
+| `amb_morning` | 0.002909 | 0.17 | OK |
 | `amb_outside` | 0.001897 | 0.19 | OK |
 | `amb_room` | 0.001885 | 0.26 | OK |
 | `amb_shikijo` | 0.000008 | 0.00 | OK |
@@ -87,6 +88,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `amb_drone_low` | 20.00 | -15.0 | -23.9 | ○ | 0.00067 | 0.57 | 0 | 0 |
 | `amb_fluorescent` | 10.00 | -12.0 | -25.8 | ○ | 0.06271 | 1.13 | 0 | 0 |
 | `amb_freezer` | 12.00 | -12.0 | -18.5 | ○ | 0.00666 | 0.23 | 0 | 0 |
+| `amb_morning` | 20.00 | -12.0 | -32.1 | ○ | 0.00291 | 0.17 | 0 | 0 |
 | `amb_outside` | 20.00 | -12.0 | -28.2 | ○ | 0.00190 | 0.19 | 0 | 0 |
 | `amb_room` | 20.00 | -12.0 | -23.4 | ○ | 0.00188 | 0.26 | 0 | 0 |
 | `amb_shikijo` | 20.00 | -12.0 | -25.6 | ○ | 0.00001 | 0.00 | 0 | 0 |
@@ -111,6 +113,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `breath_close` | 1.93 | -3.0 | -18.8 | — | 0.00000 | 0.00 | 0 | -12 |
 | `candle_blow` | 2.76 | -3.0 | -24.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `candle_light` | 3.85 | -3.0 | -27.4 | — | 0.00000 | 0.00 | 0 | 0 |
+| `car_arrive` | 7.00 | -3.0 | -17.9 | — | 0.00000 | 0.00 | 0 | -4 |
 | `cat_hiss` | 1.87 | -3.0 | -19.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_jump` | 0.42 | -3.0 | -26.2 | — | 0.00000 | 0.00 | 0 | -6 |
 | `cat_meow_1` | 1.14 | -3.0 | -18.9 | — | 0.00000 | 0.00 | 0 | 0 |
@@ -194,6 +197,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 上半分が波形(横線は -3 dBFS と -12 dBFS の目安、クリップした列は赤)、下半分がスペクトログラム(縦軸は 30Hz〜20kHz の対数、上が高域、ダイナミックレンジ 78dB)。
 
+- `amb_morning` — ![amb_morning](audio_amb_morning.png)
+- `car_arrive` — ![car_arrive](audio_car_arrive.png)
 - `door_swing_open` — ![door_swing_open](audio_door_swing_open.png)
 - `cat_meow_2` — ![cat_meow_2](audio_cat_meow_2.png)
 - `cat_meow_3` — ![cat_meow_3](audio_cat_meow_3.png)

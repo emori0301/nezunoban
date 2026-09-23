@@ -1937,3 +1937,156 @@ def cloth_drop():
     place(out, norm_peak(land + 0.7 * settle, -0.5), 0.58)
     out = room(out, dict(dur=0.55, decay=0.15, damp_hz=4000.0, predelay=0.008, seed=116), wet=0.18)[:total]
     return norm_peak(dc_kill(out), -0.5)
+
+
+# ==========================================================================
+# 追加分: 朝の環境音 / 車の到着
+# ==========================================================================
+def _sparrow(seed, f0, dur, kind):
+    """雀の一鳴き。基音 3.5〜5kHz 帯の速いグライド + わずかなざらつき。"""
+    n = N(dur)
+    if kind == 0:                                   # チュン (下降)
+        f = segments([(0.0, f0 * 1.22), (0.14, f0), (1.0, f0 * 0.86)], n)
+    elif kind == 1:                                 # チュイ (上がって落ちる)
+        f = segments([(0.0, f0 * 0.88), (0.32, f0 * 1.30), (1.0, f0 * 0.92)], n)
+    else:                                           # ジジッ (細かいトリル)
+        f = f0 * (1.0 + 0.10 * lfo(n, 95.0))
+    src = harm(f, n, [1.0, 0.32, 0.11, 0.04])
+    src *= 0.72 + 0.28 * sine(f0 * 0.022, n)        # 声のざらつき
+    src += 0.14 * bandpass(white(n, seed), f0 * 1.15, 3.5, 1)
+    src *= env_ar(n, 0.004, dur * 0.42, 4.0)
+    return norm_peak(highpass(src, 1200.0, order=2), -0.5)
+
+
+def _sparrow_call(seed, f0, level, dist):
+    """2〜4 声のひとかたまり。dist が大きいほど遠く、暗く、残響が多い。"""
+    r = rng(seed)
+    cnt = 2 + int(r.random() * 3)
+    total = N(0.16 + cnt * 0.13)
+    out = zeros(total)
+    t = 0.0
+    for k in range(cnt):
+        d = 0.045 + 0.055 * r.random()
+        kind = int(r.random() * 3)
+        c = _sparrow(seed + k * 7, f0 * (0.92 + 0.18 * r.random()), d, kind)
+        place(out, c, t, 0.65 + 0.35 * r.random())
+        t += d + 0.035 + 0.075 * r.random()
+    out = lowpass(out, 11000.0 - 6500.0 * dist, order=1)
+    out = room(out, ROOM_OUT, wet=0.28 + 0.40 * dist)
+    return norm_peak(out, -0.5) * level
+
+
+@reg("amb_morning", loop=True, target=LOOP_DB)
+def amb_morning():
+    """夜明け。雀が数羽、遠い国道、弱い風。
+    夜の amb_outside からクロスフェードされるので低域は控えめにする。"""
+    dur = 20.0
+    n = N(dur)
+    # 弱い風。夜より穏やかで、うねりも浅い
+    gust = 0.55 + 0.45 * (0.5 + 0.5 * loop_smooth(n, 0.18, 2001, slope=1.3))
+    wind = lowpass(loop_noise(n, 1.8, 2002), 900.0, order=2, circular=True) * gust
+    wind = highpass(wind, 150.0, order=2, circular=True)          # 低域は amb_outside に任せる
+    # 遠い国道。朝は車が増えるので夜より一定
+    road = band(loop_noise(n, 1.0, 2003), 160.0, 420.0, order=2, circular=True) * 0.62
+    road *= 0.88 + 0.12 * (0.5 + 0.5 * loop_smooth(n, 0.6, 2004))
+    air = highpass(loop_noise(n, 0.8, 2005), 2800.0, order=2, circular=True) * 0.06
+    out = 1.15 * wind + 1.15 * road + air
+    # 雀。数羽が別々の距離で、不規則に鳴く
+    calls = (
+        (0.8, 4600.0, 1.00, 0.10, 2010),
+        (3.1, 4100.0, 0.55, 0.45, 2020),
+        (5.4, 5000.0, 0.78, 0.22, 2030),
+        (7.0, 3900.0, 0.38, 0.65, 2040),
+        (9.6, 4750.0, 0.92, 0.14, 2050),
+        (11.3, 4300.0, 0.48, 0.50, 2060),
+        (13.9, 5150.0, 0.70, 0.28, 2070),
+        (16.2, 4000.0, 0.34, 0.70, 2080),
+        (17.4, 4850.0, 0.85, 0.18, 2090),
+    )
+    # 雀は環境音の床から +9dB に固定する。
+    # (雀でピークを取らせると、正規化したとき風と国道が沈んで amb_outside と段差ができる)
+    bed_peak = float(np.max(np.abs(out)))
+    for at, f0, lv, dist, sd in calls:
+        c = _sparrow_call(sd, f0, lv, dist)
+        place_wrap(out, c / max(1e-9, float(np.max(np.abs(c)))) * bed_peak * db2lin(7.0) * lv, at)
+    return dc_kill(out, circular=True)
+
+
+def _engine(n, seed, rpm_hz, load, noise_lvl=1.0):
+    """4 気筒の低い唸り。rpm_hz は点火の周波数(配列可)。"""
+    fire = pulse_train(rpm_hz, n, 0.16)
+    body = resonators(fire, [62.0, 108.0, 187.0, 310.0], [7, 6, 5, 4], [1.0, 0.62, 0.30, 0.14])
+    body += lowpass(fire, 220.0, order=2) * 1.1
+    exhaust = lowpass(white(n, seed), 520.0, order=2) * (0.35 + 0.65 * np.clip(as_array(load, n), 0.0, 1.5))
+    clatter = bandpass(white(n, seed + 1), 1700.0, 2.5, 1)
+    clatter *= 0.25 + 0.75 * np.clip(pulse_train(rpm_hz, n, 0.30) * 3.0, 0.0, 1.0)
+    return softclip(1.0 * body + 0.55 * exhaust * noise_lvl + 0.18 * clatter, 1.8)
+
+
+def _gravel(n, seed, speed):
+    """砂利を踏む音。speed(0..1 の配列)で粒の密度が変わる。"""
+    sp = np.clip(as_array(speed, n), 0.0, 1.0)
+    dens = max(30, int(n / SR * 900))
+    g = grain_env(n, dens, seed, dur_sec=0.0035, jitter=0.95)
+    src = band(white(n, seed + 1), 420.0, 9000.0, order=2) * (0.15 + 0.85 * g)
+    src += lowpass(white(n, seed + 2), 260.0, order=2) * 0.45      # タイヤと足回りの低い音
+    return src * (0.25 + 0.75 * sp)
+
+
+@reg("car_arrive")
+def car_arrive():
+    """砂利の駐車場に車が入ってきて止まり、エンジンが切れ、ドアが閉まる。05:00 用。"""
+    total = N(7.0)
+    out = zeros(total)
+
+    # --- 0.0〜4.0s: 近づいて、減速して、止まる ---
+    nd = N(4.0)
+    speed = segments([(0.0, 0.18), (0.22, 0.62), (0.52, 0.70), (0.78, 0.30), (0.92, 0.05), (1.0, 0.0)], nd)
+    rpm = segments([(0.0, 26.0), (0.25, 38.0), (0.55, 33.0), (0.80, 27.0), (1.0, 25.0)], nd)
+    eng = _engine(nd, 3301, rpm, speed * 1.2)
+    eng *= segments([(0.0, 0.25), (0.25, 1.0), (0.7, 0.85), (1.0, 0.62)], nd)
+    place(out, norm_peak(eng, -5.0), 0.0)
+    grv = _gravel(nd, 3302, speed)
+    grv *= segments([(0.0, 0.30), (0.3, 1.0), (0.75, 0.75), (1.0, 0.0)], nd)
+    place(out, norm_peak(grv, -3.5), 0.0)
+    # 止まる直前の小さなブレーキ鳴き
+    nb = N(0.45)
+    sq = bandpass(white(nb, 3303), 3100.0, 9.0, 1) * 2.0
+    sq = svf_tv(sq, glide(3300.0, 2500.0, nb, 1.2), 14.0, "bp")
+    sq *= segments([(0.0, 0.0), (0.25, 1.0), (1.0, 0.0)], nb)
+    place(out, norm_peak(sq, -17.0), 3.15)
+    # サスペンションが落ち着く
+    nsus = N(0.6)
+    sus = lowpass(white(nsus, 3304) * env_ar(nsus, 0.010, 0.10, 4.0), 150.0, order=3) * 1.4
+    place(out, norm_peak(sus, -11.0), 3.62)
+
+    # --- 4.0〜4.9s: アイドリング -> エンジン停止 ---
+    ni = N(0.55)
+    idle = _engine(ni, 3305, 25.0, 0.25)
+    place(out, norm_peak(idle, -8.0), 3.95)
+    nst = N(0.9)
+    # 点火が止まって回転が落ち、最後に一度だけガクッとなる
+    stop_rpm = segments([(0.0, 25.0), (0.35, 14.0), (0.7, 6.0), (0.85, 2.5), (1.0, 0.8)], nst)
+    stop = _engine(nst, 3306, stop_rpm, segments([(0, 0.35), (0.6, 0.15), (1, 0.0)], nst), noise_lvl=0.8)
+    stop *= segments([(0.0, 1.0), (0.55, 0.7), (0.85, 0.28), (1.0, 0.0)], nst)
+    place(out, norm_peak(stop, -6.0), 4.48)
+    nsh = N(0.3)
+    shud = lowpass(white(nsh, 3307) * env_ar(nsh, 0.004, 0.05, 5.0), 130.0, order=3) * 1.5
+    shud += resonators(white(nsh, 3308) * env_ar(nsh, 0.001, 0.008, 6.0), [58.0, 96.0], [8, 7], [1.0, 0.45])
+    place(out, norm_peak(shud, -10.0), 5.05)
+
+    # --- 5.3〜6.0s: ドアを開けて、閉める ---
+    nh = N(0.18)
+    handle = metal_hit(nh, 3309, base=1600.0, decay=0.020, count=5, bright=0.9) * env_ar(nh, 0.0002, 0.008, 7.0)
+    place(out, norm_peak(handle, -19.0), 5.32)
+    nc = N(0.85)
+    # 車のドアは響かない。重くて、すぐ死ぬ
+    thud = lowpass(white(nc, 3310) * env_ar(nc, 0.0008, 0.030, 5.0), 190.0, order=3) * 2.0
+    thud += resonators(white(nc, 3311) * env_ar(nc, 0.0003, 0.004, 7.0), [72.0, 124.0, 215.0], [7, 6, 5], [1.0, 0.55, 0.22]) * 1.3
+    thud += bandpass(white(nc, 3312) * env_ar(nc, 0.0006, 0.012, 6.0), 780.0, 1.6, 1) * 0.7
+    latch = metal_hit(N(0.12), 3313, base=2050.0, decay=0.014, count=4, bright=1.0)
+    place(out, norm_peak(thud, -0.5), 5.72)
+    place(out, norm_peak(latch, -12.0), 5.735)
+
+    out = room(out, ROOM_OUT, wet=0.30)[:total]
+    return norm_peak(dc_kill(out), -0.5)
