@@ -15,13 +15,17 @@ func _ready() -> void:
 	prompt = fill_prompt
 
 func get_prompt() -> String:
-	if SystemUtil.is_carrying(Game.player):
+	if _blocked_by_other_item(Game.player):
 		return hands_full_prompt
 	return fill_prompt
 
-## 運搬物を持っているあいだは汲めない(持ち物が黙って消えるのを防ぐ)。
+## 別の運搬物で両手が塞がっているときだけ止める。
+## 水そのものを持っているときは通して「もう汲んである。」を出す。
 func _can_interact(player: Node3D) -> bool:
-	return not SystemUtil.is_carrying(player)
+	return not _blocked_by_other_item(player)
+
+func _blocked_by_other_item(p: Node) -> bool:
+	return SystemUtil.is_carrying(p) and not SystemUtil.has_item(p, item_name)
 
 func fill(player: Node3D) -> void:
 	if SystemUtil.has_item(player, item_name):
