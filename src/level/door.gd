@@ -316,12 +316,12 @@ func _panel(parent: Node3D, center: Vector3, size: Vector3) -> void:
 		if upper_glass:
 			LevelBuild.box(parent, center + Vector3(0, size.y * 0.23, 0),
 				Vector3(size.x - 0.16, size.y * 0.4, t + 0.03),
-				LevelMaterials.translucent(Color(0.80, 0.82, 0.80), 0.55), false, "", false)
+				LevelMaterials.frosted(0.55, 0.75), false, "", false)
 			LevelBuild.box(parent, center + Vector3(0, size.y * 0.02, 0),
 				Vector3(size.x, 0.07, t + 0.03), dark, false, "", false)
 		if lattice:
 			LevelBuild.box(parent, center, Vector3(size.x - 0.12, size.y - 0.12, t + 0.02),
-				LevelMaterials.translucent(Color(0.88, 0.86, 0.78), 0.8), false, "", false)
+				LevelMaterials.frosted(0.62, 0.82), false, "", false)
 			for gx in [-0.28, 0.0, 0.28]:
 				LevelBuild.box(parent, center + Vector3(gx * size.x, 0, 0),
 					Vector3(0.022, size.y - 0.12, t + 0.03), dark, false, "", false)

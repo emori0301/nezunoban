@@ -105,6 +105,23 @@ static func translucent(color: Color, alpha: float) -> StandardMaterial3D:
 	_cache[key] = mat
 	return mat
 
+## すりガラス(扉の上半分、障子)。発光させず、向こうがぼんやり透ける程度。
+static func frosted(brightness: float = 0.55, alpha: float = 0.75) -> StandardMaterial3D:
+	var key := "frost#%.2f#%.2f" % [brightness, alpha]
+	if _cache.has(key):
+		return _cache[key]
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(brightness, brightness * 1.01, brightness * 0.99, alpha)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.roughness = 1.0
+	mat.metallic = 0.0
+	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+	_cache[key] = mat
+	return mat
+
+
 ## 発光マテリアル(蛍光灯・自販機・ロウソク)。消灯できるように毎回新しい実体を返す。
 static func emissive(color: Color, energy: float = 1.0) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()

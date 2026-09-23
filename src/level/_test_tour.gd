@@ -49,6 +49,11 @@ func _ready() -> void:
 		if an:
 			cam.global_transform = an.global_transform
 			cam.fov = 70.0
+	if args.has("dooropen"):
+		var od = b.get_door(StringName(String(args["dooropen"])))
+		if od:
+			od.open(true)
+			await get_tree().create_timer(0.7).timeout
 	if args.has("emgoff"):
 		b.set_emergency_lights(false)
 	if args.has("roomoff"):

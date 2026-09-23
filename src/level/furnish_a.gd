@@ -175,8 +175,18 @@ static func _office(b: Building) -> void:
 	tel.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 	# ホワイトボード・カレンダー・書類棚
-	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.12), Vector3(1.6, 1.0, 0.05),
-		LevelMaterials.plain(Color(0.80, 0.79, 0.74)), false, "", false)
+	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.13), Vector3(1.64, 1.04, 0.05),
+		LevelMaterials.plain(Color(0.26, 0.25, 0.23)), false, "", false)
+	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.10), Vector3(1.54, 0.94, 0.02),
+		LevelMaterials.plain(Color(0.60, 0.59, 0.55)), false, "", false)
+	LevelBuild.merge_boxes(node, [
+		[Vector3(-7.95, 1.88, 4.088), Vector3(0.40, 0.020, 0.004)],
+		[Vector3(-7.75, 1.72, 4.088), Vector3(0.78, 0.016, 0.004)],
+		[Vector3(-7.82, 1.58, 4.088), Vector3(0.62, 0.016, 0.004)],
+		[Vector3(-7.70, 1.44, 4.088), Vector3(0.88, 0.016, 0.004)],
+		[Vector3(-7.88, 1.30, 4.088), Vector3(0.50, 0.016, 0.004)],
+		[Vector3(-6.86, 1.16, 4.088), Vector3(0.22, 0.14, 0.004)],
+	], LevelMaterials.plain(Color(0.16, 0.18, 0.24)), "WhiteboardInk")
 	b.add_prop(R, "Shelf_Office2", "shelf", Vector3(-7.6, 0.0, 9.5), 180.0,
 		Vector3(1.6, 1.85, 0.42), WOOD)
 	LevelBuild.merge_boxes(node, [
