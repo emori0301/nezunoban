@@ -100,11 +100,14 @@ var _nav_target: Vector3 = Vector3.ZERO
 var _move_t: float = 0.0
 ## 詰まったときに舵を切る角度(度)。順に試して抜け道を探す。
 const NUDGE_ANGLES := [78.0, -78.0, 118.0, -118.0]
+## stuck_give_up に対するこの割合で、経路上へ押し出す(何度か試す)。
+const UNSTICK_AT := [0.35, 0.6, 0.85]
 
 var _stuck_t: float = 0.0
 var _blocked_t: float = 0.0
 var _nudge_angle: float = 78.0
 var _best_progress: float = INF
+var _unstuck_count: int = 0
 var _arrive_dist: float = 0.45
 var _last_pos: Vector3 = Vector3.ZERO
 var _cur_anim: StringName = &""
@@ -231,6 +234,7 @@ func walk_to(pos: Vector3, tolerance: float = -1.0) -> Signal:
 	last_move_cancelled = false
 	_nudge_angle = NUDGE_ANGLES[0]
 	_best_progress = INF
+	_unstuck_count = 0
 	return arrived
 
 
@@ -589,10 +593,18 @@ func _steer(delta: float) -> Vector3:
 	var dir := to.normalized()
 	if drunk:
 		dir = dir.rotated(Vector3.UP, sin(_move_t * 1.9) * 0.34)
-	# ナビメッシュは家具(受付台・椅子・机)を見ていないので、引っかかったら
-	# 横へ舵を切って壁伝いに回り込む。向きと角度を 1.2 秒ごとに変えて抜け道を探す。
+	# 家具や壁に引っかかったら回り込む。当たっている面が分かるならその面に沿って滑り、
+	# 分からないときだけ固定角で舵を切る。固定角だけだと壁へ押し付け続けることがある。
 	if _stuck_t > 0.5:
-		dir = dir.rotated(Vector3.UP, deg_to_rad(_nudge_angle))
+		var wall := _touching_wall_normal()
+		if wall != Vector3.ZERO:
+			var t1 := Vector3(-wall.z, 0.0, wall.x).normalized()
+			var t2 := -t1
+			var along: Vector3 = t1 if t1.dot(dir) > t2.dot(dir) else t2
+			# 壁から少し離れる成分を足して、角に吸い付かないようにする
+			dir = (along + wall * 0.25).normalized()
+		else:
+			dir = dir.rotated(Vector3.UP, deg_to_rad(_nudge_angle))
 	var speed := current_speed()
 	var door := _closed_door_between(global_position, global_position + dir * (speed * delta + 0.45))
 	if door != null:
@@ -627,6 +639,7 @@ func _finish_move() -> void:
 	is_moving = false
 	velocity.x = 0.0
 	velocity.z = 0.0
+	_settle_on_nav()
 	arrived.emit()
 
 
@@ -646,12 +659,60 @@ func _check_stuck(delta: float) -> void:
 	_nudge_angle = NUDGE_ANGLES[int(_stuck_t / 3.0) % NUDGE_ANGLES.size()]
 	if _stuck_t > 2.4 and _stuck_t < 2.4 + delta * 1.5:
 		agent.target_position = NpcUtil.snap(get_world_3d(), _nav_target)
+	elif _unstuck_count < UNSTICK_AT.size() and _stuck_t > stuck_give_up * UNSTICK_AT[_unstuck_count]:
+		_unstuck_count += 1
+		_try_unstick()
 	elif _stuck_t > stuck_give_up:
 		if Game.debug:
-			print("[npc] %s が %v へ到達できないので打ち切り(残り %.2fm)" % [name, _nav_target, d])
+			var reachable := agent.is_target_reachable() if agent else false
+			var plen := NpcUtil.path_length(get_world_3d(), global_position, _nav_target, 1.2)
+			print("[npc] %s が %v へ到達できないので打ち切り(残り %.2fm) pos=%v reason=%s next=%v nav_ready=%s reachable=%s path=%s" % [
+				name, _nav_target, d, global_position, last_steer_reason,
+				agent.get_next_path_position() if agent else Vector3.ZERO,
+				NpcUtil.is_nav_ready(get_world_3d()), reachable,
+				"INF" if is_inf(plen) else "%.1fm" % plen])
 		_stuck_t = 0.0
 		last_move_failed = true
 		_finish_move()
+
+
+## いま当たっている壁(垂直面)の法線。無ければ Vector3.ZERO。
+func _touching_wall_normal() -> Vector3:
+	for i in get_slide_collision_count():
+		var n := get_slide_collision(i).get_normal()
+		if absf(n.y) < 0.5:
+			return Vector3(n.x, 0.0, n.z).normalized()
+	return Vector3.ZERO
+
+
+## 家具の隙間に嵌まって動けないとき、経路上の次の点へ小さくワープして抜け出す。
+## 式場の椅子は 0.54m 間隔で並んでいて、NPC(直径 0.52m)が入ると自力では出られない。
+## ワープ先はナビメッシュ上の点なので、家具の中には出ない。
+func _try_unstick() -> void:
+	if agent == null:
+		return
+	var np := agent.get_next_path_position()
+	np.y = global_position.y
+	var d := _flat_distance(np, global_position)
+	if d < 0.05 or d > 2.5:
+		# 経路が無い / 遠すぎる。せめてナビメッシュ上へ押し出す。
+		np = NpcUtil.snap(get_world_3d(), global_position)
+		np.y = global_position.y
+		if _flat_distance(np, global_position) < 0.05:
+			return
+	if Game.debug:
+		print("[npc] %s を %v から %v へ押し出した(家具に嵌まっていた)" % [name, global_position, np])
+	global_position = np
+
+
+## 到着したところが家具の中(ナビメッシュの外)なら、ナビ上へ寄せておく。
+## そうしないと次に歩かせたときに経路が引けない。
+func _settle_on_nav() -> void:
+	var p := NpcUtil.snap(get_world_3d(), global_position)
+	if _flat_distance(p, global_position) > 0.4:
+		if Game.debug:
+			print("[npc] %s の到着点がナビ外なので %v へ寄せた" % [name, p])
+		global_position = Vector3(p.x, global_position.y, p.z)
 
 
 ## a → b の線分が「閉まっている扉」の開口面を横切るなら、その扉を返す。

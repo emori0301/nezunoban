@@ -39,6 +39,12 @@ func _ready() -> void:
 		if ResourceLoader.exists(p):
 			add_child(load(p).instantiate())
 
+	# main.gd と同じく、systems / npc を置いたあとにナビメッシュを焼き直す。
+	# これをしないと家具が障害物に入らず、本編と挙動がずれる。
+	await get_tree().process_frame
+	if building.has_method("rebake_navmesh"):
+		building.rebake_navmesh()
+
 	player = load("res://src/player/player.tscn").instantiate()
 	add_child(player)
 	player.global_position = Vector3(-9.5, 0.0, 0.0)
@@ -252,6 +258,21 @@ func _son_sleep() -> void:
 ## API が一通り生きているかだけ確認する(スクショなし)。
 func _api() -> void:
 	print("NpcInstaller.all() = %d" % NpcInstaller.all().size())
+	print("  --- ナビメッシュからのズレ(0.35m 超ならナビの穴の中) ---")
+	for n in NpcInstaller.all():
+		var n3 := n as Node3D
+		var snapped := NpcUtil.snap(get_world_3d(), n3.global_position)
+		var off := Vector2(snapped.x - n3.global_position.x, snapped.z - n3.global_position.z).length()
+		print("    %-16s pos=(%.2f,%.2f) snap=(%.2f,%.2f) ズレ=%.2fm %s" % [n.name,
+			n3.global_position.x, n3.global_position.z, snapped.x, snapped.z, off,
+			"← 穴の中" if off > 0.35 else ""])
+	# 孫娘が face_off で寄る椅子まわりも見る
+	for probe in [Vector3(12.1, 0, 1.1), Vector3(11.4, 0, 0.2), Vector3(12.9, 0, -1.2),
+			Vector3(10.35, 0, 1.1), Vector3(13.4, 0, 1.1)]:
+		var sp := NpcUtil.snap(get_world_3d(), probe)
+		var d := Vector2(sp.x - probe.x, sp.z - probe.z).length()
+		print("    probe (%.2f,%.2f) ズレ=%.2fm reach_genkan=%s" % [probe.x, probe.z, d,
+			NpcUtil.can_reach(get_world_3d(), probe, Vector3(-9.6, 0, 0), 1.2)])
 	for key in [&"boss", &"granddaughter", &"son", &"cat", &"kasha"]:
 		var list := NpcInstaller.find_all(key)
 		var names := PackedStringArray()
@@ -308,14 +329,19 @@ func _dir_repro() -> void:
 	building.set_all_lights(true)
 	# --- 孫娘: face_off で棺の前まで teleport されたあと玄関から帰る ---
 	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
-	player.teleport(Vector3(15.2, 0.0, -0.5), -90.0, 0.0)
+	# autoplay は焼香台(15.1, 0.77, -0.5)を触るので、その手前に立たせる
+	player.teleport(Vector3(14.0, 0.0, -0.5), -90.0, 0.0)
 	await get_tree().create_timer(0.3, false).timeout
-	# director.face_off 相当: プレイヤーから 1.8m 離れた点へ teleport
+	# director.face_off と同じ: プレイヤーから 1.8m 離れた点まで「歩かせる」。
+	# この点は椅子の列(x 10.9〜13.9, z -3.0/-2.1/-1.2/0.2/1.1)の隙間に落ちる。
 	var away := (gd.global_position - player.global_position)
 	away.y = 0.0
-	gd.teleport_to(player.global_position + away.normalized() * 1.8)
+	var spot := player.global_position + away.normalized() * 1.8
+	spot.y = 0.0
+	print("孫娘 face_off 目標=%v (椅子の間)" % spot)
+	await gd.go_to(spot)
 	gd.face_player()
-	print("孫娘 face_off 後 pos=%v (棺の前)" % gd.global_position)
+	print("孫娘 face_off 後 pos=%v failed=%s" % [gd.global_position, gd.last_move_failed])
 	await _shot("m4_01_granddaughter_at_coffin", Vector3(12.4, 1.55, -2.6),
 		gd.global_position + Vector3(0, 1.2, 0))
 	var t0 := Time.get_ticks_msec()
