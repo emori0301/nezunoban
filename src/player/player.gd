@@ -13,6 +13,7 @@ signal hold_progress_changed(ratio: float)
 signal carried_changed(item: StringName)
 signal inventory_changed(items: Array)
 signal stepped(surface: StringName)
+signal give_refused(wanted: StringName, holding: StringName)
 
 const SURFACE_GROUPS := {
 	&"surface_lino": &"lino",
@@ -44,6 +45,8 @@ const SURFACE_GROUPS := {
 @export_group("インタラクト")
 @export var max_interact_distance: float = 4.0
 @export var default_surface: StringName = &"lino"
+## 両手が塞がっていて運搬物を受け取れないときに HUD へ出す文(director が差し替えられる)
+@export var hands_full_text: String = "両手が塞がっている"
 
 ## 持ち物
 var carried_item: StringName = &""            ## 両手で運ぶ物(1つだけ)
@@ -68,6 +71,7 @@ var _shake_offset: Vector3 = Vector3.ZERO
 var _look_tween: Tween = null
 var _hold_t: float = 0.0
 var _interact_down: bool = false
+var _interact_gate: bool = false   ## 会話/手紙/ポーズが閉じた瞬間の押しっぱなしを無視する
 var _carry_sway: Vector2 = Vector2.ZERO
 var _carry_sway_vel: Vector2 = Vector2.ZERO
 var _carry_mesh: Node3D = null
@@ -190,6 +194,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		_set_hold(0.0)
 		_interact_down = Input.is_action_pressed(&"interact")
+		# 字幕を送る E と「調べる」E が同じキーなので、塞がれている間に押された分は
+		# 離すまで持ち越して無効にする(review H4)
+		_interact_gate = true
 		if focus != null:
 			_set_focus(null)
 
@@ -352,6 +359,15 @@ func _find_interactable_ancestor(node: Node) -> Interactable:
 
 func _update_interact(delta: float) -> void:
 	var pressed := Input.is_action_pressed(&"interact")
+	if _interact_gate:
+		# 会話・選択肢・手紙・クリップボード・ポーズが閉じた直後。
+		# その押下は「閉じる」ために使われたものなので、一度離すまで調べるに使わない。
+		if pressed:
+			_interact_down = true
+			_hold_t = 0.0
+			_set_hold(0.0)
+			return
+		_interact_gate = false
 	var just := pressed and not _interact_down
 	_interact_down = pressed
 
@@ -393,18 +409,34 @@ func _set_hold(r: float) -> void:
 func has_item(name: StringName) -> bool:
 	return carried_item == name or inventory.has(name)
 
-## carried = true なら両手で運ぶ物(1つだけ。既にあれば置き換え)。false なら小物。
-func give_item(name: StringName, carried: bool = false) -> void:
+## carried = true なら両手で運ぶ物。既に別の物を運んでいたら受け取らず false を返す
+## (design.md「運搬中は両手が塞がり他の操作不可」)。false なら鍵などの小物で、常に受け取る。
+## 呼ぶ側は戻り値を見るか、事前に is_carrying() で弾くこと。
+func give_item(name: StringName, carried: bool = false) -> bool:
 	if name == &"":
-		return
+		return false
 	if carried:
+		if carried_item == name:
+			return true
+		if carried_item != &"":
+			give_refused.emit(name, carried_item)
+			_show_hands_full()
+			return false
 		carried_item = name
 		_refresh_carry_mesh()
 		carried_changed.emit(carried_item)
-	else:
-		if not inventory.has(name):
-			inventory.append(name)
-			inventory_changed.emit(inventory)
+		return true
+	if not inventory.has(name):
+		inventory.append(name)
+		inventory_changed.emit(inventory)
+	return true
+
+## 両手が塞がっていて受け取れなかったことを短く知らせる
+func _show_hands_full() -> void:
+	var h := _hud_node()
+	if h and h.has_method("show_toast"):
+		h.show_toast(hands_full_text)
+	Audio.play(&"ui_back", -10.0)
 
 func take_item(name: StringName) -> bool:
 	if carried_item == name:

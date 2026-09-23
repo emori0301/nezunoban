@@ -26,7 +26,8 @@ var _latch: Dictionary = {}
 func _ready() -> void:
 	add_to_group(&"ending")
 	layer = 20
-	process_mode = Node.PROCESS_MODE_ALWAYS
+	# ポーズ中に台詞が進まないように PAUSABLE。ポーズメニュー自体は HUD(ALWAYS)が持つので操作は効く。
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	_build()
 
 func _build() -> void:
@@ -132,7 +133,7 @@ func play(ending_id: StringName, title: String, lines: Array) -> void:
 
 	var tw := create_tween()
 	tw.tween_property(_fade, "color:a", 0.0, 1.2)
-	await get_tree().create_timer(1.6).timeout
+	await get_tree().create_timer(1.6, false).timeout
 
 	for line in lines:
 		var l := UiTheme.mincho_label(String(line), 19, Color(0.89, 0.88, 0.84))
@@ -143,16 +144,16 @@ func play(ending_id: StringName, title: String, lines: Array) -> void:
 		_lines_box.add_child(l)
 		var t2 := create_tween()
 		t2.tween_property(l, "modulate:a", 1.0, line_fade)
-		await get_tree().create_timer(line_fade + line_gap).timeout
+		await get_tree().create_timer(line_fade + line_gap, false).timeout
 
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(0.8, false).timeout
 	var t3 := create_tween()
 	t3.tween_property(_lines_box, "modulate:a", 0.0, 1.0)
 	await t3.finished
 
 	var t4 := create_tween()
 	t4.tween_property(_title, "modulate:a", 1.0, 1.6)
-	await get_tree().create_timer(2.2).timeout
+	await get_tree().create_timer(2.2, false).timeout
 
 	_hint.text = "[%s] %s" % [_key_for(&"advance"), to_title_text]
 	var t5 := create_tween()
@@ -168,14 +169,7 @@ func play(ending_id: StringName, title: String, lines: Array) -> void:
 	finished.emit(_ending_id)
 
 func _key_for(action: StringName) -> String:
-	for e in InputMap.action_get_events(action):
-		if e is InputEventKey:
-			var kc: int = (e as InputEventKey).physical_keycode
-			if kc == 0:
-				kc = (e as InputEventKey).keycode
-			if kc != 0:
-				return OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(kc))
-	return "Space"
+	return UiTheme.key_name(action, "Space")
 
 func _process(_delta: float) -> void:
 	if not _waiting:

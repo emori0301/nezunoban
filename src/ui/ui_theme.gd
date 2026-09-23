@@ -103,6 +103,23 @@ static func paper_style() -> StyleBoxFlat:
 	sb.content_margin_bottom = 12
 	return sb
 
+## 入力アクションに割り当てられたキー名("E" / "Space")。
+## headless では DisplayServer.keyboard_get_keycode_from_physical() が
+## 「Not supported by this display server」を出すので、物理キーコードのまま文字列にする。
+static func key_name(action: StringName, fallback: String = "E") -> String:
+	var physical_ok := DisplayServer.get_name() != "headless"
+	for e in InputMap.action_get_events(action):
+		if e is InputEventKey:
+			var ev := e as InputEventKey
+			var kc: int = ev.physical_keycode
+			if kc == 0:
+				kc = ev.keycode
+			elif physical_ok:
+				kc = DisplayServer.keyboard_get_keycode_from_physical(kc)
+			if kc != 0:
+				return OS.get_keycode_string(kc)
+	return fallback
+
 static func full_rect(c: Control) -> Control:
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	c.offset_left = 0.0

@@ -32,6 +32,7 @@ func _ready() -> void:
 	add_to_group(&"title")
 	layer = 8
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().paused = false
 	_build()
 	_ensure_vhs()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -167,7 +168,7 @@ func _intro() -> void:
 		m.set_shader_parameter("tracking_amount", 0.95)
 	var tw := create_tween()
 	tw.tween_property(_fade, "color:a", 0.0, 0.45)
-	await get_tree().create_timer(intro_duration * 0.55).timeout
+	await get_tree().create_timer(intro_duration * 0.55, false).timeout
 	if m:
 		var tw2 := create_tween()
 		tw2.tween_method(func(v: float) -> void:
@@ -180,10 +181,10 @@ func _intro() -> void:
 			m.set_shader_parameter("tracking_amount", v), 0.95, 0.30, 1.3)
 	var tt := create_tween()
 	tt.tween_property(_title, "modulate:a", 1.0, 1.1)
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5, false).timeout
 	var ts := create_tween()
 	ts.tween_property(_sub, "modulate:a", 1.0, 0.9)
-	await get_tree().create_timer(0.6).timeout
+	await get_tree().create_timer(0.6, false).timeout
 	_show_menu_now()
 
 func _show_menu_now() -> void:

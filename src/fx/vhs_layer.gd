@@ -68,9 +68,16 @@ func _find_subviewport(node: Node) -> SubViewport:
 	return null
 
 func detach() -> void:
-	if container:
+	if container and is_instance_valid(container) and container.material == material:
 		container.material = null
 	container = null
+
+## 解放されるときは自分が付けたマテリアルを外す(SubViewportContainer に
+## 宙ぶらりんの ShaderMaterial を残さないため)。既に別の VhsLayer が付け替えていたら触らない。
+## main.gd はタイトルを queue_free した直後に自前の VhsLayer を attach するので、
+## ここで無条件に container.material = null にすると付けたばかりの物を消してしまう。
+func _exit_tree() -> void:
+	detach()
 
 func _process(delta: float) -> void:
 	if material == null or not enabled:

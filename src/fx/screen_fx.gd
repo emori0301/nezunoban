@@ -96,7 +96,7 @@ static func blackout(dur: float = 0.6) -> void:
 		return
 	var t := tree()
 	if t:
-		await t.create_timer(dur).timeout
+		await t.create_timer(dur, false).timeout
 
 static func fade_out(dur: float = 1.0) -> void:
 	var h := hud()
@@ -105,7 +105,7 @@ static func fade_out(dur: float = 1.0) -> void:
 		return
 	var t := tree()
 	if t:
-		await t.create_timer(dur).timeout
+		await t.create_timer(dur, false).timeout
 
 static func fade_in(dur: float = 1.0) -> void:
 	var h := hud()
@@ -114,4 +114,4 @@ static func fade_in(dur: float = 1.0) -> void:
 		return
 	var t := tree()
 	if t:
-		await t.create_timer(dur).timeout
+		await t.create_timer(dur, false).timeout

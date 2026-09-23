@@ -17,14 +17,16 @@ signal title_requested
 signal quit_requested
 
 ## 画面に出る日本語。director が差し替えられるように export / const にまとめてある。
+## 既定は docs/script.md「掟(クリップボード)」と同じ。director から set_rules() で差し替え可。
 @export var rules: PackedStringArray = [
 	"一、線香を絶やさぬこと",
-	"二、灯明を絶やさぬこと",
-	"三、猫を建物に入れぬこと",
-	"四、棺の小窓を開けぬこと",
-	"五、眠らぬこと",
+	"一、灯明を絶やさぬこと",
+	"一、猫を入れぬこと",
+	"一、棺の小窓を開けぬこと",
+	"一、眠らぬこと",
 ]
-@export var clipboard_title: String = "やすらぎ会館　宿直心得"
+@export var clipboard_title: String = "寝ずの番 心得"
+@export var clipboard_footer: String = "やすらぎ会館"
 @export var clipboard_tasks_header: String = "今夜のこと"
 @export var note_close_hint: String = "閉じる"
 @export var pause_items: PackedStringArray = ["再開", "タイトルへ", "終了"]
@@ -46,6 +48,8 @@ var _crosshair: Control
 var _ring: Control
 var _prompt: Label
 var _cam_label: Label
+var _toast: Label
+var _toast_tween: Tween = null
 var _cam_row: HBoxContainer
 var _task_row: HBoxContainer
 
@@ -115,14 +119,7 @@ func _ready() -> void:
 	_on_tasks_changed(Tasks.current(), [])
 
 func _key_for(action: StringName) -> String:
-	for e in InputMap.action_get_events(action):
-		if e is InputEventKey:
-			var kc: int = (e as InputEventKey).physical_keycode
-			if kc == 0:
-				kc = (e as InputEventKey).keycode
-			if kc != 0:
-				return OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(kc))
-	return "E"
+	return UiTheme.key_name(action, "E")
 
 # ================================================================ 組み立て
 
@@ -262,6 +259,16 @@ func _build_game_layer() -> void:
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_crosshair.draw.connect(_draw_crosshair)
 	_game.add_child(_crosshair)
+
+	_toast = UiTheme.gothic_label("", 16, UiTheme.TEXT_WARN)
+	_toast.name = "Toast"
+	_toast.anchor_right = 1.0
+	_toast.offset_top = H * 0.5 + 48.0
+	_toast.offset_bottom = H * 0.5 + 70.0
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_toast.modulate.a = 0.0
+	_game.add_child(_toast)
 
 	_prompt = UiTheme.gothic_label("", 16, UiTheme.TEXT)
 	_prompt.name = "Prompt"
@@ -499,6 +506,10 @@ func _build_clipboard() -> void:
 	for r in rules:
 		_clip_rules.add_child(UiTheme.gothic_label(r, 16, UiTheme.INK, false))
 
+	var footer := UiTheme.gothic_label(clipboard_footer, 14, UiTheme.INK_DIM, false)
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_child(footer)
+
 	var sp2 := Control.new()
 	sp2.custom_minimum_size = Vector2(0, 8)
 	v.add_child(sp2)
@@ -558,6 +569,10 @@ func _process(delta: float) -> void:
 		_prompt.visible = false
 	_cam_row.visible = not hide_reticle
 	_task_row.visible = not hide_reticle
+	if hide_reticle:
+		_toast.visible = false
+	else:
+		_toast.visible = true
 
 	_handle_input()
 	if not get_tree().paused:
@@ -662,6 +677,7 @@ func is_dialogue_open() -> bool:
 
 func show_line(speaker: String, text: String) -> void:
 	await get_tree().process_frame
+	_close_clipboard()
 	var mono := speaker.strip_edges().is_empty()
 	_dlg.visible = true
 	_dlg_panel.visible = not mono
@@ -685,6 +701,7 @@ func show_line(speaker: String, text: String) -> void:
 
 func show_choice(prompt: String, options: Array) -> int:
 	await get_tree().process_frame
+	_close_clipboard()
 	_choice_count = options.size()
 	if _choice_count == 0:
 		return 0
@@ -744,6 +761,7 @@ func _update_choice_rows() -> void:
 
 func show_note(title: String, body: String) -> void:
 	await get_tree().process_frame
+	_close_clipboard()
 	_note_title.text = title
 	_note_body.text = body
 	_note_body.visible_characters = -1
@@ -772,6 +790,19 @@ func show_prompt(text: String, available: bool = true) -> void:
 	if not _focused:
 		_focused = true
 		_crosshair.queue_redraw()
+
+## 画面中央下に短く出る通知。「両手が塞がっている」など、会話にするほどでもないもの。
+func show_toast(text: String, duration: float = 1.6) -> void:
+	if text.is_empty():
+		return
+	_toast.text = text
+	if _toast_tween and _toast_tween.is_valid():
+		_toast_tween.kill()
+	_toast.modulate.a = 0.0
+	_toast_tween = create_tween()
+	_toast_tween.tween_property(_toast, "modulate:a", 1.0, 0.12)
+	_toast_tween.tween_interval(maxf(duration, 0.1))
+	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.45)
 
 func hide_prompt() -> void:
 	_prompt.visible = false
@@ -807,7 +838,7 @@ func _flash_task() -> void:
 	tw.tween_property(_task_label, "modulate:a", 1.0, 0.18)
 
 func toggle_clipboard() -> void:
-	if Dialogue.busy or _note_open or _paused or _choice_open:
+	if Dialogue.busy or _dlg_active or _note_open or _paused or _choice_open:
 		return
 	_clip_open = not _clip_open
 	if _clip_open:
@@ -815,6 +846,13 @@ func toggle_clipboard() -> void:
 		_latch[&"clipboard"] = true
 		Audio.play(&"paper_rustle", -10.0)
 	_clip.visible = _clip_open
+
+## 字幕・選択肢・手紙を出すときは必ずクリップボードを畳む(重なって読めなくなるため)
+func _close_clipboard() -> void:
+	if not _clip_open:
+		return
+	_clip_open = false
+	_clip.visible = false
 
 func _refresh_clip_tasks() -> void:
 	for c in _clip_tasks.get_children():
@@ -918,7 +956,7 @@ func flash(color: Color = Color.WHITE, dur: float = 0.1) -> void:
 ## 一瞬だけ真っ暗にする(脅かし用)。await 可。
 func blackout(dur: float = 0.6) -> void:
 	_fade.color.a = 1.0
-	await get_tree().create_timer(maxf(dur, 0.01)).timeout
+	await get_tree().create_timer(maxf(dur, 0.01), false).timeout
 	var tw := create_tween()
 	tw.tween_property(_fade, "color:a", 0.0, 0.25)
 	await tw.finished
@@ -941,8 +979,13 @@ func set_camcorder_text(text: String) -> void:
 
 # ================================================================ 状態問い合わせ(Player が使う)
 
+## 移動・視点・インタラクトを止めるべきか。
+## 字幕(_dlg_active)も含める: advance と interact がどちらも E なので、
+## 字幕を送るつもりの E が目の前の Interactable を押してしまうため(review H4)。
+## Dialogue.busy に頼らないのは、say と note が重なると先に終わった側が busy を落とすから。
 func blocks_player() -> bool:
-	return _note_open or _clip_open or _paused or _choice_open
+	return _dlg_active or _note_open or _clip_open or _paused or _choice_open
 
+## マウスカーソルを出すべきか。字幕は含めない(会話のたびにカーソルが湧くのを避ける)。
 func wants_cursor() -> bool:
 	return _note_open or _clip_open or _paused or _choice_open
