@@ -348,6 +348,48 @@ func _check(b: Node3D) -> void:
 			"OK " if (pth2.size() >= 2 and off2 < 1.0 and h2 == 0) else "NG ",
 			trapped, pair2[1], d2, off2, h2, pth2.size()])
 
+	# 廊下北枝の直線掃引。NPC が詰まる区間に何があるか名前で出す。
+	print("--- 廊下の掃引(北枝と本線) ---")
+	var sweep := CapsuleShape3D.new()
+	sweep.radius = 0.3
+	sweep.height = 1.75
+	var sp := PhysicsShapeQueryParameters3D.new()
+	sp.shape = sweep
+	sp.collision_mask = 1
+	sp.collide_with_areas = false
+	var seen_names := {}
+	# 北枝: (6.4, 0) → (6.4, -6)
+	for i in 61:
+		var z := -0.1 * i
+		for ox in [-0.5, -0.25, 0.0, 0.25, 0.5]:
+			sp.transform = Transform3D(Basis(), Vector3(6.4 + ox, 0.9, z))
+			for h in space.intersect_shape(sp, 8):
+				var c = h.get("collider")
+				if c == null:
+					continue
+				var nm2: String = String(c.get_parent().name) if c.get_parent() else String(c.name)
+				var key := "北枝 %s @ x%+.2f" % [nm2, 6.4 + ox]
+				if not seen_names.has(key):
+					seen_names[key] = z
+	# 本線: (-3.5, 0) → (7.2, 0)
+	for i in 108:
+		var x := -3.5 + 0.1 * i
+		for oz in [-0.5, -0.25, 0.0, 0.25, 0.5]:
+			sp.transform = Transform3D(Basis(), Vector3(x, 0.9, oz))
+			for h in space.intersect_shape(sp, 8):
+				var c = h.get("collider")
+				if c == null:
+					continue
+				var nm2: String = String(c.get_parent().name) if c.get_parent() else String(c.name)
+				var key := "本線 %s @ z%+.2f" % [nm2, oz]
+				if not seen_names.has(key):
+					seen_names[key] = x
+	if seen_names.is_empty():
+		print("  [OK ] 当たるものなし")
+	else:
+		for k in seen_names:
+			print("  [NG ] %-34s z=%.1f" % [k, seen_names[k]])
+
 	# アンカーの高さ。モデルの原点は底面中央なので、真下の面と一致しているか見る。
 	# 壁付け(分電盤)と天井付け(CCTV)は床までの距離が出るので別扱い。
 	print("--- anchor 接地面 ---")

@@ -196,10 +196,17 @@ static func _hall(b: Building) -> void:
 
 	b.add_prop(R, "FireExtinguisher", "fire_extinguisher", Vector3(-3.6, 0.0, 0.88), 0.0,
 		Vector3(0.2, 0.55, 0.2), Color(0.5, 0.1, 0.09))
-	b.add_prop(R, "SlipperShelf", "shelf", Vector3(2.7, 0.0, 0.83), 180.0,
-		Vector3(1.0, 0.78, 0.32), WOOD)
-	b.add_prop(R, "HallShelf", "shelf", Vector3(5.55, 0.0, -2.2), 90.0,
-		Vector3(0.95, 1.3, 0.34), WOOD)
+	for sx in [2.25, 2.75, 3.25]:
+		b.add_prop(R, "Slipper_%d" % int(sx * 10), "slippers", Vector3(sx, 0.0, 0.86), 180.0,
+			Vector3(0.26, 0.09, 0.28), Color(0.16, 0.16, 0.18), false, false)
+	LevelBuild.box(node, Vector3(2.75, 0.32, 0.94), Vector3(1.3, 0.04, 0.16), wood, false, "", false)
+	LevelBuild.box(node, Vector3(2.75, 0.62, 0.99), Vector3(1.3, 0.04, 0.08), wood, false, "", false)
+	LevelBuild.box(node, Vector3(5.39, 1.45, -2.4), Vector3(0.02, 0.6, 0.85),
+		LevelMaterials.plain(Color(0.80, 0.78, 0.72)), false, "", false)
+	LevelBuild.box(node, Vector3(5.40, 1.45, -2.4), Vector3(0.02, 0.66, 0.91),
+		LevelMaterials.get_mat("wall_wood", 1.0), false, "", false)
+	LevelBuild.box(node, Vector3(5.39, 1.45, -4.6), Vector3(0.02, 0.5, 0.7),
+		LevelMaterials.plain(Color(0.78, 0.76, 0.70)), false, "", false)
 
 	# 蛍光灯(等間隔)。突き当たり(z <= -6.5)には灯りを置かない → 暗い。
 	for x in [-2.2, 0.8, 3.8, 6.4]:
