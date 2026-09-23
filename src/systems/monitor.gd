@@ -34,8 +34,13 @@ enum { FEED_SHIKIJO = 0, FEED_GENKAN = 1 }
 const CAM_ANCHORS := ["Anchor_Cam_Shikijo", "Anchor_Cam_Genkan"]
 const SCREEN_SHADER := "res://src/systems/shaders/crt_screen.gdshader"
 
-@export var viewport_size: Vector2i = Vector2i(256, 192)
+## ブラウン管の粗さに合わせて低解像度で描く(事務所の描画量を減らすため)。
+@export var viewport_size: Vector2i = Vector2i(160, 120)
+## 映像の更新頻度。毎フレーム世界を描き直す必要はないので 15fps 相当にする。
+@export var feed_fps: float = 15.0
 @export var camera_fov: float = 72.0
+## 監視カメラの描画距離。館内しか映さないので短くてよい。
+@export var cctv_far: float = 25.0
 @export var screen_size: Vector2 = Vector2(0.29, 0.215)
 ## モデルは +Z が正面(models 担当のモデルはすべてこの向き)。
 @export var screen_offset: Vector3 = Vector3(0, 0.205, 0.222)
@@ -67,6 +72,8 @@ var _static_amount: float = 0.10
 var _force_update: bool = false
 var _room_seen: bool = false
 var _in_room: bool = false
+var _feed_active: bool = true
+var _feed_t: float = 0.0
 
 func _ready() -> void:
 	super._ready()
@@ -84,7 +91,8 @@ func _build() -> void:
 	_vp.own_world_3d = false            # 本編の World3D をそのまま覗く
 	_vp.transparent_bg = false
 	_vp.msaa_3d = Viewport.MSAA_DISABLED
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# 常時更新はしない。_apply_feed_update / _process が feed_fps の間隔で描かせる。
+	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_vp.handle_input_locally = false
 	add_child(_vp)
 
@@ -93,7 +101,7 @@ func _build() -> void:
 		cam.name = "Cam%d" % i
 		cam.fov = camera_fov
 		cam.near = 0.05
-		cam.far = 40.0
+		cam.far = cctv_far
 		# 11(player_hidden)以外は全部見る。「1 と 10 を含み 11 を含まない」という
 		# 要件を満たしつつ、level が別のレンダーレイヤーを使っていても映像が
 		# 真っ暗にならないようにする。
@@ -162,8 +170,13 @@ func _on_player_entered_room(data: Dictionary) -> void:
 func _apply_feed_update() -> void:
 	if _vp == null:
 		return
-	var on: bool = _force_update or not only_update_in_room or not _room_seen or _in_room
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
+	_feed_active = _force_update or not only_update_in_room or not _room_seen or _in_room
+	if _feed_active:
+		# 1枚だけ描かせる。以降は _process が feed_fps の間隔で描き直す。
+		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_feed_t = 0.0
+	else:
+		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 ## director の --cctv-shot など、プレイヤーが事務所に居なくても映像が要るとき。
 func set_force_update(on: bool) -> void:
@@ -171,7 +184,7 @@ func set_force_update(on: bool) -> void:
 	_apply_feed_update()
 
 func is_feed_updating() -> bool:
-	return _vp != null and _vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS
+	return _vp != null and _feed_active
 
 ## Anchor_Cam_* にカメラを置く。無ければ警告して、モニターの前あたりを映す。
 func _resolve_cameras() -> void:
@@ -191,6 +204,12 @@ func _resolve_cameras() -> void:
 			_cams[i].look_at(t.origin + Vector3(0, 0.8, 0), Vector3.UP)
 
 func _process(delta: float) -> void:
+	# 映像は毎フレームではなく feed_fps の間隔で描き直す
+	if _feed_active and _vp and feed_fps > 0.0:
+		_feed_t += delta
+		if _feed_t >= 1.0 / feed_fps:
+			_feed_t = 0.0
+			_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	if _glitch > 0.0:
 		_glitch = maxf(0.0, _glitch - delta * 1.8)
 		if _mat:
@@ -238,7 +257,12 @@ func screen_point() -> Vector3:
 func get_camera(i: int) -> Camera3D:
 	return _cams[i] if i >= 0 and i < _cams.size() else null
 
+## 映像の SubViewport。director の --cctv-shot がここからテクスチャを取る。
+## 事務所に居ないと feed は止まっているので、取り出すときに 1 枚だけ描かせる
+## (呼び出し側は await RenderingServer.frame_post_draw してから get_image する)。
 func get_viewport_node() -> SubViewport:
+	if _vp:
+		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	return _vp
 
 # --------------------------------------------------------------------------
