@@ -152,7 +152,7 @@ func _do_screenshot(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	img.save_png(path)
-	print("screenshot saved: %s" % path)
+	print("screenshot saved: %s (fps=%d, draw_calls=%d, objects=%d)" % [path, Engine.get_frames_per_second(), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)])
 	get_tree().quit()
 
 func _do_tour(dir: String) -> void:
