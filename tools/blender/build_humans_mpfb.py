@@ -678,6 +678,36 @@ def add_clothing(name, body, arm, spec, mats, reg):
                           grow_top=1.13, grow_bot=1.13, sections=2)
         out.append(belt)
 
+    # 襟(小さな三角板 2 枚)とネクタイ
+    if style in ("jacket", "jumper"):
+        nz = [me.vertices[vi].co.z for i in reg["neck"] for vi in me.polygons[i].vertices]
+        if nz:
+            z_neck = min(nz)
+            nr, nd, ncy = ring_at(body, tids, z_neck, leg_h * 0.05)
+            c = Builder("Collar_" + name)
+            yf = ncy - nd * 1.02
+            for sx in (-1, 1):
+                v = [(sx * nr * 0.10, yf, z_neck + 0.030),
+                     (sx * nr * 0.78, yf + 0.010, z_neck + 0.010),
+                     (sx * nr * 0.30, yf - 0.006, z_neck - 0.075)]
+                c.add((v, [(0, 1, 2)]), mats["cloth"], uvscale=7.0)
+            if spec.get("tie"):
+                c.add(box_taper(nr * 0.26, nd * 0.10, nr * 0.20, nd * 0.10, 0.045,
+                                (0.0, yf - 0.004, z_neck - 0.012)),
+                      mats["tie"], uvscale=9.0)
+                c.add(box_taper(nr * 0.18, nd * 0.09, nr * 0.30, nd * 0.09, 0.26,
+                                (0.0, yf - 0.004, z_neck - 0.165)),
+                      mats["tie"], uvscale=6.0)
+                c.add(box_taper(nr * 0.46, nd * 0.11, nr * 0.16, nd * 0.11, 0.10,
+                                (0.0, yf + 0.002, z_neck - 0.035)),
+                      mats["shirt"], uvscale=8.0)
+            col = c.build()
+            g = {}
+            add_rigid_weights(g, range(len(col.data.vertices)), "spine_03")
+            bind_weights(col, arm, g)
+            col.matrix_parent_inverse = Matrix.Identity(4)
+            out.append(col)
+
     if spec.get("trousers", True):
         low = dup_shell(body, arm, GARMENT_GROUPS["trousers"], "Trouser_" + name,
                         mats["leg"], push=0.003, thick=0.010)
@@ -924,7 +954,7 @@ SPECS = {
         macro={"gender": 0.94, "age": 0.80, "muscle": 0.38, "weight": 0.74,
                "height": 0.40, "proportions": 0.45},
         jacket=0.006, trouser=0.008, hair_back=0.006, long_hair=False,
-        garment="jacket",
+        garment="jacket", tie=True,
         tex=dict(face="face_boss", skin="skin_boss", torso="torso_suit",
                  leg="suit_black", shoe="shoe_leather", hair="hair_thin"),
     ),
@@ -965,8 +995,8 @@ def build_one(name):
                         alpha_from_tex=True)
     m_skirt = material(name + "_Skirt", t.get("skirt", t["torso"]), rough=0.92)
     m_belt = material(name + "_Belt", t.get("belt", "shoe_leather"), rough=0.5)
-    m_collar = material(name + "_Collar", t.get("collar", t["torso"]), rough=0.9)
-    m_tie = material(name + "_Tie", t.get("tie", t["torso"]), rough=0.8)
+    m_tie = material(name + "_Tie", t.get("tie", "cloth_black"), rough=0.7)
+    m_shirt = material(name + "_Shirt", t.get("shirt", "white_cloth"), rough=0.9)
 
     body, arm = make_body(spec["macro"], spec["height"])
     body.name = name
@@ -1005,7 +1035,8 @@ def build_one(name):
 
     garments = add_clothing(name, body, arm, spec,
                             {"cloth": m_torso, "leg": m_leg,
-                             "skirt": m_skirt, "belt": m_belt}, reg)
+                             "skirt": m_skirt, "belt": m_belt,
+                             "tie": m_tie, "shirt": m_shirt}, reg)
     # 髪の親子付けとウェイトは add_hair_cap() で済んでいる
     set_scene_frames(180)
     build_anims(arm)

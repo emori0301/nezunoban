@@ -784,7 +784,8 @@ def _degrade(img, seed, out=128, fade=0.18, grain=0.085, block=0.13, contrast=1.
 def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
                 female=False, lips=None, sallow=0.0, sallow_col=None, jowl=0.0,
                 brow_w=1.0, eye=1.0, lip_full=1.0, blush=0.0, eye_red=0.0,
-                nose_big=0.0, shade=0.70, feat=1.0, contrast=1.0):
+                nose_big=0.0, shade=0.70, feat=1.0, contrast=1.0,
+                hair_top=None):
     """shade: 影の濃さ(小さいほど濃い)。feat: 目鼻口の陰影の強さ。
     contrast: 仕上げのコントラスト。640x360 + VHS で顔が潰れるときに上げる。"""
     """人物の顔。1 枚で頭の正面だけに貼る(128x128)。
@@ -918,8 +919,13 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         img = mix(img, rgb(R, (0.26, 0.24, 0.25)), msk * n * stubble * 0.62)
         img = mix(img, rgb(R, (0.34, 0.31, 0.30)), msk * stubble * 0.16)
 
-    # --- 生え際の影(髪はモデル側にある) ---
+    # --- 生え際 ---
     ellipse(img, 26, 128, 26, 104, sh, 0.35, soft=20)
+    if hair_top:
+        # 上端 24px(出力 128px で 12px)を髪色へグラデーションで馴染ませる。
+        # ここを地肌のままにすると、髪との境に肌色の帯が出る。
+        g = np.clip(1.0 - np.arange(R)[:, None] / 24.0, 0, 1) * np.ones((1, R))
+        img = mix(img, rgb(R, hair_top), g * 0.92)
     # 端はごく軽く落とすだけにする。強く落とすと頭の側面との境が目立ち、
     # 顔がシールを貼ったように見える。
     gx, gy = np.meshgrid(np.arange(R), np.arange(R), indexing="ij")
@@ -938,7 +944,8 @@ def t_face_boss():
                        sallow=0.70, sallow_col=(0.50, 0.43, 0.26),
                        jowl=0.85, brow_w=1.00, eye=0.88,
                        lip_full=0.75, lips=(0.50, 0.32, 0.29),
-                       shade=0.52, feat=1.45, contrast=1.22)
+                       shade=0.52, feat=1.45, contrast=1.22,
+                       hair_top=(0.135, 0.124, 0.118))
 
 
 def t_face_son():
@@ -947,7 +954,8 @@ def t_face_son():
                        age=0.85, ruddy=1.0, stubble=1.0, bags=1.0,
                        jowl=0.55, brow_w=1.35, eye=0.72, nose_big=0.9,
                        lip_full=0.85, lips=(0.68, 0.38, 0.34),
-                       shade=0.56, feat=1.25, contrast=1.12)
+                       shade=0.56, feat=1.25, contrast=1.12,
+                       hair_top=(0.150, 0.142, 0.134))
 
 
 def t_face_granddaughter():
@@ -958,7 +966,8 @@ def t_face_granddaughter():
                        age=0.10, ruddy=0.0, stubble=0.0, bags=0.42,
                        female=True, brow_w=0.58, eye=1.26, lip_full=1.35,
                        blush=0.60, eye_red=0.55, lips=(0.70, 0.38, 0.38),
-                       shade=0.64, feat=1.70, contrast=1.18)
+                       shade=0.64, feat=1.70, contrast=1.18,
+                       hair_top=(0.095, 0.090, 0.100))
 
 
 # ---------------------------------------------------------------- 胴の柄
@@ -1060,30 +1069,36 @@ def t_torso_dress():
 # ---------------------------------------------------------------- 髪と靴
 
 def _hair(base, seed, grey=0.0, scalp=0.0, scalp_col=(0.62, 0.50, 0.44)):
+    """髪。太いブロックだと迷彩柄に見えるので、**細い毛筋**を低コントラストで。"""
     T = 128
     img = rgb(T, base)
-    strand = hstreak(white(T, seed), 3, axis=1)
-    img = mul_gray(img, 0.62 + norm(strand) * 0.80)
-    img = mix(img, rgb(T, tuple(min(1.0, c * 1.9 + 0.05) for c in base)),
-              norm(fbm(T, 10, 3, seed + 1)) * 0.28)
+    # 細い筋: 高周波ノイズを 1 方向だけ強くぼかす
+    fine = hstreak(white(T, seed), 2, axis=1)
+    img = mul_gray(img, 0.86 + norm(fine) * 0.30)
+    finer = hstreak(white(T, seed + 41), 1, axis=1)
+    img = mul_gray(img, 0.93 + norm(finer) * 0.15)
+    # ゆるい明暗(束のうねり)。振幅は小さく。
+    img = mul_gray(img, 0.92 + norm(fbm(T, 14, 3, seed + 1)) * 0.17)
     if grey > 0:
-        g = (hstreak(white(T, seed + 2), 2, axis=1) > 0.60).astype(float)
-        img = mix(img, rgb(T, (0.72, 0.71, 0.70)), g * grey * 0.55)
+        # 白髪は「筋」として混ぜる(面で混ぜると斑になる)
+        g = norm(hstreak(white(T, seed + 2), 1, axis=1))
+        g = np.clip((g - (1.0 - grey * 0.42)) * 6.0, 0, 1)
+        img = mix(img, rgb(T, (0.66, 0.65, 0.64)), g * 0.55)
     if scalp > 0:
-        sc = np.clip((norm(fbm(T, 4, 3, seed + 3)) - 0.45) * 2.4, 0, 1)
+        sc = np.clip((norm(fbm(T, 5, 3, seed + 3)) - 0.52) * 2.2, 0, 1)
         img = mix(img, rgb(T, scalp_col), sc * scalp)
-    return finish(img, seed + 7, noise=0.04)
+    return finish(img, seed + 7, noise=0.018, levels=40)
 
 
 def t_hair_thin():
     """社長。薄くなって地肌が透ける。地肌は肌色、毛は白髪混じりの黒。"""
-    return _hair((0.115, 0.105, 0.100), 731, grey=0.34, scalp=0.30,
-                 scalp_col=(0.52, 0.42, 0.36))
+    return _hair((0.135, 0.124, 0.118), 731, grey=0.55, scalp=0.22,
+                 scalp_col=(0.50, 0.41, 0.35))
 
 
 def t_hair_salt():
     """息子。白髪混じりの短髪。"""
-    return _hair((0.16, 0.15, 0.14), 741, grey=0.62, scalp=0.12)
+    return _hair((0.150, 0.142, 0.134), 741, grey=0.40, scalp=0.08)
 
 
 def t_hair_long():
@@ -1216,6 +1231,7 @@ def t_cloth_navy_lt():   return _fabric((0.110, 0.110, 0.130), 851)
 def t_cloth_olive():     return _fabric((0.210, 0.205, 0.145), 861, folds=0.14)
 def t_cloth_gray():      return _fabric((0.135, 0.135, 0.140), 871)
 def t_cloth_black():     return _fabric((0.070, 0.070, 0.082), 881, folds=0.13)
+def t_cloth_crimson():   return _fabric((0.175, 0.045, 0.058), 921)
 def t_cloth_tights():    return _fabric((0.095, 0.095, 0.105), 891, weave=0.03)
 
 
@@ -1524,6 +1540,7 @@ ALL = {
     "cloth_olive": t_cloth_olive,
     "cloth_gray": t_cloth_gray,
     "cloth_black": t_cloth_black,
+    "cloth_crimson": t_cloth_crimson,
     "cloth_tights": t_cloth_tights,
     "ihai": t_ihai,
     "lantern_paper": t_lantern_paper,
