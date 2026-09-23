@@ -280,7 +280,8 @@ _MAT_CACHE = {}
 
 
 def material(name, tex=None, color=(0.8, 0.8, 0.8), rough=0.85, metal=0.0,
-             emission=None, emission_strength=1.0, alpha=1.0, unlit_ish=False):
+             emission=None, emission_strength=1.0, alpha=1.0, unlit_ish=False,
+             alpha_from_tex=False):
     """Principled BSDF + (任意で) 画像テクスチャ。name が Godot のマテリアル名になる。"""
     if name in _MAT_CACHE:
         m = bpy.data.materials.get(name)
@@ -310,6 +311,15 @@ def material(name, tex=None, color=(0.8, 0.8, 0.8), rough=0.85, metal=0.0,
             node.interpolation = 'Closest'   # PSX らしいドット感
             node.location = (-400, 200)
             nt.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+            if alpha_from_tex:
+                nt.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
+                # 髪の毛束などはアルファブレンドだと前後関係が崩れるので、
+                # 抜き(MASK)にする。glTF では alphaMode=MASK で出る。
+                mat.blend_method = 'CLIP'
+                try:
+                    mat.alpha_threshold = 0.5
+                except Exception:
+                    pass
         else:
             print("  !! texture missing:", path)
     if emission is not None:

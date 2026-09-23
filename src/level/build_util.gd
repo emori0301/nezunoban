@@ -177,6 +177,31 @@ static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
 	return [light, emat]
 
 
+## 円盤(八角)を SurfaceTool に足す。花輪の花びらをまとめて 1 メッシュにするため。
+static func add_disc(st: SurfaceTool, center: Vector3, radius: float, segments: int) -> void:
+	for i in segments:
+		var a0 := TAU * float(i) / float(segments)
+		var a1 := TAU * float(i + 1) / float(segments)
+		st.set_normal(Vector3(0, 0, 1))
+		st.add_vertex(center)
+		st.set_normal(Vector3(0, 0, 1))
+		st.add_vertex(center + Vector3(cos(a0) * radius, sin(a0) * radius, 0))
+		st.set_normal(Vector3(0, 0, 1))
+		st.add_vertex(center + Vector3(cos(a1) * radius, sin(a1) * radius, 0))
+
+
+## 縦書きの札。Label3D は縦組みができないので 1 文字ずつ改行して列にする。
+static func vertical_text(parent: Node, text: String, pos: Vector3, yaw_deg: float,
+		char_m: float, color: Color) -> Label3D:
+	var lines := PackedStringArray()
+	for i in text.length():
+		lines.append(text.substr(i, 1))
+	var l := sign_text(parent, "\n".join(lines), pos, yaw_deg, char_m, color, true, 384)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.line_spacing = -char_m * 0.18 / l.pixel_size
+	return l
+
+
 ## Marker3D のアンカー。yaw は度。-Z が正面。
 static func marker(parent: Node, anchor_name: String, pos: Vector3, yaw_deg: float = 0.0) -> Marker3D:
 	var m := Marker3D.new()

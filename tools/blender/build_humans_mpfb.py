@@ -388,8 +388,30 @@ def find_face(obj, reg, bounds):
 
 # ---------------------------------------------------------------- 髪
 
-def add_hair(name, obj, reg, bounds, hair_mat, spec):
-    """頭の上半分に沿わせた髪。素体の頭の形から半径を測って被せる。"""
+def _hair_strip(b, mat, cx, cy, rx, ry, z_top, z_bot, ang, width, bulge, sway):
+    """髪の帯 1 枚。頭に沿って下ろし、下ほど外へ膨らませる。"""
+    rows = []
+    for k in range(5):
+        t = 1.0 - k / 4.0
+        z = z_bot + (z_top - z_bot) * t
+        f = 1.0 + (1.0 - t) * bulge
+        a = ang + sway * (1.0 - t)
+        rows.append((cx + math.cos(a) * rx * f, cy + math.sin(a) * ry * f, z, t, a))
+    verts, faces, uvs = [], [], []
+    for (x, y, z, t, a) in rows:
+        tx, ty = -math.sin(a) * width, math.cos(a) * width
+        verts.append((x - tx, y - ty, z))
+        verts.append((x + tx, y + ty, z))
+    for i in range(len(rows) - 1):
+        k = i * 2
+        faces.append((k, k + 1, k + 3, k + 2))
+        uvs.append([(0.0, rows[i][3]), (1.0, rows[i][3]),
+                    (1.0, rows[i + 1][3]), (0.0, rows[i + 1][3])])
+    b.add((verts, faces, uvs), mat, smooth=True)
+
+
+def add_hair(name, obj, reg, bounds, hair_mat, spec, strand_mat=None):
+    """頭にかぶせる髪。キャップ + (長髪なら)帯状のポリゴンを重ねて量感を出す。"""
     me = obj.data
     head_v = [me.vertices[vi].co for i in reg["head"] for vi in me.polygons[i].vertices]
     if not head_v:
@@ -399,36 +421,62 @@ def add_hair(name, obj, reg, bounds, hair_mat, spec):
     cx = sum(c.x for c in head_v) / len(head_v)
     cy = sum(c.y for c in head_v) / len(head_v)
 
+    # 頭の外形。Decimate 後は頭頂付近の頂点が少なく、その高さの実測だけだと
+    # 半径が取れずに円筒になる。全体の大きさから楕円ドームとして補間する。
+    Rx = max(abs(c.x - cx) for c in head_v)
+    ys = [c.y for c in head_v]
+    Ry = (max(ys) - min(ys)) * 0.5
+    Cy = (max(ys) + min(ys)) * 0.5
+    hh = htop - hbot
+    z_wide = hbot + hh * 0.60                 # 頭が一番太い高さ
+
     def radius_at(z, tol):
         sel = [c for c in head_v if abs(c.z - z) < tol]
-        if not sel:
-            return 0.08, 0.09, cy
-        rx = max(abs(c.x - cx) for c in sel)
-        ys = [c.y for c in sel]
-        return rx, (max(ys) - min(ys)) * 0.5, (max(ys) + min(ys)) * 0.5
+        if len(sel) >= 6:
+            rx = max(abs(c.x - cx) for c in sel)
+            yy = [c.y for c in sel]
+            return rx, (max(yy) - min(yy)) * 0.5, (max(yy) + min(yy)) * 0.5
+        if z <= z_wide:
+            return Rx, Ry, Cy
+        t = min(1.0, (z - z_wide) / max(htop - z_wide, 1e-6))
+        f = math.sqrt(max(0.0, 1.0 - t * t))
+        return max(Rx * f, 0.012), max(Ry * f, 0.012), Cy
 
-    hh = htop - hbot
-    z_bot = hbot + hh * (0.72 if not spec.get("long_hair") else 0.70)
+    z_bot = hbot + hh * 0.70
     rows = []
-    for t in (1.0, 0.94, 0.86, 0.74, 0.60, 0.0):
+    for t in (1.0, 0.94, 0.86, 0.72, 0.56, 0.30, 0.0):
         z = z_bot + (htop - z_bot) * t
         rx, ry, ccy = radius_at(z, hh * 0.05)
-        grow = 1.04 + 0.025 * (1.0 - t)
+        grow = 1.03 + 0.03 * (1.0 - t)
         back = spec.get("hair_back", 0.0)
-        rows.append((z + (0.004 if t > 0.98 else 0.0), cx, ccy + back,
+        rows.append((cx, ccy + back, z + (0.004 if t > 0.98 else 0.0),
                      max(rx * grow, 0.012), max(ry * grow, 0.012), t))
     b = Builder("Hair_" + name)
-    b.add(tube([(cx2, cy2, z, rx, ry, v) for (z, cx2, cy2, rx, ry, v) in rows],
+    b.add(tube([(x, y, z, rx, ry, v) for (x, y, z, rx, ry, v) in rows],
                n=12, cap_end=False), hair_mat, uvscale=6.0, smooth=True)
+
     if spec.get("long_hair"):
-        rx, ry, ccy = radius_at(z_bot, hh * 0.06)
-        long_rows = []
-        for (t, dz, g, back) in ((1.0, 0.00, 1.02, 0.010), (0.66, -0.09, 1.10, 0.020),
-                                 (0.33, -0.19, 1.16, 0.028), (0.0, -0.28, 1.20, 0.034)):
-            long_rows.append((cx, ccy + back, z_bot + dz, rx * g, ry * g * 0.94, t))
-        b.add(tube(long_rows, n=10, cap_start=False), hair_mat, uvscale=3.4, smooth=True)
-    ob = b.build()
-    return ob
+        # 肩にかかる長髪。帯を 10 枚。
+        # ring の角度は (cos a, sin a) なので **正面は a = -pi/2**。
+        # 正面は前髪(生え際で止める)、側面と後ろは肩まで下ろす。
+        rx, ry, ccy = radius_at(z_bot + hh * 0.06, hh * 0.08)
+        z_shoulder = hbot - hh * 1.05
+        import random
+        rnd = random.Random(11)
+        for k in range(14):
+            a = 2.0 * math.pi * k / 14.0
+            front = math.sin(a)                      # -1 が正面
+            if front < -0.30:
+                continue                             # 正面は帯を置かない
+                                                     # (顔を横切って板に見えるため)
+            zt = z_bot + hh * 0.14
+            ze = z_shoulder + hh * rnd.uniform(0.0, 0.22)
+            bulge = 0.16 + rnd.uniform(0.0, 0.10)
+            _hair_strip(b, strand_mat or hair_mat, cx,
+                        ccy + spec.get("hair_back", 0.0),
+                        rx * 1.02, ry * 1.02, zt, ze, a,
+                        rx * 0.17, bulge, rnd.uniform(-0.08, 0.08))
+    return b.build()
 
 
 # ---------------------------------------------------------------- 服
@@ -666,6 +714,8 @@ def build_one(name):
     m_leg = material(name + "_Leg", t["leg"], rough=0.9)
     m_shoe = material(name + "_Shoe", t["shoe"], rough=0.45)
     m_hair = material(name + "_Hair", t["hair"], rough=0.9)
+    m_strand = material(name + "_Strand", "hair_strand", rough=0.9,
+                        alpha_from_tex=True)
     m_collar = material(name + "_Collar", t.get("collar", t["torso"]), rough=0.9)
     m_tie = material(name + "_Tie", t.get("tie", t["torso"]), rough=0.8)
 
@@ -705,7 +755,7 @@ def build_one(name):
 
     garments = add_garment(name, body, arm, reg, {
         "cloth": m_torso, "collar": m_collar, "tie": m_tie}, spec)
-    hair = add_hair(name, body, reg, bounds, m_hair, spec)
+    hair = add_hair(name, body, reg, bounds, m_hair, spec, m_strand)
     if hair is not None:
         hair.parent = arm
         hair.matrix_parent_inverse = Matrix.Identity(4)

@@ -838,11 +838,13 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         eh = 10.5 * eye
         ew = 21.0 * eye
         ellipse(img, ey, ex, 21, 33, sh, min(1.0, 0.28 * feat), soft=17)                  # 眼窩
-        ellipse(img, ey, ex, eh, ew, (0.78, 0.76, 0.72), 0.88, soft=3.5)  # 白目(白くしすぎない)
+        sclera = (0.86, 0.845, 0.815) if female else (0.78, 0.76, 0.72)
+        ellipse(img, ey, ex, eh, ew, sclera, 0.92, soft=3.0)   # 白目
         if eye_red > 0:
             ellipse(img, ey + 4, ex, eh * 0.7, ew, (0.70, 0.40, 0.38),
                     eye_red * 0.45, soft=6)
-        ellipse(img, ey - eh * 1.15, ex, eh * 0.80, ew * 1.08, sh, min(1.0, 0.55 * feat), soft=6)
+        ellipse(img, ey - eh * 1.15, ex, eh * 0.80, ew * 1.08, sh,
+                min(1.0, (0.34 if female else 0.55) * feat), soft=6)
         ellipse(img, ey + 1, ex, eh * 0.88, eh * 0.88, (0.26, 0.18, 0.12), 0.88, soft=3.0)
         ellipse(img, ey + 1, ex, eh * 0.46, eh * 0.46, (0.09, 0.06, 0.05), 0.90, soft=2.2)
         ellipse(img, ey - 3, ex - 4, 2.4, 2.4, (0.90, 0.89, 0.86), 0.62, soft=1.6)
@@ -951,11 +953,12 @@ def t_face_son():
 def t_face_granddaughter():
     """孫娘(20 代)。肌は滑らか、眉は細い、泣き腫らして目のふちが赤い。"""
     # 若い肌は滑らかなままに、目・眉・唇だけ濃くして小さくても読めるようにする
-    return _photo_face((0.755, 0.615, 0.545), (0.11, 0.085, 0.080), 490,
-                       age=0.10, ruddy=0.0, stubble=0.0, bags=0.55,
-                       female=True, brow_w=0.62, eye=1.18, lip_full=1.35,
-                       blush=0.55, eye_red=0.75, lips=(0.68, 0.36, 0.36),
-                       shade=0.58, feat=1.35, contrast=1.16)
+    # 目が暗い窪みに潰れるので、白目・虹彩・まつ毛を強めに出す
+    return _photo_face((0.775, 0.640, 0.570), (0.10, 0.075, 0.072), 490,
+                       age=0.10, ruddy=0.0, stubble=0.0, bags=0.42,
+                       female=True, brow_w=0.58, eye=1.26, lip_full=1.35,
+                       blush=0.60, eye_red=0.55, lips=(0.70, 0.38, 0.38),
+                       shade=0.64, feat=1.70, contrast=1.18)
 
 
 # ---------------------------------------------------------------- 胴の柄
@@ -1171,6 +1174,29 @@ def t_lantern_inner():
                  (0.40, 0.34, 0.26), 0.7, 5.0)
         disc(img, 86, cx, 13, (0.46, 0.38, 0.28), 0.7, 4.0)
     return finish(img, 792, noise=0.03, levels=22)
+
+
+def t_hair_strand():
+    """毛束の帯。縦の筋 + アルファ抜き。u が帯の幅、v が長さ(v=0 が毛先)。"""
+    T = 128
+    base = rgb(T, (0.105, 0.098, 0.112))
+    strand = hstreak(white(T, 831), 12, axis=1)
+    base = mul_gray(base, 0.45 + norm(strand) * 1.30)
+    base = mix(base, rgb(T, (0.30, 0.28, 0.33)),
+               norm(fbm(T, 7, 3, 832)) * 0.30)
+    # 縦の筋(u 方向に細い束)
+    v = (np.arange(T) + 0.5) / T
+    fine = 0.5 + 0.5 * np.cos(2 * math.pi * v * 9.0)
+    a = np.ones((T, 1)) * (0.45 + 0.55 * fine)[None, :]
+    # 束のふちを透かす
+    edge = np.clip((1.0 - np.abs(v - 0.5) * 2.0) * 3.2, 0, 1)
+    a = a * (np.ones((T, 1)) * edge[None, :])
+    # 毛先(行が大きいほど下)を細らせる
+    u = (np.arange(T) + 0.5) / T
+    taper = np.clip((1.0 - u) * 2.6, 0, 1)[:, None] * np.ones((1, T))
+    a = np.clip(a * (0.35 + 0.65 * taper), 0, 1)
+    a = a * (0.80 + white(T, 833) * 0.25)
+    return rgba(posterize(base, 26), np.clip(a, 0, 1))
 
 
 def t_shoe_leather():
@@ -1451,6 +1477,7 @@ ALL = {
     "hair_thin": t_hair_thin,
     "hair_salt": t_hair_salt,
     "hair_long": t_hair_long,
+    "hair_strand": t_hair_strand,
     "shoe_leather": t_shoe_leather,
     "ihai": t_ihai,
     "lantern_paper": t_lantern_paper,
