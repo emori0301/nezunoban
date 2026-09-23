@@ -222,6 +222,20 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 		_fails += 1
 		print("  FAIL %s %s" % [label, detail])
 
+## show_code_input を待たずに走らせ、結果を辞書に書く
+func _run_code_input(out: Dictionary, title: String, length: int) -> void:
+	out["v"] = await hud.show_code_input(title, length)
+
+func _run_dialogue_code(out: Dictionary, title: String, length: int) -> void:
+	out["v"] = await Dialogue.code_input(title, length)
+
+## アクションを1回だけ押して離す(メニューのエッジ検出に合わせる)
+func _tap(action: StringName) -> void:
+	Input.action_press(action)
+	await get_tree().create_timer(0.1, false).timeout
+	Input.action_release(action)
+	await get_tree().create_timer(0.15, false).timeout
+
 ## ゲームパッドの軸を倒す/戻す。Input.parse_input_event で実機の無い環境でも試せる。
 func _pad_axis(axis: int, value: float) -> void:
 	var ev := InputEventJoypadMotion.new()
@@ -749,6 +763,64 @@ func _run_selftest() -> void:
 	_check(not hud.is_paused(), "ポーズ本体で B を押すと閉じる")
 	_pad_center()
 
+	# 19) 数字入力(金庫のダイヤル / 電話の番号)
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 19a) 桁を回して確定する。1009 を入れる。
+	var code_task := {"v": "pending"}
+	_run_code_input(code_task, "金庫", 4)
+	await get_tree().create_timer(0.4, false).timeout
+	_check(hud.is_code_open(), "入力 UI が開く")
+	_check(hud.blocks_player(), "入力中はプレイヤーが動けない")
+	_check(hud._code_values.size() == 4, "桁数が 4", "= %d" % hud._code_values.size())
+	_check(hud._code_digit == 0, "最初は 1 桁目")
+
+	# 1 桁目 = 1(上に1回)
+	await _tap(&"ui_up")
+	_check(hud._code_values[0] == 1, "上で数字が増える", "= %d" % hud._code_values[0])
+	# 2 桁目へ移って 0 のまま、3 桁目へ
+	await _tap(&"ui_right")
+	_check(hud._code_digit == 1, "右で次の桁へ", "= %d 桁目" % (hud._code_digit + 1))
+	await _tap(&"ui_right")
+	# 3 桁目 = 0、4 桁目 = 9(下に1回で 0 -> 9 に巻き戻る)
+	await _tap(&"ui_right")
+	_check(hud._code_digit == 3, "4 桁目まで移動")
+	await _tap(&"ui_down")
+	_check(hud._code_values[3] == 9, "下で 0 から 9 に巻き戻る", "= %d" % hud._code_values[3])
+	await _tap(&"ui_right")
+	_check(hud._code_digit == 0, "端で 1 桁目に戻る")
+	await _tap(&"ui_left")
+	_check(hud._code_digit == 3, "左でも巻き戻る")
+
+	await _tap(&"advance")
+	await get_tree().create_timer(0.3, false).timeout
+	_check(not hud.is_code_open(), "決定で閉じる")
+	_check(String(code_task["v"]) == "1009", "入れた数字が返る", "= 「%s」" % str(code_task["v"]))
+
+	# 19b) キャンセルは空文字
+	await get_tree().create_timer(0.3, false).timeout
+	var code_task2 := {"v": "pending"}
+	_run_code_input(code_task2, "番号", 4)
+	await get_tree().create_timer(0.4, false).timeout
+	await _tap(&"ui_up")
+	await _tap(&"ui_cancel")
+	await get_tree().create_timer(0.3, false).timeout
+	_check(not hud.is_code_open(), "キャンセルで閉じる")
+	_check(String(code_task2["v"]) == "", "キャンセルは空文字", "= 「%s」" % str(code_task2["v"]))
+
+	# 19c) Dialogue 経由でも同じ
+	await get_tree().create_timer(0.3, false).timeout
+	var code_task3 := {"v": "pending"}
+	_run_dialogue_code(code_task3, "金庫", 4)
+	await get_tree().create_timer(0.4, false).timeout
+	_check(hud.is_code_open(), "Dialogue.code_input が UI を出す")
+	_check(Dialogue.busy, "入力中は Dialogue.busy")
+	await _tap(&"ui_down")
+	await _tap(&"advance")
+	await get_tree().create_timer(0.3, false).timeout
+	_check(String(code_task3["v"]) == "9000", "Dialogue 経由でも値が返る", "= 「%s」" % str(code_task3["v"]))
+	_check(not Dialogue.busy, "終わると busy が下りる")
+
 	print("== %s (fail %d) ==" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	get_tree().quit(0 if _fails == 0 else 1)
 
@@ -961,6 +1033,43 @@ func _run_shots(dir: String) -> void:
 	await _shot(dir, "30_settings_pad")
 	hud._close_pause()
 	await get_tree().create_timer(0.3, false).timeout
+
+	# 27) 数字入力(金庫のダイヤル)
+	var ct := {"v": "pending"}
+	_run_code_input(ct, "金庫", 4)
+	await get_tree().create_timer(0.5, false).timeout
+	hud._code_values[0] = 1
+	hud._code_values[1] = 0
+	hud._code_values[2] = 0
+	hud._code_digit = 2
+	hud._update_code_digits()
+	await get_tree().create_timer(0.3, false).timeout
+	await _shot(dir, "31_code_input")
+	hud._code_result = ""
+	hud._code_done = true
+	await get_tree().create_timer(0.4, false).timeout
+
+	# 28) 真相の回想(画像あり / 画像なし)
+	var rec: Node = load(ENDING_PATH).instantiate()
+	viewport.add_child(rec)
+	# recap_*.png はまだ models 待ちなので、有り物のテクスチャで代用して見え方を確かめる
+	var stand_in: Array = []
+	for t in ["res://assets/textures/guest_book.png", "res://assets/textures/iei_photo.png"]:
+		stand_in.append(load(t) if ResourceLoader.exists(t) else null)
+	stand_in.append(null)     # 3 枚目は画像なし(黒に文だけ)
+	rec.show_recap(stand_in, [
+		"十月九日。十九匹の猫が、軽トラで運ばれた。",
+		"その週、キヨは首を絞められて死んだ。",
+		"……",
+	])
+	await get_tree().create_timer(2.6, false).timeout
+	await _shot(dir, "32_recap_image")
+	await get_tree().create_timer(5.3, false).timeout
+	await _shot(dir, "33_recap_second")
+	await get_tree().create_timer(5.3, false).timeout
+	await _shot(dir, "34_recap_no_image")
+	rec.queue_free()
+	await get_tree().create_timer(0.4, false).timeout
 
 	print("shots done: %s" % dir)
 	get_tree().quit()

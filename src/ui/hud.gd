@@ -29,6 +29,7 @@ signal quit_requested
 @export var clipboard_footer: String = "やすらぎ会館"
 @export var clipboard_tasks_header: String = "今夜のこと"
 @export var note_close_hint: String = "閉じる"
+@export var code_confirm_hint: String = "決定"
 @export var pause_items: PackedStringArray = ["再開", "設定", "タイトルへ", "終了"]
 ## 設定画面の行。SETTING_KEYS と同じ並びであること(差し替えるときは順番を崩さない)
 @export var settings_items: PackedStringArray = [
@@ -94,6 +95,15 @@ var _clip_rules: VBoxContainer = null
 
 var _pause: Control
 var _pause_rows: VBoxContainer
+var _code: Control
+var _code_title: Label
+var _code_digits: HBoxContainer
+var _code_hint: Label
+var _code_open: bool = false
+var _code_digit: int = 0          ## いま触っている桁
+var _code_values: PackedInt32Array = []
+var _code_result: String = ""
+var _code_done: bool = false
 var _settings_rows: VBoxContainer
 var _settings_title: Label
 var _pause_page: int = 0          ## 0=ポーズ本体 / 1=設定
@@ -172,6 +182,7 @@ func _build() -> void:
 	_build_dialogue()
 	_build_choice()
 	_build_note()
+	_build_code()
 	_build_clipboard()
 	_build_pause()
 
@@ -510,6 +521,53 @@ func _build_note() -> void:
 	_note_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	v.add_child(_note_hint)
 
+## 金庫のダイヤル / 電話の番号入力。中央に小さなパネル。
+func _build_code() -> void:
+	_code = Control.new()
+	_code.name = "CodeInput"
+	UiTheme.full_rect(_code)
+	_code.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_code.visible = false
+	_root.add_child(_code)
+
+	var dim := ColorRect.new()
+	UiTheme.full_rect(dim)
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_code.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.custom_minimum_size = Vector2(196, 0)
+	panel.add_theme_stylebox_override("panel", UiTheme.box_style(Color(0.012, 0.014, 0.018, 0.90)))
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_code.add_child(panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(v)
+
+	_code_title = UiTheme.gothic_label("", 16, UiTheme.TEXT_DIM)
+	_code_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(_code_title)
+
+	# 桁。VHS 越しでも読めるよう大きめに取る
+	_code_digits = HBoxContainer.new()
+	_code_digits.alignment = BoxContainer.ALIGNMENT_CENTER
+	_code_digits.add_theme_constant_override("separation", 8)
+	_code_digits.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(_code_digits)
+
+	_code_hint = UiTheme.gothic_label("", 12, UiTheme.TEXT_DIM)
+	_code_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(_code_hint)
+
 func _build_clipboard() -> void:
 	_clip = Control.new()
 	_clip.name = "Clipboard"
@@ -633,7 +691,7 @@ func _process(delta: float) -> void:
 	_rec_dot.modulate.a = 1.0 if fmod(_rec_t, 1.0) < 0.55 else 0.0
 	_time_label.text = Clock.time_string()
 
-	var modal := _note_open or _clip_open or _paused or _choice_open
+	var modal := _code_open or _note_open or _clip_open or _paused or _choice_open
 	var hide_reticle: bool = modal or Dialogue.busy or _dlg_active
 	_crosshair.visible = not hide_reticle
 	_ring.visible = not hide_reticle
@@ -714,6 +772,25 @@ func _handle_input() -> void:
 				return
 		if back:
 			_close_pause()
+		return
+
+	if _code_open:
+		if up:
+			_spin_code_digit(1)
+		if down:
+			_spin_code_digit(-1)
+		if left:
+			_move_code_digit(-1)
+		if right:
+			_move_code_digit(1)
+		if adv:
+			_code_result = _code_text()
+			_code_done = true
+			Audio.play(&"ui_confirm", -6.0)
+		elif back:
+			_code_result = ""
+			_code_done = true
+			Audio.play(&"ui_back", -8.0)
 		return
 
 	if _note_open:
@@ -879,10 +956,95 @@ func show_note(title: String, body: String) -> void:
 		await get_tree().process_frame
 	_note.visible = false
 
+# ================================================================ 数字入力(金庫 / 電話)
+
+## 数字を length 桁入れる。決定で文字列、キャンセルで "" を返す。await 可。
+## 上下(W/S・パッド上下)で 0〜9、左右で桁移動、advance で確定、pause / ui_cancel で取り消し。
+func show_code_input(title: String, length: int = 4) -> String:
+	await get_tree().process_frame
+	_close_clipboard()
+	var n: int = maxi(length, 1)
+	_code_values.resize(n)
+	for i in n:
+		_code_values[i] = 0
+	_code_digit = 0
+	_code_result = ""
+	_code_done = false
+	_code_title.text = title
+	_code_hint.text = "[%s] %s" % [_key_for(&"advance"), code_confirm_hint]
+	_build_code_digits(n)
+	_update_code_digits()
+	_code.visible = true
+	_code_open = true
+	_latch[&"advance"] = true
+	_latch[&"pause"] = true
+	_latch[&"ui_cancel"] = true
+	Audio.play(&"safe_dial", -10.0)
+	while not _code_done and is_inside_tree():
+		await get_tree().process_frame
+	_code_open = false
+	_code.visible = false
+	return _code_result
+
+func _build_code_digits(n: int) -> void:
+	_clear_children(_code_digits)
+	for i in n:
+		var idx := i
+		var l := UiTheme.gothic_label("0", 30, UiTheme.TEXT_DIM)
+		l.custom_minimum_size = Vector2(26, 38)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		l.mouse_entered.connect(func() -> void:
+			if _code_open and _code_digit != idx:
+				_code_digit = idx
+				_update_code_digits())
+		l.gui_input.connect(func(e: InputEvent) -> void:
+			if not _code_open or not (e is InputEventMouseButton) or not e.pressed:
+				return
+			_code_digit = idx
+			if e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_LEFT:
+				_spin_code_digit(1)
+			elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN or e.button_index == MOUSE_BUTTON_RIGHT:
+				_spin_code_digit(-1))
+		_code_digits.add_child(l)
+
+func _update_code_digits() -> void:
+	for i in _code_digits.get_child_count():
+		var l := _code_digits.get_child(i) as Label
+		var on := i == _code_digit
+		l.text = str(_code_values[i]) if i < _code_values.size() else "0"
+		l.label_settings.font_color = UiTheme.SELECT if on else UiTheme.TEXT_DIM
+
+## 0〜9 を巻き戻しながら回す
+func _spin_code_digit(dir: int) -> void:
+	if _code_digit < 0 or _code_digit >= _code_values.size():
+		return
+	_code_values[_code_digit] = posmod(_code_values[_code_digit] + dir, 10)
+	_update_code_digits()
+	Audio.play(&"safe_dial", -12.0, randf_range(0.96, 1.05))
+
+func _move_code_digit(dir: int) -> void:
+	var n := _code_values.size()
+	if n == 0:
+		return
+	_code_digit = posmod(_code_digit + dir, n)
+	_update_code_digits()
+	Audio.play(&"ui_select", -12.0)
+
+func _code_text() -> String:
+	var out := ""
+	for v in _code_values:
+		out += str(v)
+	return out
+
+func is_code_open() -> bool:
+	return _code_open
+
 # ================================================================ プロンプト / 長押し
 
 func show_prompt(text: String, available: bool = true) -> void:
-	if Dialogue.busy or _note_open or _clip_open or _paused or _choice_open:
+	if Dialogue.busy or _code_open or _note_open or _clip_open or _paused or _choice_open:
 		_prompt.visible = false
 		_focused = false
 		_crosshair.queue_redraw()
@@ -948,7 +1110,7 @@ func _flash_task() -> void:
 	tw.tween_property(_task_label, "modulate:a", 1.0, 0.18)
 
 func toggle_clipboard() -> void:
-	if Dialogue.busy or _dlg_active or _note_open or _paused or _choice_open:
+	if Dialogue.busy or _dlg_active or _code_open or _note_open or _paused or _choice_open:
 		return
 	_clip_open = not _clip_open
 	if _clip_open:
@@ -1018,7 +1180,7 @@ func _update_pause_rows() -> void:
 		l.text = ("＞ " if on else "　 ") + String(l.text).lstrip("＞　 ")
 
 func _open_pause() -> void:
-	if Dialogue.busy or _note_open or _choice_open:
+	if Dialogue.busy or _code_open or _note_open or _choice_open:
 		return
 	_close_clipboard()
 	_paused = true
@@ -1284,8 +1446,8 @@ func set_camcorder_text(text: String) -> void:
 ## 字幕を送るつもりの E が目の前の Interactable を押してしまうため(review H4)。
 ## Dialogue.busy に頼らないのは、say と note が重なると先に終わった側が busy を落とすから。
 func blocks_player() -> bool:
-	return _dlg_active or _note_open or _clip_open or _paused or _choice_open
+	return _dlg_active or _code_open or _note_open or _clip_open or _paused or _choice_open
 
 ## マウスカーソルを出すべきか。字幕は含めない(会話のたびにカーソルが湧くのを避ける)。
 func wants_cursor() -> bool:
-	return _note_open or _clip_open or _paused or _choice_open
+	return _code_open or _note_open or _clip_open or _paused or _choice_open

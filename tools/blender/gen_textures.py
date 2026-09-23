@@ -375,13 +375,41 @@ def t_futon_cloth():
 
 
 def t_fur_black():
-    base = rgb(S, (0.085, 0.085, 0.095))
-    n = white(S, 221)
-    n = hstreak(n, 3, axis=0)
-    n = norm(n)
-    base = mul_gray(base, 0.55 + n * 0.95)
-    base = mix(base, rgb(S, (0.14, 0.13, 0.15)), norm(fbm(S, 12, 3, 222)) * 0.35)
-    return finish(base, 223, noise=0.05)
+    """黒猫の毛。真っ黒ではなく、濃淡の毛流れを出す。"""
+    T = 256
+    img = rgb(T, (0.062, 0.060, 0.068))
+    # 毛流れ: 細い筋を一方向に
+    flow = hstreak(white(T, 221), 3, axis=1)
+    img = mul_gray(img, 0.55 + norm(flow) * 1.05)
+    fine = hstreak(white(T, 224), 1, axis=1)
+    img = mul_gray(img, 0.90 + norm(fine) * 0.22)
+    # 大きなうねり(光の当たるところが茶色く抜ける)
+    img = mix(img, rgb(T, (0.155, 0.135, 0.125)),
+              np.clip((norm(fbm(T, 6, 4, 222)) - 0.48) * 2.0, 0, 1) * 0.55)
+    img = mix(img, rgb(T, (0.028, 0.026, 0.032)), norm(fbm(T, 13, 3, 225)) * 0.30)
+    return finish(img, 223, noise=0.040, levels=40)
+
+
+def t_fur_gray():
+    """腹と口元。黒に近いが少し灰色。"""
+    T = 256
+    img = rgb(T, (0.145, 0.140, 0.148))
+    flow = hstreak(white(T, 231), 3, axis=1)
+    img = mul_gray(img, 0.62 + norm(flow) * 0.86)
+    img = mix(img, rgb(T, (0.235, 0.228, 0.232)), norm(fbm(T, 7, 3, 232)) * 0.40)
+    return finish(img, 233, noise=0.035, levels=40)
+
+
+def t_cat_eye():
+    """猫の目。黄緑の虹彩 + 縦長の瞳。64x64、目のクアッドに 1 枚。"""
+    T = 64
+    img = rgb(T, (0.10, 0.11, 0.09))
+    disc(img, 32, 32, 30, (0.58, 0.68, 0.16), 1.0, 2.0)            # 虹彩
+    disc(img, 32, 32, 30, (0.44, 0.56, 0.12), 0.45, 14.0)          # 外周を暗く
+    disc(img, 28, 32, 18, (0.72, 0.80, 0.26), 0.55, 12.0)          # 上を明るく
+    ellipse(img, 32, 32, 27, 5.0, (0.03, 0.03, 0.035), 1.0, 1.6)   # 縦長の瞳
+    disc(img, 20, 24, 4.0, (0.92, 0.95, 0.88), 0.85, 1.6)          # ハイライト
+    return finish(img, 234, noise=0.03, levels=28)
 
 
 def t_kasha_skin():
@@ -1474,6 +1502,97 @@ def t_handprint():
     return rgba(posterize(col, 26), a)
 
 
+# ---------------------------------------------------------------- 非常口と血
+
+def t_exit_sign():
+    """非常口のピクトグラム。128x64、緑地に白い「走る人 + 扉 + 矢印」。"""
+    H, W = 64, 128
+    img = rgb(H, (0.06, 0.52, 0.30), width=W)
+    img = mul_gray(img, 0.93 + norm(fbm(max(H, W), 24, 2, 941))[:H, :W] * 0.12)
+    rect(img, 2, 2, H - 2, W - 2, (0.10, 0.62, 0.36), 0.7)
+    white = (0.93, 0.95, 0.92)
+    # 右: 扉の枠
+    rect(img, 12, 92, 56, 120, white, 1.0)
+    rect(img, 16, 96, 52, 116, (0.06, 0.52, 0.30), 1.0)
+    # 走る人(胴・頭・手足)
+    disc(img, 17, 46, 5.0, white, 1.0, 1.2)                      # 頭
+    for (a, b2, c, d) in ((23, 42, 38, 51),):                    # 胴
+        rect(img, a, b2, c, d, white, 1.0)
+    stroke(img, (26, 44), (33, 31), 3.2, white, 1.0, soft=1.2)   # 後ろ手
+    stroke(img, (25, 50), (31, 62), 3.2, white, 1.0, soft=1.2)   # 前手
+    stroke(img, (37, 45), (50, 36), 3.6, white, 1.0, soft=1.2)   # 後ろ脚
+    stroke(img, (50, 36), (54, 26), 3.2, white, 1.0, soft=1.2)
+    stroke(img, (37, 49), (48, 62), 3.6, white, 1.0, soft=1.2)   # 前脚
+    stroke(img, (48, 62), (54, 70), 3.2, white, 1.0, soft=1.2)
+    # 左: 矢印
+    stroke(img, (32, 26), (32, 8), 3.4, white, 1.0, soft=1.2)
+    for (dr, dc) in ((-6, 6), (6, 6)):
+        stroke(img, (32, 8), (32 + dr, 8 + dc), 3.4, white, 1.0, soft=1.2)
+    return finish(mul_gray(img, grunge(max(H, W), 942, 0.10)[:H, :W]), 943,
+                  noise=0.02, levels=24)
+
+
+def _blood_base(H, W, seed):
+    col = rgb(H, (0.175, 0.022, 0.020), width=W)
+    n = norm(fbm(max(H, W), 22, 3, seed))[:H, :W]
+    col = mul_gray(col, 0.70 + n * 0.62)
+    col = mix(col, rgb(H, (0.085, 0.012, 0.014), width=W), n * 0.35)
+    return col
+
+
+def t_blood_handprint():
+    """壁に付いた血の手形。128x128、アルファ付き。指先が上。"""
+    S2 = 128
+    m = np.zeros((S2, S2, 3))
+    ellipse(m, 84, 63, 24, 22, (1, 1, 1), 1.0, soft=5.0)          # 掌
+    ellipse(m, 96, 63, 15, 19, (1, 1, 1), 1.0, soft=6.0)
+    fingers = (((62, 41), (27, 33), 6.6), ((59, 55), (19, 51), 7.0),
+               ((59, 70), (20, 70), 6.8), ((63, 84), (29, 88), 6.2))
+    for (p0, p1, rad) in fingers:
+        stroke(m, p0, p1, rad, (1, 1, 1), 1.0, soft=2.6)
+        disc(m, p1[0], p1[1], rad * 0.92, (1, 1, 1), 1.0, 2.0)
+    stroke(m, (88, 41), (74, 17), 7.8, (1, 1, 1), 1.0, soft=2.8)  # 親指
+    disc(m, 74, 17, 7.6, (1, 1, 1), 1.0, 2.2)
+    mask = np.clip(m[..., 0], 0, 1)
+
+    col = _blood_base(S2, S2, 951)
+    n = norm(fbm(S2, 16, 4, 952))
+    # 擦れ跡: 下へ引いた筋
+    smear = np.zeros((S2, S2))
+    for _ in range(26):
+        r0 = int(np.random.default_rng(953 + _).integers(60, 110))
+        c0 = int(np.random.default_rng(970 + _).integers(30, 100))
+        for k in range(int(10 + n[r0 % S2, c0 % S2] * 22)):
+            rr = min(S2 - 1, r0 + k)
+            smear[rr, c0] = max(smear[rr, c0], 1.0 - k / 30.0)
+    a = mask * (0.72 + n * 0.30)
+    a = np.maximum(a, smear * mask.max(axis=0)[None, :] * 0.45)
+    a = a * (0.80 + white(S2, 954) * 0.28)
+    edge = np.ones((S2, S2))
+    edge[:2] = 0; edge[-2:] = 0; edge[:, :2] = 0; edge[:, -2:] = 0
+    return rgba(posterize(col, 24), np.clip(a * edge, 0, 1))
+
+
+def t_blood_smear():
+    """横に引きずった血痕。256x64、アルファ付き。"""
+    H, W = 64, 256
+    col = _blood_base(H, W, 961)
+    n = norm(fbm(W, 10, 4, 962))[:H, :W]
+    v = (np.arange(W) + 0.5) / W
+    u = (np.arange(H) + 0.5) / H
+    # 左が濃く、右へ擦れて薄くなる
+    body = np.clip(1.0 - np.abs(u - 0.5) * 2.6, 0, 1)[:, None] * np.ones((1, W))
+    fade = np.clip(1.25 - v * 1.35, 0, 1)[None, :] * np.ones((H, 1))
+    a = body * fade * (0.55 + n * 0.75)
+    # 引きずった筋
+    streak = hstreak(white(W, 963), 14, axis=1)[:H, :W]
+    a = a * (0.55 + norm(streak) * 0.85)
+    a = np.clip(a * 1.35, 0, 1)
+    edge = np.ones((H, W))
+    edge[:2] = 0; edge[-2:] = 0; edge[:, :2] = 0; edge[:, -2:] = 0
+    return rgba(posterize(col, 24), np.clip(a * edge, 0, 1))
+
+
 ALL = {
     # level が使う(シームレス)
     "floor_lino": t_floor_lino,
@@ -1499,6 +1618,8 @@ ALL = {
     "zabuton_cloth": t_zabuton,
     "futon_cloth": t_futon_cloth,
     "fur_black": t_fur_black,
+    "fur_gray": t_fur_gray,
+    "cat_eye": t_cat_eye,
     "kasha_skin": t_kasha_skin,
     "suit_black": t_suit_black,
     "dress_black": t_dress_black,
@@ -1561,6 +1682,9 @@ ALL = {
     # デカール(アルファ付き。タイルしない)
     "paw_print": t_paw_print,
     "handprint": t_handprint,
+    "exit_sign": t_exit_sign,
+    "blood_handprint": t_blood_handprint,
+    "blood_smear": t_blood_smear,
 }
 
 

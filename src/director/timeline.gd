@@ -12,21 +12,22 @@ var scares: Scares
 
 ## 台本表。[時刻, メソッド名, 覚え書き]
 const SCHEDULE := [
-	["21:40", "ev_flowers", "供花の水替え"],
-	["22:00", "ev_window", "式場の窓が開く / 線香が早く減る"],
-	["22:30", "ev_phone_silent", "電話(無言)"],
-	["23:00", "ev_monitor_figure", "モニターに座る人影"],
-	["23:20", "ev_cats_begin", "猫が来はじめる"],
-	["23:40", "ev_tv", "控室の TV が勝手につく"],
-	["00:00", "ev_blackout", "廊下の照明が落ちる / 分電盤"],
-	["00:30", "ev_son", "息子が来館 / 選択"],
-	["01:00", "ev_dry_ice", "ドライアイス交換 / 足音が2人分"],
-	["01:30", "ev_office_note", "宿直日誌(収集②)/ 扉が閉まる"],
-	["02:00", "ev_yukan", "湯灌室が開く(収集③)"],
-	["02:30", "ev_phone_wet", "電話(濡れた声)"],
-	["03:00", "ev_ushimitsu", "丑三つ時"],
-	["03:20", "ev_safe", "金庫の台帳(収集④)/ 廊下の人影"],
-	["03:40", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡"],
+	["21:25", "ev_flowers", "供花の水替え"],
+	["21:40", "ev_window", "式場の窓が開く / 線香が早く減る / 外の猫"],
+	["22:00", "ev_phone_silent", "電話(無言)"],
+	["22:20", "ev_monitor_figure", "モニターに座る人影 / 椅子"],
+	["22:40", "ev_cats_begin", "猫が来はじめる / 開口部が独りでに開く"],
+	["23:00", "ev_tv", "控室の TV が勝手につく"],
+	["23:30", "ev_blackout", "廊下の照明が落ちる / 分電盤"],
+	["00:00", "ev_son", "息子が来館 / 選択"],
+	["00:30", "ev_dry_ice", "ドライアイス交換 / 足音が2人分"],
+	["01:00", "ev_office_note", "宿直日誌(収集②)/ 扉が閉まる"],
+	["01:30", "ev_yukan", "湯灌室が開く(収集③)"],
+	["02:00", "ev_phone_wet", "電話(濡れた声)"],
+	["02:30", "ev_ushimitsu", "丑三つ時(3分)"],
+	["03:00", "ev_safe", "金庫の台帳(収集④)/ 廊下の人影"],
+	["03:20", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡 / 顔③"],
+	["03:40", "ev_lid_slides", "棺の蓋が独りでにずれる"],
 	["04:00", "ev_finale", "全消灯 / 火車 / 灯し直し x3"],
 	["04:45", "ev_dawn_light", "夜明けの光 / 鴉"],
 	["05:00", "ev_dawn", "朝 / エンディング"],
@@ -61,51 +62,43 @@ func next_event_minute(m: int) -> int:
 ## --time= で途中から始めたとき、それより前のイベントの結果だけを反映する。
 func apply_past(m: int) -> void:
 	var b: Building = dir.building()
-	if m > 40:
-		# 供花は替え済み
+	if m > 25:
 		for f in SystemsInstaller.find_all(&"flower_stand"):
 			f.call(&"set_wilted", false)
-	if m > 60:
-		# 窓は閉めたあと
+	if m > 40:
 		var w: WindowPane = b.get_window_pane(&"Window_Shikijo") if b else null
 		if w and w.is_open:
 			w.close()
-	if m > 120:
+	if m > 80:
 		scares.chair_pulled_out()
 		if Dread.value >= 3:
 			scares.zabuton_before_coffin()
-	if m > 140:
+	if m > 100:
 		dir.cats_enabled = true
 		_cat_visits_left = 3
 		_activate_cats_when_ready()
-	if m > 180:
+	if m > 150:
 		Game.set_flag(&"breaker_restored", true)
-	if m > 210:
-		# 息子は断られて控室で飲んでいる(真エンドの前提)
+	if m > 180:
 		Game.set_flag(&"son_refused", true)
 		dir.spawn_son_asleep()
-	if m > 240:
+	if m > 210:
 		var c: Node = dir.sys(&"coffin")
 		if c:
 			c.call(&"set_face_state", 1)
-	if m > 270:
+	if m > 240:
 		dir.enable_office_note(true)
-	if m > 300:
+	if m > 270:
 		var d: Door = b.get_door(&"Door_Yukan") if b else null
 		if d:
 			d.set_locked(false)
 		dir.enable_yukan_note(true)
-	if m > 380:
+	if m > 360:
 		var desk: Node = dir.sys(&"boss_desk")
 		if desk:
 			desk.call(&"enable_key", true)
 		_prepare_safe()
-	if m > 465:
-		scares.dawn_now()
-	if m > 420:
-		# 終盤の途中から始めたときは、終盤そのものを動かす(独白は出さない)
-		call_deferred(&"ev_finale", true)
-	if m > 400:
+	if m > 380:
 		var fz: Node = dir.sys(&"freezer")
 		if fz:
 			fz.call(&"set_empty", true)
@@ -113,6 +106,15 @@ func apply_past(m: int) -> void:
 		if c2:
 			c2.call(&"set_face_state", 3)
 		scares.paw_prints()
+	if m > 400:
+		var c3: Node = dir.sys(&"coffin")
+		if c3:
+			c3.call(&"set_lid_ajar", true)
+	if m > 465:
+		scares.dawn_now()
+	if m > 420:
+		call_deferred(&"ev_finale", true)
+	dir.apply_incense_pace()
 
 
 # ============================================================ 21:40 供花
@@ -134,8 +136,8 @@ func ev_window() -> void:
 		w.open(true)
 	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
-		inc.set(&"burn_multiplier", 3.0)
 		inc.call(&"set_wind", Vector3(-0.8, 0, -0.5))
+	dir.apply_incense_pace(3.0)
 	dir.monologue(ScriptText.M_WINDOW)
 	Tasks.set_task(&"window", ScriptText.TASK_WINDOW)
 
@@ -144,8 +146,8 @@ func ev_window() -> void:
 func on_shikijo_window_closed() -> void:
 	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
-		inc.set(&"burn_multiplier", 1.0)
 		inc.call(&"set_wind", Vector3.ZERO)
+	dir.apply_incense_pace()
 	Tasks.complete(&"window")
 	# 閉めた瞬間、外の駐車場に猫が1匹座ってこちらを見ている
 	await Events.wait(0.7)
@@ -232,6 +234,7 @@ func ev_cats_begin() -> void:
 	_cat_visits_left = scares.rng.randi_range(3, 5)
 	_activate_cats()
 	_schedule_next_cat(2.0)
+	_schedule_opening(3.0)
 
 
 ## 起動1フレーム目は NavigationRegion3D のマップがまだ同期しておらず、
@@ -276,6 +279,16 @@ func _schedule_next_cat(minutes: float) -> void:
 		Audio.play_at(StringName("cat_scratch_%d" % scares.rng.randi_range(1, 3)),
 			_entry_pos(entry), -2.0, 1.0, 18.0)
 	_schedule_next_cat(scares.rng.randf_range(20.0, 25.0))
+
+
+## 3〜4 分おきに開口部を 1 つ開ける。猫が入る道を作り続ける。
+func _schedule_opening(minutes: float) -> void:
+	var secs := minutes * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
+	await Events.wait(secs)
+	if Game.state != Game.State.PLAYING or _finale_running:
+		return
+	scares.opening_opens_itself()
+	_schedule_opening(scares.rng.randf_range(3.0, 4.0))
 
 
 func _entry_pos(entry: StringName) -> Vector3:
@@ -399,7 +412,7 @@ func _son_refused(son) -> void:
 			son.call(&"face", Vector3(-1.35, 0.0, 2.0))
 	else:
 		dir.spawn_son_asleep(false)
-	Events.at("01:30", Callable(self, "ev_son_sleeps"), "ev_son_sleeps")
+	Events.at("01:00", Callable(self, "ev_son_sleeps"), "ev_son_sleeps")
 
 
 func ev_son_sleeps() -> void:
@@ -548,10 +561,10 @@ func ev_ushimitsu() -> void:
 			c.call(&"activate")
 		if c.has_method(&"set_target_entry"):
 			c.call(&"set_target_entry", CAT_ENTRIES[i % CAT_ENTRIES.size()])
-	# 20 ゲーム分のあいだ、4 回 火を消す(実時間では速度で割る)
+	# 30 ゲーム分(実 3 分)のあいだ、6 回 火を消す
 	var step := 5.0 * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
 	var coffin: Node = dir.sys(&"coffin")
-	for i in 4:
+	for i in 6:
 		await Events.wait(step)
 		if Game.state == Game.State.ENDING:
 			return
@@ -567,7 +580,7 @@ func ev_ushimitsu() -> void:
 		scares.glitch(0.3)
 		if i == 1:
 			scares.shikijo_door_opens()   # 猫が棺まで来られるように戸を開ける
-		if i == 3:
+		if i == 5:
 			var cnd: Node = dir.sys(&"candle")
 			if cnd:
 				dir.quench(&"candle")
@@ -616,6 +629,39 @@ func ev_freezer_empty() -> void:
 	Tasks.set_task(&"dry_ice", ScriptText.TASK_DRY_ICE)
 
 
+# ============================================================ 03:40 棺の蓋
+
+var _lid_spot: Scares.Spot = null
+
+func ev_lid_slides() -> void:
+	dir.log_event("ev_lid_slides")
+	var coffin: Node = dir.sys(&"coffin")
+	if coffin == null:
+		return
+	coffin.call(&"set_lid_ajar", true)
+	Game.set_flag(&"lid_slid", true)
+	scares.glitch(0.5)
+	scares.stinger(-4.0)
+	dir.monologue(ScriptText.ADDED_M_LID)
+	Tasks.set_task(&"lid", ScriptText.TASK_LID)
+	# 蓋を戻すための調べる点(Coffin 本体はドライアイスと小窓に使われている)
+	var b: Building = dir.building()
+	if b:
+		_lid_spot = Scares.Spot.make(b, (coffin as Node3D).global_position + Vector3(-0.7, 0.35, 0.0),
+			ScriptText.TASK_LID, Vector3(0.9, 0.7, 1.0), Callable(self, "_push_lid_back"))
+
+
+func _push_lid_back(_p: Node3D) -> void:
+	var coffin: Node = dir.sys(&"coffin")
+	if coffin:
+		coffin.call(&"set_lid_ajar", false)
+	Game.set_flag(&"lid_restored", true)
+	Tasks.complete(&"lid")
+	if _lid_spot and is_instance_valid(_lid_spot):
+		_lid_spot.queue_free()
+		_lid_spot = null
+
+
 # ============================================================ 04:00 終盤
 
 func ev_finale(quiet: bool = false) -> void:
@@ -653,6 +699,15 @@ func ev_finale(quiet: bool = false) -> void:
 	# 終盤の用事はマッチだけにする。前の時間帯の線香・灯明のタスクは畳む(review N1)
 	for old_id in [&"incense", &"incense_stock", &"candle", &"dry_ice", &"last_incense"]:
 		Tasks.complete(old_id)
+	Tasks.complete(&"lid")
+	if _lid_spot and is_instance_valid(_lid_spot):
+		_lid_spot.queue_free()
+		_lid_spot = null
+	# 03:40 にずれた蓋を戻さなかった夜は、最初の灯し直しが空振りする。
+	# (終盤は必ず蓋をずらすので is_lid_ajar では判定できない)
+	if Game.get_flag(&"lid_slid", false) and not Game.get_flag(&"lid_restored", false):
+		if cnd:
+			cnd.set(&"fail_next", true)
 	Tasks.set_task(&"relight", ScriptText.TASK_RELIGHT)
 	# 控室の戸を「開けるか」に差し替える(息子が寝ているとき)
 	_install_hikaeshitsu_choice()
@@ -660,6 +715,7 @@ func ev_finale(quiet: bool = false) -> void:
 	# (Dialogue.say はプレイヤーが送るまで返らないので、await すると火車が出てこない)
 	var k: Node = dir.npc(&"kasha")
 	if k and k.has_method(&"activate"):
+		k.set(&"chase_speed", 3.2)
 		k.call(&"set_active", true)
 		k.call(&"activate")       # Kasha 側が chase_started を出す
 	else:
@@ -687,7 +743,7 @@ func on_relight(n: int) -> void:
 		k.call(&"retreat")
 	else:
 		dir.set_fallback_chase(false)
-	await Events.wait(18.0 / maxf(Clock.speed, 0.01))
+	await Events.wait(14.0 / maxf(Clock.speed, 0.01))
 	if not _finale_running or Game.state == Game.State.ENDING:
 		return
 	var cnd: Node = dir.sys(&"candle")
@@ -761,7 +817,7 @@ func _install_hikaeshitsu_choice() -> void:
 		return
 	d.enabled = false
 	_hikaeshitsu_spot = Scares.Spot.make(b, d.global_position + Vector3(0, 1.0, 0),
-		"控室の戸を調べる", Vector3(1.2, 2.0, 0.9), Callable(self, "_ask_hikaeshitsu"))
+		ScriptText.CHOICE_HIKAESHITSU_SPOT, Vector3(1.2, 2.0, 0.9), Callable(self, "_ask_hikaeshitsu"))
 
 
 func _ask_hikaeshitsu(_p: Node3D) -> void:

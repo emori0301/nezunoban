@@ -129,8 +129,9 @@ def norm(a):
     return (a - lo) / (hi - lo)
 
 
-def rgb(size, color):
-    out = np.empty((size, size, 3))
+def rgb(size, color, width=None):
+    """size x (width or size) の単色画像。"""
+    out = np.empty((size, width or size, 3))
     out[..., 0] = color[0]
     out[..., 1] = color[1]
     out[..., 2] = color[2]
@@ -149,14 +150,16 @@ def mix(a, b, t):
 
 
 def grunge(size, seed, amount=0.25, cells=3):
+    # 非正方形で使うときは呼び出し側で [:H, :W] に切る
     """汚れ: 低周波の暗い染み。掛け算用のグレー(0.7〜1.0)を返す。"""
     n = norm(fbm(size, cells=cells, octaves=4, seed=seed))
     n = np.clip((n - 0.35) / 0.65, 0.0, 1.0)
     return 1.0 - n * amount
 
 
-def speckle(size, seed, amount=0.06):
-    return 1.0 + (white(size, seed) - 0.5) * 2.0 * amount
+def speckle(size, seed, amount=0.06, width=None):
+    n = _rng(seed).random((size, width or size))
+    return 1.0 + (n - 0.5) * 2.0 * amount
 
 
 def tile_coords(size):
@@ -205,17 +208,17 @@ def posterize(img, levels=24):
 
 
 def finish(img, seed=0, noise=0.035, levels=32):
-    """全テクスチャ共通の仕上げ: 微ノイズ + 減色。"""
-    out = img * speckle(img.shape[0], seed + 7777, noise)[..., None]
-    return posterize(np.clip(out, 0, 1), levels)
+    """全テクスチャ共通の仕上げ: 微ノイズ + 減色。非正方形でも動く。"""
+    sp = speckle(img.shape[0], seed + 7777, noise, width=img.shape[1])
+    return posterize(np.clip(img * sp[..., None], 0, 1), levels)
 
 
 # ---- 描画ヘルパ(テクスチャ上に矩形や線を置く) ----
 
 def rect(img, x0, y0, x1, y1, color, alpha=1.0):
-    s = img.shape[0]
-    x0 = max(0, int(x0)); x1 = min(s, int(x1))
-    y0 = max(0, int(y0)); y1 = min(s, int(y1))
+    h, w = img.shape[0], img.shape[1]
+    x0 = max(0, int(x0)); x1 = min(h, int(x1))
+    y0 = max(0, int(y0)); y1 = min(w, int(y1))
     if x1 <= x0 or y1 <= y0:
         return img
     c = np.array(color, dtype=float)
@@ -224,8 +227,8 @@ def rect(img, x0, y0, x1, y1, color, alpha=1.0):
 
 
 def disc(img, cx, cy, r, color, alpha=1.0, soft=1.0):
-    s = img.shape[0]
-    gx, gy = np.meshgrid(np.arange(s), np.arange(s), indexing="ij")
+    gx, gy = np.meshgrid(np.arange(img.shape[0]), np.arange(img.shape[1]),
+                         indexing="ij")
     d = np.sqrt((gx - cx) ** 2.0 + (gy - cy) ** 2.0)
     m = np.clip((r - d) / max(soft, 1e-6), 0.0, 1.0) * alpha
     c = np.array(color, dtype=float)
@@ -234,8 +237,8 @@ def disc(img, cx, cy, r, color, alpha=1.0, soft=1.0):
 
 
 def ellipse(img, cx, cy, rx, ry, color, alpha=1.0, soft=1.0):
-    s = img.shape[0]
-    gx, gy = np.meshgrid(np.arange(s), np.arange(s), indexing="ij")
+    gx, gy = np.meshgrid(np.arange(img.shape[0]), np.arange(img.shape[1]),
+                         indexing="ij")
     d = np.sqrt(((gx - cx) / max(rx, 1e-6)) ** 2.0 + ((gy - cy) / max(ry, 1e-6)) ** 2.0)
     m = np.clip((1.0 - d) * max(rx, ry) / max(soft, 1e-6), 0.0, 1.0) * alpha
     c = np.array(color, dtype=float)

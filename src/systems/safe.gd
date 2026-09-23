@@ -8,13 +8,17 @@ extends Interactable
 ##     Events.on(&"page_read", func(d): if d["n"] == 4: ...)
 
 signal opened
+signal code_failed(count: int)
 
 const NOTE_SCENE := "res://src/systems/note.tscn"
 
 @export var open_prompt: String = "金庫を開ける"
 @export var locked_prompt: String = "金庫"
-@export var open_hold_time: float = 1.5
-@export var key_item: StringName = &"safe_key"
+## 4桁ダイヤル。正解は director が Game.set_flag(&"safe_code", "1009") で入れる。
+## フラグが空のときだけ fallback_code を使う(QA で詰まないように)。
+@export var code_title: String = "金庫"
+@export var code_length: int = 4
+@export var fallback_code: String = "1009"
 @export var note_title: String = "台帳"
 @export_multiline var note_body: String = ""
 @export var note_page: int = 0
@@ -26,18 +30,18 @@ const NOTE_SCENE := "res://src/systems/note.tscn"
 @export var busy_text: String = "いま開けている。"
 
 var is_open: bool = false
+var wrong_count: int = 0
 
 var _has_model: bool = false
 var _door_node: Node3D
 var _door_pivot: Node3D
 var _note: Note
 var _busy: bool = false
+var _asking: bool = false
 
 func _ready() -> void:
 	super._ready()
 	prompt = open_prompt
-	hold_time = open_hold_time
-	required_item = key_item
 	_build()
 	_spawn_note()
 
@@ -111,8 +115,7 @@ func open() -> void:
 	if is_open or _busy:
 		return
 	_busy = true
-	Audio.play_at(&"safe_dial", global_position)
-	await get_tree().create_timer(1.1, false).timeout
+	await get_tree().create_timer(0.5, false).timeout
 	Audio.play_at(&"safe_open", global_position)
 	is_open = true
 	enabled = false
@@ -132,23 +135,40 @@ func open() -> void:
 # --------------------------------------------------------------------------
 
 func get_prompt() -> String:
-	if is_open:
-		return locked_prompt
-	if required_item != &"" and not SystemUtil.has_item(Game.player, required_item):
-		return locked_prompt
-	return open_prompt
+	return locked_prompt if is_open else open_prompt
 
 func get_blocked_text() -> String:
-	if _busy:
+	if _busy or _asking:
 		return busy_text
 	if is_open:
 		return emptied_text
-	if required_item != &"" and not SystemUtil.has_item(Game.player, required_item):
-		return locked_text
 	return super.get_blocked_text()
 
+## 正解の番号。director がフラグで入れる。
+func expected_code() -> String:
+	var v := String(Game.get_flag(&"safe_code", ""))
+	return v if v != "" else fallback_code
+
+## ダイヤルを回す。空文字はキャンセル。
+func try_code() -> void:
+	if _asking or _busy or is_open:
+		return
+	_asking = true
+	Audio.play_at(&"safe_dial", global_position)
+	var code: String = await Dialogue.code_input(code_title, code_length)
+	_asking = false
+	if code == "":
+		return
+	if code == expected_code():
+		open()
+	else:
+		wrong_count += 1
+		Audio.play_at(&"safe_wrong", global_position)
+		Events.emit_event(&"safe_wrong", {"count": wrong_count})
+		code_failed.emit(wrong_count)
+
 func _can_interact(_player: Node3D) -> bool:
-	return not is_open and not _busy
+	return not is_open and not _busy and not _asking
 
 func _interact(_player: Node3D) -> void:
-	open()
+	try_code()

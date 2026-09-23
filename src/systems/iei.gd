@@ -9,10 +9,17 @@ extends Interactable
 ##     iei.set_portrait(load("res://assets/textures/portrait_player.png"))  # 遺影エンド
 
 signal fixed
+signal back_read
 
 @export var fix_prompt: String = "遺影を直す"
 @export var idle_prompt: String = "遺影"
 @export var upright_text: String = "そのままでいい。"
+## 遺影の裏(E-1)。金庫の番号の答え。
+@export var back_prompt: String = "遺影の裏を見る"
+@export var back_hold_time: float = 0.8
+@export var reading_text: String = "……見ている。"
+@export var back_title: String = "遺影の裏"
+@export_multiline var back_body: String = "春日 キヨ\n令和七年十月九日 没\n行年八十八"
 @export var photo_size: Vector2 = Vector2(0.22, 0.30)
 ## モデルは +Z が正面。
 @export var photo_offset: Vector3 = Vector3(0, 0.33, 0.058)
@@ -27,6 +34,7 @@ var _pivot: Node3D
 var _photo: MeshInstance3D
 var _prop: Prop
 var _yaw: float = 0.0
+var _reading: bool = false
 var _use_model: bool = false
 
 func _ready() -> void:
@@ -128,18 +136,35 @@ func set_portrait(texture: Texture2D) -> void:
 # Interactable
 # --------------------------------------------------------------------------
 
-func get_prompt() -> String:
-	return fix_prompt if is_face_down else idle_prompt
-
 func get_blocked_text() -> String:
-	if not is_face_down:
-		return upright_text
+	if _reading:
+		return reading_text
 	return super.get_blocked_text()
 
+func get_prompt() -> String:
+	return fix_prompt if is_face_down else back_prompt
+
 func _can_interact(_player: Node3D) -> bool:
-	return is_face_down
+	return not _reading
+
+func _physics_process(_delta: float) -> void:
+	hold_time = 0.0 if is_face_down else back_hold_time
+
+## 額縁を裏返して没年月日を読む。金庫の番号の手がかり。
+func read_back() -> void:
+	if _reading:
+		return
+	_reading = true
+	Audio.play_at(&"paper_rustle", global_position, -6.0)
+	await Dialogue.note(back_title, back_body)
+	Audio.play_at(&"book_close", global_position, -8.0)
+	_reading = false
+	back_read.emit()
 
 func _interact(_player: Node3D) -> void:
-	set_face_down(false)
-	Audio.play_at(&"paper_rustle", global_position, -8.0)
-	fixed.emit()
+	if is_face_down:
+		set_face_down(false)
+		Audio.play_at(&"paper_rustle", global_position, -8.0)
+		fixed.emit()
+	else:
+		read_back()

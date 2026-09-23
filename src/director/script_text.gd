@@ -177,6 +177,10 @@ const M_INCENSE_NONE := "線香が無い。裏の在庫棚か。"
 const M_WINDOW := "窓が開いている。閉めたはずだ。"
 ## docs/script.md に無い追加行(監督の指示)。式場の戸が独りでに開く脅かし用。
 const ADDED_M_DOOR := "戸が開いている。閉めたはずだ。"
+## docs/script.md に無い追加行(監督の指示)。
+const ADDED_M_LID := "蓋が、ずれている。"
+const ADDED_M_FIGURE := "祭壇の前に、誰か居た。"
+const ADDED_M_CANDLE_OUT := "灯明が消えた。祭壇が真っ暗だ。"
 const M_CHAIR := "椅子が一つ、引き出されている。"
 const M_ZABUTON := "座布団が棺の前に並べてある。誰が。"
 const M_IEI := "遺影が伏せてある。"
@@ -206,11 +210,14 @@ const M_PHONE_WET_AFTER := "線香が消えた音がした。"
 ## 選択肢
 const CHOICE_HIKAESHITSU := "控室の戸を開けるか"
 const CHOICE_HIKAESHITSU_OPTIONS := ["開けない", "開ける"]
+## 控室の戸に置く「調べる」点の prompt
+const CHOICE_HIKAESHITSU_SPOT := "控室の戸を調べる"
 
 # ============================================================ タスク文言
 
 const TASK_INCENSE := "線香を立てる"
-const TASK_BACKDOOR := "勝手口の鍵を閉める"
+const TASK_BACKDOOR := "勝手口を閉めて鍵をかける"
+const TASK_LID := "棺の蓋を戻す"
 const TASK_FLOWERS := "供花の水を替える"
 const TASK_WINDOW := "式場の窓を閉める"
 const TASK_CANDLE := "灯明を替える"

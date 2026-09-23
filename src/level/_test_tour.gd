@@ -117,7 +117,7 @@ func _api(b: Node3D) -> void:
 		"Anchor_FlowerL", "Anchor_FlowerR", "Anchor_Sink", "Anchor_Phone", "Anchor_Monitor",
 		"Anchor_Freezer", "Anchor_Breaker", "Anchor_Safe", "Anchor_Futon", "Anchor_TV",
 		"Anchor_GuestBook", "Anchor_IncenseBox", "Anchor_Matches", "Anchor_BossDesk",
-		"Anchor_Cam_Shikijo", "Anchor_Cam_Genkan"]
+		"Anchor_Cam_Shikijo", "Anchor_Cam_Genkan", "Anchor_Radio", "Anchor_OshiireBag"]
 	var missing: Array[String] = []
 	for a in anchors:
 		if b.get_anchor(StringName(a)) == null:
@@ -349,6 +349,39 @@ func _check(b: Node3D) -> void:
 			trapped, pair2[1], d2, off2, h2, pth2.size()])
 
 	# 廊下北枝の直線掃引。NPC が詰まる区間に何があるか名前で出す。
+	# 新 API: 血の手形の壁面と、窓の外の猫の位置
+	print("--- gimmick API ---")
+	var hp: Array = b.handprint_path()
+	var hp_bad := 0
+	for t in hp:
+		# 壁に密着しているか: -Z 方向へ 0.35m 進んだ先が空いていて、逆向きはすぐ壁
+		var xf: Transform3D = t
+		var inward := -xf.basis.z.normalized()
+		navparams.transform = Transform3D(Basis(), xf.origin + inward * 0.45 + Vector3(0, -0.2, 0))
+		var free_in := space.intersect_shape(navparams, 1).size() == 0
+		var rp2 := PhysicsRayQueryParameters3D.create(xf.origin + inward * 0.30, xf.origin - inward * 0.25, 1)
+		var hit2 := space.intersect_ray(rp2)
+		if not free_in or hit2.is_empty():
+			hp_bad += 1
+			print("        [手形] %s  室内%s 壁%s" % [xf.origin,
+				"空" if free_in else "塞", "有" if not hit2.is_empty() else "無"])
+	print("  [%s] handprint_path  %d 点  壁でない/室内が塞がっている %d" % [
+		"OK " if (hp.size() == 15 and hp_bad == 0) else "NG ", hp.size(), hp_bad])
+	for wn in ["Window_Shikijo", "Window_Toilet", "Window_Office", "Window_Hikaeshitsu"]:
+		var spots: Array = b.window_outside_spots(StringName(wn))
+		var bad := 0
+		var wp = b.get_window_pane(StringName(wn))
+		for sp in spots:
+			var v: Vector3 = sp
+			var d := Vector2(v.x - wp.global_position.x, v.z - wp.global_position.z).length()
+			if d < 0.55 or d > 3.2:
+				bad += 1
+			navparams.transform = Transform3D(Basis(), v + Vector3(0, 0.95, 0))
+			if space.intersect_shape(navparams, 1).size() > 0:
+				bad += 1
+		print("  [%s] %-22s %d 点  範囲外/壁の中 %d" % [
+			"OK " if (spots.size() == 20 and bad == 0) else "NG ", wn, spots.size(), bad])
+
 	# 施錠のふるまい。猫は open(force=false) で押し開けるので、施錠されていたら失敗すること。
 	print("--- 施錠 ---")
 	for dn in ["Door_Backyard", "Door_Genkan", "Door_Toilet"]:

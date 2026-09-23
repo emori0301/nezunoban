@@ -198,7 +198,7 @@ func _shoo_cat() -> bool:
 ## kasha モードで線香を放置すると以後のタスクに進めなくなる。
 const TASK_ORDER := [
 	&"talk_boss", &"relight", &"cat", &"breaker", &"backdoor", &"window",
-	&"dry_ice", &"flowers", &"candle", &"incense_stock", &"incense", &"last_incense",
+	&"dry_ice", &"flowers", &"candle", &"lid", &"incense_stock", &"incense", &"last_incense",
 ]
 ## kasha モード(導入後)が触らないタスク。
 ## 線香を放置して異変度を溜め、勝手口と式場の窓を開けたままにして猫を入れる
@@ -233,8 +233,18 @@ func _do_task(id: StringName) -> bool:
 			return await _use(dir.stock_box(), 1.0)
 		&"backdoor":
 			var d := _door(&"Door_Backyard")
-			if d and d.is_open:
+			if d == null:
+				return false
+			if d.is_open:
 				return await _use(d, 1.3)
+			# level が「鍵をかける」(長押し)を別の Interactable で出す場合はそれを使う
+			var lock := _lock_spot(d)
+			if lock:
+				return await _use(lock, 1.3)
+			if not d.locked:
+				d.set_locked(true)
+				Tasks.complete(&"backdoor")
+				return true
 			return false
 		&"window":
 			var w := _window(&"Window_Shikijo")
@@ -253,6 +263,11 @@ func _do_task(id: StringName) -> bool:
 			if _has_item(&"dry_ice"):
 				return await _use(dir.sys(&"coffin"), 1.3)
 			return await _use(dir.sys(&"freezer"), 1.2)
+		&"lid":
+			var sp := _find_spot_named(ScriptText.TASK_LID)
+			if sp:
+				return await _use(sp, 1.2)
+			return false
 		&"cat":
 			return await _shoo_cat()
 		&"relight":
@@ -282,12 +297,33 @@ func _window(n: StringName) -> WindowPane:
 	return b.get_window_pane(n) if b else null
 
 
+## 勝手口まわりの「鍵をかける」用 Interactable を探す(level が足すまでは null)。
+func _lock_spot(d: Node3D) -> Node:
+	var b: Building = dir.building()
+	if b == null:
+		return null
+	for n in b.find_children("*", "Interactable", true, false):
+		var i := n as Interactable
+		if i == null or not i.enabled or i == d:
+			continue
+		if i.global_position.distance_to(d.global_position) > 2.0:
+			continue
+		if String(i.get_prompt()).find("鍵") >= 0:
+			return i
+	return null
+
+
 func _find_spot() -> Node:
+	return _find_spot_named(ScriptText.CHOICE_HIKAESHITSU_SPOT)
+
+
+func _find_spot_named(prompt: String) -> Node:
 	var b: Building = dir.building()
 	if b == null:
 		return null
 	for c in b.get_children():
-		if c is Scares.Spot and (c as Interactable).enabled:
+		if c is Scares.Spot and (c as Interactable).enabled \
+				and String((c as Interactable).prompt) == prompt:
 			return c
 	return null
 

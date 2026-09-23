@@ -362,6 +362,40 @@ func shikijo_door_opens() -> bool:
 	return true
 
 
+## 式場の戸・トイレの窓・式場の窓のどれかが独りでに開く。猫の入口を作る役目。
+## 22:40 以降 3〜4 分おきに 1 つ(timeline が回す)。
+const SELF_OPENINGS := [&"Door_Shikijo", &"Window_Toilet", &"Window_Shikijo"]
+
+func opening_opens_itself() -> bool:
+	var b := building()
+	if b == null:
+		return false
+	# 閉まっているものだけを候補にする
+	var closed: Array[StringName] = []
+	for n in SELF_OPENINGS:
+		if n == &"Door_Shikijo":
+			var d: Door = b.get_door(n)
+			if d and not d.is_open:
+				closed.append(n)
+		else:
+			var w: WindowPane = b.get_window_pane(n)
+			if w and not w.is_open:
+				closed.append(n)
+	if closed.is_empty():
+		return false
+	var pick: StringName = closed[rng.randi_range(0, closed.size() - 1)]
+	if pick == &"Door_Shikijo":
+		return shikijo_door_opens()
+	var w2: WindowPane = b.get_window_pane(pick)
+	if w2 == null:
+		return false
+	w2.open(true)
+	Audio.play_at(&"window_open", w2.global_position, 2.0, 1.0, 26.0)
+	glitch(0.25)
+	dir.monologue(ScriptText.M_WINDOW)
+	return true
+
+
 ## 控室の座布団が1枚、廊下に落ちている
 func zabuton_in_hall() -> bool:
 	if Game.get_flag(&"scare_zabuton_hall", false):

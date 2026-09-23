@@ -706,141 +706,215 @@ CAT_BONES = [
 CAT_LEGS = ["LegBL", "LegBR", "LegFL", "LegFR", "PawBL", "PawBR", "PawFL", "PawFR"]
 
 
+def _horiz_tube(rows, n):
+    """水平な筒。rows は (y, 半幅, 半高, 中心z, v) を **y の昇順** で。
+    頭が -Y(Godot では face_godot_forward 後に -Z)。
+
+    tube() は鉛直な筒しか作れないので、z を -y にして作ってから
+    X 軸まわりに 90 度回して寝かせる。
+    """
+    secs = [(0.0, vz, -y, hw, hh, v) for (y, hw, hh, vz, v) in rows]
+    verts, faces, uvs = tube(secs, n=n, cap_start=False, cap_end=False)
+    return tr(verts, rot=('X', math.pi / 2)), faces, uvs
+
+
+def _cat_leg(b, mat, x, y_hip, front):
+    """脚。関節 2 つ(肩/肘/手首)で、先に肉球。"""
+    sgn = 1.0 if front else -1.0
+    rows = [
+        (y_hip, 0.038, 0.044, 0.195, 1.00),
+        (y_hip + sgn * 0.005, 0.032, 0.037, 0.152, 0.78),
+        (y_hip + sgn * 0.012, 0.025, 0.029, 0.108, 0.56),   # 肘/膝
+        (y_hip + sgn * 0.005, 0.021, 0.024, 0.068, 0.34),
+        (y_hip - sgn * 0.008, 0.018, 0.020, 0.032, 0.14),   # 手首
+        (y_hip - sgn * 0.016, 0.019, 0.017, 0.013, 0.00),
+    ]
+    n = 12
+    vsec = []
+    for (yy, hw, hh, vz, v) in rows:
+        vsec.append((x, yy, vz, hw, hh, v))
+    g = tube(vsec, n=n, cap_start=False, cap_end=True)
+    b.add(g, mat, smooth=True)
+    # 肉球
+    b.add(box_taper(0.036, 0.052, 0.030, 0.044, 0.016,
+                    (x, y_hip - sgn * 0.024, 0.010)), mat, uvscale=14.0)
+
+
 def build_cat():
-    """黒猫。目だけ自発光(マテリアル `Eyes`)。"""
+    """黒猫。断面ロフトで胸が太く腰が細い体、丸い頭、しなやかな尾。
+    目は `Eyes`(黄緑の虹彩 + 縦長の瞳、自発光)。"""
     reset_scene()
     setup_fps()
-    fur = material("CatFur", "fur_black", color=(0.075, 0.075, 0.085), rough=0.95)
+    fur = material("CatFur", "fur_black", color=(0.07, 0.07, 0.08), rough=0.95)
+    fur2 = material("CatFurLight", "fur_gray", color=(0.15, 0.15, 0.16), rough=0.95)
     inner = material("CatInner", "skin_pale", color=(0.36, 0.22, 0.24), rough=0.9)
-    eyes = material("Eyes", None, color=(0.85, 0.82, 0.30),
-                    emission=(1.0, 0.92, 0.35), emission_strength=3.2, rough=0.3)
+    eyes = material("Eyes", "cat_eye", color=(0.58, 0.68, 0.16),
+                    emission=(0.55, 0.70, 0.18), emission_strength=1.6, rough=0.3)
 
     b = Builder("cat")
-    # 胴(頭 = -Y)
-    b.add(box_taper(0.135, 0.150, 0.150, 0.130, 0.140, (0, 0.075, 0.222)), fur, 7)
-    b.add(box_taper(0.150, 0.130, 0.148, 0.130, 0.150, (0, -0.055, 0.232)), fur, 7)
-    b.add(box_taper(0.148, 0.130, 0.128, 0.120, 0.110, (0, -0.165, 0.238)), fur, 8)
-    # 首と頭
-    b.add(cyl(0.048, 0.06, 8, (0, -0.225, 0.250), axis='Y'), fur, 12)
-    b.add(box_taper(0.115, 0.105, 0.100, 0.100, 0.100, (0, -0.290, 0.262)), fur, 10)
-    b.add(box_taper(0.082, 0.070, 0.062, 0.050, 0.045, (0, -0.348, 0.245)), fur, 14)
-    b.add(box_mm(-0.016, 0.016, -0.378, -0.366, 0.240, 0.254), inner, 22)     # 鼻
-    # 耳
-    for sx in (-1, 1):
-        v, f = box_taper(0.055, 0.022, 0.010, 0.010, 0.060, (0, 0, 0))
-        v = tr(v, rot=(0, sx * 0.30, 0), t=(sx * 0.042, -0.272, 0.336))
-        b.add((v, f), fur, 14)
-        v2, f2 = box_taper(0.032, 0.010, 0.006, 0.006, 0.040, (0, 0, 0))
-        v2 = tr(v2, rot=(0, sx * 0.30, 0), t=(sx * 0.042, -0.280, 0.328))
-        b.add((v2, f2), inner, 18)
-    # 目(自発光)
-    for sx in (-1, 1):
-        b.add(box_taper(0.030, 0.012, 0.018, 0.008, 0.026,
-                        (sx * 0.040, -0.338, 0.280)), eyes, 22)
-    # 脚
-    for (sx, sy, fy) in ((1, 1, 0.090), (-1, 1, 0.090), (1, -1, -0.148), (-1, -1, -0.148)):
-        x = sx * (0.055 if sy > 0 else 0.050)
-        b.add(cyl(0.030, 0.095, 6, (x, fy, 0.150), r_top=0.024), fur, 16)
-        b.add(cyl(0.024, 0.100, 6, (x, fy - 0.012 * sy, 0.055), r_top=0.022), fur, 16)
-        b.add(box_taper(0.052, 0.070, 0.048, 0.062, 0.030,
-                        (x, fy - 0.030 * sy, 0.015)), fur, 18)
-    # 尻尾
-    for k in range(5):
-        t = k / 4.0
-        y = 0.135 + t * 0.185
-        z = 0.220 + t * t * 0.090
-        b.add(cyl(0.020 - t * 0.008, 0.050, 6, (0, y, z), axis='Y'), fur, 20)
-    mesh = b.build()
-
-    ao = make_armature("cat", CAT_BONES, scale=1.0)
-    rules = [
-        ("PawFL", lambda c: c.z < 0.105 and c.y < 0.0 and c.x >= 0),
-        ("PawFR", lambda c: c.z < 0.105 and c.y < 0.0),
-        ("PawBL", lambda c: c.z < 0.105 and c.y < 0.13 and c.x >= 0),
-        ("PawBR", lambda c: c.z < 0.105 and c.y < 0.13),
-        ("LegFL", lambda c: c.z < 0.195 and c.y < 0.0 and c.x >= 0.028),
-        ("LegFR", lambda c: c.z < 0.195 and c.y < 0.0 and c.x <= -0.028),
-        ("LegBL", lambda c: c.z < 0.195 and c.y < 0.13 and c.x >= 0.028),
-        ("LegBR", lambda c: c.z < 0.195 and c.y < 0.13 and c.x <= -0.028),
-        ("Tail2", lambda c: c.y > 0.245),
-        ("Tail1", lambda c: c.y > 0.130),
-        ("Head", lambda c: c.y < -0.255),
-        ("Neck", lambda c: c.y < -0.205),
-        ("Chest", lambda c: c.y < -0.075),
-        ("Spine", lambda c: c.y < 0.035),
-        ("Hips", lambda c: True),
+    # --- 胴と頭(1 本のロフト。首から背へ滑らかに) ---
+    body = [
+        (-0.300, 0.021, 0.019, 0.248, 1.00),
+        (-0.282, 0.035, 0.031, 0.249, 0.96),
+        (-0.258, 0.051, 0.046, 0.253, 0.90),
+        (-0.230, 0.061, 0.056, 0.258, 0.83),
+        (-0.198, 0.059, 0.056, 0.259, 0.76),
+        (-0.170, 0.050, 0.050, 0.254, 0.69),
+        (-0.142, 0.048, 0.051, 0.246, 0.62),
+        (-0.108, 0.061, 0.067, 0.240, 0.54),
+        (-0.068, 0.074, 0.082, 0.233, 0.46),
+        (-0.020, 0.075, 0.083, 0.228, 0.37),
+        (+0.022, 0.066, 0.073, 0.224, 0.29),
+        (+0.062, 0.057, 0.062, 0.225, 0.22),
+        (+0.098, 0.063, 0.067, 0.229, 0.15),
+        (+0.132, 0.070, 0.071, 0.233, 0.09),
+        (+0.158, 0.061, 0.061, 0.236, 0.04),
+        (+0.174, 0.040, 0.040, 0.238, 0.00),
     ]
-    auto_groups(mesh, ao, rules)
+    b.add(_horiz_tube(body, 22), fur, uvscale=1.0, smooth=True)
+    # 腹と口元をわずかに灰色に
+    belly = [
+        (-0.276, 0.024, 0.012, 0.243, 1.00),
+        (-0.250, 0.030, 0.012, 0.244, 0.86),
+        (-0.060, 0.046, 0.013, 0.207, 0.50),
+        ( 0.060, 0.040, 0.012, 0.204, 0.18),
+        ( 0.120, 0.024, 0.010, 0.216, 0.00),
+    ]
+    b.add(_horiz_tube(belly, 10), fur2, uvscale=3.0, smooth=True)
+
+    # --- 尾(8 節。付け根から先へ細く、先が少し上がる) ---
+    tail = []
+    for k in range(11):
+        t = k / 10.0
+        y = 0.168 + t * 0.255
+        r = 0.017 * (1.0 - t) + 0.005 * t
+        vz = 0.242 + math.sin(t * 1.5) * 0.055
+        tail.append((y, r * 1.15, r * 1.15, vz, 1.0 - t))
+    b.add(_horiz_tube(tail, 12), fur, uvscale=3.0, smooth=True)
+
+    # --- 耳(三角) ---
+    for sx in (-1, 1):
+        v, f = box_taper(0.050, 0.020, 0.006, 0.006, 0.055, (0, 0, 0))
+        v = tr(v, rot=(0, sx * 0.26, 0), t=(sx * 0.038, -0.212, 0.308))
+        b.add((v, f), fur, uvscale=12.0)
+        v2, f2 = box_taper(0.030, 0.010, 0.005, 0.005, 0.036, (0, 0, 0))
+        v2 = tr(v2, rot=(0, sx * 0.26, 0), t=(sx * 0.038, -0.219, 0.300))
+        b.add((v2, f2), inner, uvscale=16.0)
+
+    # --- 目(黄緑の虹彩 + 縦長の瞳) ---
+    for sx in (-1, 1):
+        q = [(sx * 0.014, -0.276, 0.254), (sx * 0.040, -0.266, 0.257),
+             (sx * 0.040, -0.266, 0.273), (sx * 0.014, -0.276, 0.270)]
+        if sx < 0:
+            q = list(reversed(q))
+        b.add((q, [(0, 1, 2, 3)]), eyes,
+              uv=[[(0, 0), (1, 0), (1, 1), (0, 1)]])
+    # 鼻
+    b.add(box_taper(0.016, 0.012, 0.010, 0.008, 0.010,
+                    (0, -0.302, 0.250)), inner, uvscale=22.0)
+
+    # --- 脚(関節 2 つ + 肉球) ---
+    leg_ranges = []
+    for (x, yh, front) in ((0.046, -0.078, True), (-0.046, -0.078, True),
+                           (0.048, 0.104, False), (-0.048, 0.104, False)):
+        i0 = len(b.verts)
+        _cat_leg(b, fur, x, yh, front)
+        bn = ("F" if front else "B") + ("L" if x >= 0 else "R")
+        leg_ranges.append((bn, i0, len(b.verts)))
+
+    mesh = b.build()
+    ao = make_armature("cat", CAT_BONES, scale=1.0)
+    # 胴・尾・脚をチェーン加重で繋ぐ。剛体割り当てだと sit で腰が裂ける。
+    groups = {}
+    in_leg = {}
+    for (bn, i0, i1) in leg_ranges:
+        for i in range(i0, i1):
+            in_leg[i] = bn
+    torso, tail = [], []
+    for v in mesh.data.vertices:
+        if v.index in in_leg:
+            continue
+        (tail if v.co.y > 0.168 else torso).append(v.index)
+
+    add_chain_weights(groups, mesh, torso,
+                      [("Hips", -0.100), ("Spine", -0.020), ("Chest", 0.090),
+                       ("Neck", 0.185), ("Head", 0.250)],
+                      lambda c: -c.y)
+    add_chain_weights(groups, mesh, tail,
+                      [("Hips", 0.100), ("Tail1", 0.150), ("Tail2", 0.240)],
+                      lambda c: c.y)
+    for (bn, i0, i1) in leg_ranges:
+        root = "Chest" if bn[0] == "F" else "Hips"
+        add_chain_weights(groups, mesh, list(range(i0, i1)),
+                          [("Paw" + bn, 0.020), ("Leg" + bn, 0.105), (root, 0.215)],
+                          lambda c: c.z)
+    bind_weights(mesh, ao, groups)
 
     set_scene_frames(96)
 
-    # --- idle: 呼吸 + 尻尾の揺れ + 時々の首振り ---
+    # --- idle: 呼吸 + 尾の揺れ + 耳(頭)の動き ---
     a = Anim(ao, "idle", 96)
     N = 8
     for k in range(N + 1):
         f = 1 + k * 95.0 / N
         t = k / float(N)
         w = 2 * math.pi * t
-        a.keyw(f, "Chest", 'X', R(1.8) * math.sin(w))
-        a.keyw(f, "Spine", 'X', R(1.2) * math.sin(w))
-        a.keyw_mul(f, "Neck", [('Z', R(4.0) * math.sin(w * 0.5))])
+        a.keyw(f, "Chest", 'X', R(1.6) * math.sin(w))
+        a.keyw(f, "Spine", 'X', R(1.1) * math.sin(w))
+        a.keyw_mul(f, "Neck", [('Z', R(3.5) * math.sin(w * 0.5))])
         a.keyw_mul(f, "Head", [('Z', R(-7.0) * math.sin(w * 0.5)),
-                               ('X', R(3.0) * math.sin(w))])
-        a.keyw_mul(f, "Tail1", [('Z', R(14.0) * math.sin(w)), ('X', R(-8.0))])
-        a.keyw_mul(f, "Tail2", [('Z', R(20.0) * math.sin(w + 1.0)), ('X', R(-12.0))])
+                               ('X', R(4.0) * math.sin(w * 2.0))])
+        a.keyw_mul(f, "Tail1", [('Z', R(16.0) * math.sin(w)), ('X', R(-10.0))])
+        a.keyw_mul(f, "Tail2", [('Z', R(24.0) * math.sin(w + 1.0)), ('X', R(-14.0))])
         for bn in CAT_LEGS:
             a.keyw(f, bn, 'X', 0.0)
         a.keyw_loc(f, "Hips", (0, 0, 0.004 * math.sin(w)))
     a.finish()
 
-    # --- walk ---
+    # --- walk: 四足のトロット(対角が同位相) ---
     a = Anim(ao, "walk", 24)
     N = 8
     for k in range(N + 1):
         f = 1 + k * 23.0 / N
         t = k / float(N)
         w = 2 * math.pi * t
-        # 対角の脚が同位相(トロット)
-        pairs = (("LegFL", "PawFL", 0.0), ("LegBR", "PawBR", 0.0),
-                 ("LegFR", "PawFR", math.pi), ("LegBL", "PawBL", math.pi))
-        for (leg, paw, ph) in pairs:
+        for (leg, paw, ph) in (("LegFL", "PawFL", 0.0), ("LegBR", "PawBR", 0.0),
+                               ("LegFR", "PawFR", math.pi),
+                               ("LegBL", "PawBL", math.pi)):
             sw = math.sin(w + ph)
-            a.keyw(f, leg, 'X', R(-26) * sw)
-            a.keyw(f, paw, 'X', R(22) * max(0.0, -math.sin(w + ph + 0.8)))
+            a.keyw(f, leg, 'X', R(-28) * sw)
+            a.keyw(f, paw, 'X', R(24) * max(0.0, -math.sin(w + ph + 0.8)))
         a.keyw_loc(f, "Hips", (0, 0, 0.012 * abs(math.cos(w))))
         a.keyw(f, "Spine", 'X', R(2.5) * math.sin(w * 2))
         a.keyw(f, "Chest", 'X', R(-2.0) * math.sin(w * 2))
-        a.keyw_mul(f, "Tail1", [('Z', R(10) * math.sin(w)), ('X', R(-16))])
-        a.keyw_mul(f, "Tail2", [('Z', R(14) * math.sin(w + 0.8)), ('X', R(-20))])
+        a.keyw_mul(f, "Tail1", [('Z', R(11) * math.sin(w)), ('X', R(-18))])
+        a.keyw_mul(f, "Tail2", [('Z', R(15) * math.sin(w + 0.8)), ('X', R(-22))])
         a.keyw(f, "Head", 'X', R(2) * math.sin(w * 2))
     a.finish()
 
-    # --- sit: 座った姿勢を保ち、尻尾と首だけ動く ---
-    # keyw はワールド回転だが親の回転は積み上がるので、前脚は胴の傾き分を戻す。
-    HIP, SPN, CHS = -10.0, -32.0, -32.0
-    inherit_front = HIP + SPN + CHS          # 前脚が受け継ぐ傾き
+    # --- sit: 前脚を揃えて座る ---
+    HIP, SPN, CHS = -10.0, -26.0, -26.0
+    inherit_front = HIP + SPN + CHS
     a = Anim(ao, "sit", 72)
     N = 6
     for k in range(N + 1):
         f = 1 + k * 71.0 / N
         t = k / float(N)
         w = 2 * math.pi * t
-        a.keyw_loc(f, "Hips", (0, 0.030, -0.115))    # 尻を床に落とす
+        a.keyw_loc(f, "Hips", (0, 0.026, -0.128))
         a.keyw(f, "Hips", 'X', R(HIP))
         a.keyw(f, "Spine", 'X', R(SPN))
         a.keyw(f, "Chest", 'X', R(CHS))
-        a.keyw(f, "Neck", 'X', R(26))
-        a.keyw_mul(f, "Head", [('X', R(20)), ('Z', R(-6) * math.sin(w * 0.5))])
-        # 前脚: 垂直に立てる
+        a.keyw(f, "Neck", 'X', R(32))
+        a.keyw_mul(f, "Head", [('X', R(30)), ('Z', R(-6) * math.sin(w * 0.5))])
         for leg, paw in (("LegFL", "PawFL"), ("LegFR", "PawFR")):
             a.keyw(f, leg, 'X', R(-inherit_front))
-            a.keyw(f, paw, 'X', R(-16))
-        # 後脚: 腿を前下へ、脛を床に寝かせる
+            a.keyw(f, paw, 'X', R(-14))
         for leg, paw in (("LegBL", "PawBL"), ("LegBR", "PawBR")):
             a.keyw(f, leg, 'X', R(-50 - HIP))
-            a.keyw(f, paw, 'X', R(118))
-        a.keyw_mul(f, "Tail1", [('Z', R(24) * math.sin(w)), ('X', R(40))])
-        a.keyw_mul(f, "Tail2", [('Z', R(32) * math.sin(w + 1.2)), ('X', R(18))])
+            a.keyw(f, paw, 'X', R(116))
+        a.keyw_mul(f, "Tail1", [('Z', R(22) * math.sin(w)), ('X', R(42))])
+        a.keyw_mul(f, "Tail2", [('Z', R(30) * math.sin(w + 1.2)), ('X', R(20))])
     a.finish()
 
     face_godot_forward(ao)

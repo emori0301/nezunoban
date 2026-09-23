@@ -13,6 +13,8 @@ extends Node3D
 ##   set_emergency_lights(on) / get_emergency_light_state()  … 非常口サイン(全消灯でも残る)
 ##   hide_anchor_prop(anchor)   … systems が実物を置くとき、level のプレースホルダを消す
 ##   rebake_navmesh()           … systems/npc の配置後に main が呼ぶ。navsource グループを含めて焼き直す
+##   handprint_path() -> Array[Transform3D]   … 血の手形を貼る壁面 15 点(-Z が室内向き)
+##   window_outside_spots(window) -> Array[Vector3] … 窓の外 0.6〜2.5m に 20 点(猫の群れ用)
 
 const OUTSIDE := &"Room_Outside"
 
@@ -248,6 +250,47 @@ func flicker(room: StringName, duration: float = 2.0) -> void:
 		_apply_lights(room, randf() < 0.42)
 	_flickering[room] = false
 	_apply_lights(room, get_light_state(room))
+
+
+## 血の手形を貼る壁面の座標。式場の入口 → 廊下 → 事務所 → 金庫の扉 の順に 15 点。
+## 各 Transform3D は「原点 = 壁の面から 2cm 室内側」「-Z = 室内を向く法線」。
+## Marker3D と同じ向きの決め方なので、デカールを置くときは look 方向をそのまま使える。
+func handprint_path() -> Array[Transform3D]:
+	# [x, y, z, yaw]  yaw は -Z が室内を向く角度
+	const PTS := [
+		[7.58, 1.22, 0.95, -90.0], [7.58, 1.06, -1.05, -90.0],
+		[6.20, 1.26, 1.00, 0.0], [4.90, 1.10, 1.00, 0.0], [3.60, 1.31, 1.00, 0.0],
+		[2.40, 1.15, -1.00, 180.0], [1.10, 1.29, -1.00, 180.0], [-0.20, 1.04, -1.00, 180.0],
+		[-1.40, 1.23, 1.00, 0.0], [-2.60, 1.08, 1.00, 0.0], [-3.60, 1.31, 1.00, 0.0],
+		[-4.05, 1.18, 2.20, 90.0],
+		[-7.20, 1.15, 3.90, 0.0],
+		[-10.90, 1.20, 8.90, -90.0],
+		[-10.40, 0.46, 9.13, 0.0],
+	]
+	var out: Array[Transform3D] = []
+	for p in PTS:
+		var b := Basis(Vector3.UP, deg_to_rad(float(p[3])))
+		out.append(Transform3D(b, Vector3(float(p[0]), float(p[1]), float(p[2]))))
+	return out
+
+
+## 窓の外に散らす座標(猫の群れ用)。窓から 0.6〜2.5m、床の高さで 20 点。
+## 未知の窓名なら空配列を返す。
+func window_outside_spots(window_name: StringName) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	var w: WindowPane = _windows.get(window_name, null)
+	if w == null:
+		return out
+	# 窓はすべて壁の外側が +Z(ローカル)。外向きの法線と横方向を transform から取る。
+	var xf := w.global_transform
+	var outward := xf.basis.z.normalized()
+	var side := xf.basis.x.normalized()
+	var base := Vector3(xf.origin.x, 0.0, xf.origin.z)
+	for i in 20:
+		var d := 0.6 + float(i % 5) * 0.475
+		var lat := (float(i / 5) - 1.5) * 0.8 + (0.18 if i % 2 == 0 else -0.18)
+		out.append(base + outward * d + side * lat)
+	return out
 
 
 ## ナビメッシュを焼き直す。systems / npc がプレハブを置いた「後」に main が呼ぶ。

@@ -56,6 +56,8 @@ var _drone: StringName = &""
 var _applying_past: bool = false
 var _chase_on: bool = false
 var _vhs_boost: float = 0.0
+var _incense_out_count: int = 0
+var _pending_altar_figure: bool = false
 var _heart_t: float = 0.0
 
 
@@ -353,6 +355,24 @@ func monologue(text: String) -> void:
 	await Dialogue.monologue(text)
 
 
+## 線香の減りの速さ。時刻が進むほど短くなる(21:00 1.0 → 00:00 1.2 → 02:00 1.5)。
+## extra は窓が開いている間などの一時的な上乗せ。
+func incense_pace() -> float:
+	var m := int(Clock.game_minutes)
+	if m >= 300:
+		return 1.5
+	if m >= 180:
+		return 1.2
+	return 1.0
+
+
+func apply_incense_pace(extra: float = 0.0) -> void:
+	var inc := sys(&"incense_stand")
+	if inc == null:
+		return
+	inc.set(&"burn_multiplier", incense_pace() + extra)
+
+
 func matches_pickup() -> Node:
 	return sys(&"matches")
 
@@ -382,6 +402,9 @@ func _setup_static() -> void:
 		# 導入(チュートリアル)のあいだは Clock が止まっているのに線香は実時間で燃える。
 		# ここで消えたぶんを数えると、会話が長引くほど異変度が上がってしまう。
 		inc.set(&"dread_on_out", 0)
+	var cnd0 := sys(&"candle")
+	if cnd0:
+		cnd0.set(&"burn_seconds", 600.0)
 	var gb := sys(&"guest_book")
 	if gb:
 		gb.call(&"set_lines", ScriptText.GUEST_BOOK)
@@ -524,7 +547,7 @@ func _connect_events() -> void:
 	Events.on(&"incense_out", func(_d): _on_incense_out())
 	Events.on(&"incense_lit", func(_d): _on_incense_lit())
 	Events.on(&"candle_out", func(_d): _on_candle_out())
-	Events.on(&"candle_lit", func(_d): Tasks.complete(&"candle"))
+	Events.on(&"candle_lit", func(_d): _on_candle_lit())
 	Events.on(&"window_closed", func(d): _on_window_closed(d))
 	Events.on(&"door_closed", func(d): _on_door_closed(d))
 	Events.on(&"phone_answered", func(_d): _on_phone_answered())
@@ -548,6 +571,7 @@ func _connect_events() -> void:
 	Game.flag_changed.connect(_on_flag_changed)
 	Dread.level_changed.connect(_on_dread_level)
 	Clock.hour_passed.connect(_on_hour)
+	Clock.minute_passed.connect(_on_minute)
 	var cnd := sys(&"candle")
 	if cnd and cnd.has_signal(&"relight_failed"):
 		cnd.connect(&"relight_failed", Callable(timeline, "on_relight_failed"))
@@ -573,6 +597,9 @@ func _on_incense_out() -> void:
 	if Game.state == Game.State.ENDING:
 		return
 	monologue(ScriptText.M_INCENSE_OUT)
+	if not _applying_past and Game.get_flag(&"intro_done", false):
+		_incense_out_count += 1
+		_incense_consequence(_incense_out_count)
 	# 終盤は「マッチを取って灯明を灯す」が唯一の用事。線香のタスクを出すと
 	# HUD の先頭がそれに取られて、やるべきことが分からなくなる(review N1)。
 	if timeline.finale_running():
@@ -580,14 +607,64 @@ func _on_incense_out() -> void:
 	Tasks.set_task(&"incense", ScriptText.TASK_INCENSE)
 
 
+## 線香を絶やした回数に応じて、目に見える結果を出す。
+## 1: 式場が明滅 + 棺のノック / 2 以降: 次に式場へ入ると祭壇の前に人影
+## 3: 遺影が倒れる / 4: 猫がその場で室内に湧く
+func _incense_consequence(n: int) -> void:
+	var b := building()
+	match n:
+		1:
+			if b:
+				b.flicker(&"Room_Shikijo", 1.8)
+			var c := sys(&"coffin")
+			if c:
+				c.call(&"knock")
+		3:
+			var iei := sys(&"iei")
+			if iei:
+				iei.call(&"set_face_down", true)
+			scares.stinger(-4.0)
+			monologue(ScriptText.M_IEI)
+		4:
+			var cat := npc(&"cat", 0)
+			if cat and cat.has_method(&"go_inside_now"):
+				cat.call(&"set_active", true)
+				cat.call(&"go_inside_now", &"Door_Shikijo")
+			else:
+				Audio.play_at(&"cat_hiss", Vector3(14.0, 0.3, -0.5), 0.0)
+	if n >= 2:
+		_pending_altar_figure = true
+
+
+## 祭壇の前に1秒だけ人影が立つ
+func _altar_figure() -> void:
+	var fig := scares.spawn_figure("npc_son", Vector3(17.9, 0.0, -0.5), -90.0, false, &"idle", 0.05)
+	scares.stinger(-2.0)
+	monologue(ScriptText.ADDED_M_FIGURE)
+	await Events.wait(1.0)
+	if is_instance_valid(fig):
+		fig.queue_free()
+
+
 func _on_incense_lit() -> void:
 	Tasks.complete(&"incense")
 	Tasks.complete(&"last_incense")
 
 
+func _on_candle_lit() -> void:
+	Tasks.complete(&"candle")
+	var b := building()
+	if b and b.has_method(&"set_aux_lights"):
+		b.set_aux_lights(&"Room_Shikijo", true)
+
+
 func _on_candle_out() -> void:
+	var b := building()
+	if b and b.has_method(&"set_aux_lights"):
+		b.set_aux_lights(&"Room_Shikijo", false)   # 祭壇のスポットも落ちる
 	if timeline.finale_running() or Game.state == Game.State.ENDING:
 		return
+	monologue(ScriptText.ADDED_M_CANDLE_OUT)
 	Tasks.set_task(&"candle", ScriptText.TASK_CANDLE)
 
 
@@ -605,6 +682,26 @@ func _on_flag_changed(key: StringName, value: Variant) -> void:
 
 
 ## 1 ゲーム時間ごとに、線香が絶えていれば異変度 +1(掟「線香を絶やさぬこと」)
+## 時刻による異変度の下限。掟を守っていても夜が進めば館は騒がしくなる。
+const DREAD_FLOOR := [[150, 1], [240, 2], [330, 3]]
+
+func _apply_dread_floor() -> void:
+	var m := int(Clock.game_minutes)
+	var want := 0
+	for row in DREAD_FLOOR:
+		if m >= int(row[0]):
+			want = int(row[1])
+	if want > Dread.value:
+		Dread.add(want - Dread.value, &"time")
+
+
+func _on_minute(_m: int) -> void:
+	if Game.state != Game.State.PLAYING:
+		return
+	_apply_dread_floor()
+	apply_incense_pace()
+
+
 func _on_hour(_hour: int) -> void:
 	if Game.state == Game.State.ENDING or timeline.finale_running():
 		return
@@ -655,6 +752,9 @@ func _on_room(room: StringName) -> void:
 	match room:
 		&"Room_Shikijo":
 			scares.whisper_from_coffin()
+			if _pending_altar_figure:
+				_pending_altar_figure = false
+				_altar_figure()
 			if pending_shikijo_reveal:
 				pending_shikijo_reveal = false
 				timeline.on_shikijo_reveal()
@@ -765,7 +865,7 @@ func _process(delta: float) -> void:
 			_scare_timer = 20.0        # 台本イベントの近く。少し待ってから出す
 		else:
 			_scare_timer = iv
-			scares.random_scare(int(Clock.game_minutes) < 180)
+			scares.random_scare(int(Clock.game_minutes) < 60)
 	# 追跡中の心音。火車が近いほど大きく、速く、高く。
 	if _chase_on:
 		_heart_t -= delta
@@ -785,7 +885,7 @@ func _process(delta: float) -> void:
 
 
 ## 台本イベントの前後これだけ(ゲーム内分)は脅かしを出さない。実時間で約 20 秒。
-const SCARE_GAP_MINUTES := 7
+const SCARE_GAP_MINUTES := 4
 
 ## 次のランダム脅かしまでの秒数(速度 1 の実秒)。-1 なら「まだ出さない」。
 ##   〜22:30   出さない(前半は本当に静かにする)
@@ -795,17 +895,17 @@ const SCARE_GAP_MINUTES := 7
 ## 異変度が上がるほど間隔を詰める(level 1 で -20%、level 2 で -40%)。
 func _scare_interval() -> float:
 	var m := int(Clock.game_minutes)
-	if m < 90:
-		return -1.0
-	var lo := 240.0
-	var hi := 360.0
-	if m >= 360:
+	if m < 40:
+		return -1.0                # 導入と最初の用事だけにする
+	var lo := 150.0                # 22:00〜00:00 は 2.5〜4 分
+	var hi := 240.0
+	if m >= 360:                   # 03:00〜 は 1〜2 分
 		lo = 60.0
 		hi = 120.0
-	elif m >= 180:
-		lo = 120.0
-		hi = 240.0
-	return scares.rng.randf_range(lo, hi) * (1.0 - 0.2 * float(Dread.level()))
+	elif m >= 180:                 # 00:00〜 は 1.5〜3 分
+		lo = 90.0
+		hi = 180.0
+	return scares.rng.randf_range(lo, hi) * (1.0 - 0.15 * float(Dread.level()))
 
 
 func _can_scare() -> bool:

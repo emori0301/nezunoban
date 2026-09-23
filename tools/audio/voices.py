@@ -2157,3 +2157,313 @@ def door_unlock():
     place(out, norm_peak(tick, -8.0), 0.46)
     out = room(out, LOCK_ROOM, wet=0.24)[:total]
     return norm_peak(dc_kill(out), -0.5)
+
+
+# ==========================================================================
+# 追加分: ラジオ / 電話の発信 / 猫の合唱 / 火花 / 金庫の失敗
+# ==========================================================================
+PHONE_LO, PHONE_HI = 300.0, 3400.0
+
+
+def _phone_band(x, noise=0.012, seed=0, drive=1.3, circular=False):
+    """受話器越し。300〜3.4kHz に切って、少し潰す。
+    ループ素材では circular=True にすること(非円状の畳み込みと非周期ノイズは継ぎ目を壊す)。"""
+    n = len(x)
+    y = band(x, PHONE_LO, PHONE_HI, order=3, circular=circular)
+    y = softclip(y * drive, 1.5)
+    if noise:
+        nz = loop_noise(n, 0.0, seed + 777) if circular else white(n, seed + 777)
+        y = y + noise * band(nz, PHONE_LO, PHONE_HI, order=2, circular=circular)
+    return y
+
+
+def _speech_blur(n, seed, f0_pts, syl_per_sec, formant_scale=1.0, breath=0.10,
+                 jitter=0.012, gap=1.0):
+    """言葉にならない発話。音節の粒と、なめらかに動くフォルマントだけで作る。"""
+    f0 = segments(f0_pts, n)
+    src = voice_src(n, f0, seed, jitter=jitter, width=0.09, breath=breath)
+    r = rng(seed + 1)
+    amp = zeros(n)
+    t = 0.0
+    dur_s = n / float(SR)
+    while t < dur_s:
+        d = (0.65 + 0.55 * r.random()) / syl_per_sec
+        ns = min(N(d), n - N(t) - 1)
+        if ns < 64:
+            break
+        e = segments([(0.0, 0.0), (0.22, 1.0), (0.7, 0.85), (1.0, 0.04)], ns)
+        place(amp, e * (0.55 + 0.45 * r.random()), t)
+        t += d * (0.95 + 0.30 * gap * r.random())
+    f1 = 380.0 * formant_scale * (1.0 + 0.55 * smooth_noise(n, syl_per_sec * 0.9, seed + 2))
+    f2 = 1500.0 * formant_scale * (1.0 + 0.42 * smooth_noise(n, syl_per_sec * 0.8, seed + 3))
+    v = 1.00 * svf_tv(src, np.clip(f1, 200.0, 1200.0), 5.0, "bp")
+    v += 0.70 * svf_tv(src, np.clip(f2, 700.0, 3000.0), 6.0, "bp")
+    v += 0.25 * bandpass(src, 2600.0 * formant_scale, 6.0, 1)
+    return v * amp
+
+
+def _circ_window(n, center, half):
+    """ループ長で周期的な窓。環境ループの中で何かをゆっくり入れ替えるのに使う。"""
+    p = np.arange(n, dtype=np.float64) / float(n)
+    d = np.abs(p - center)
+    d = np.minimum(d, 1.0 - d)
+    w = np.clip(1.0 - d / half, 0.0, 1.0)
+    return 0.5 - 0.5 * np.cos(math.pi * w)
+
+
+@reg("radio_talk", loop=True)
+def radio_talk():
+    """AM ラジオの深夜放送。男性の呟きと相槌、薄い BGM、チューニングの揺れ。"""
+    dur = 20.0
+    n = N(dur)
+    # --- 薄い BGM (4 和音がゆっくり入れ替わる) ---
+    chords = (
+        (220.00, 261.63, 329.63),
+        (174.61, 220.00, 261.63),
+        (261.63, 329.63, 392.00),
+        (196.00, 246.94, 293.66),
+    )
+    r = rng(2201)
+    bgm = zeros(n)
+    for k, ch in enumerate(chords):
+        w = _circ_window(n, (k + 0.5) / len(chords), 0.32)
+        c = zeros(n)
+        for f in ch:
+            c += sine(snap(f, dur), n, r.random() * TWO_PI) * 1.0
+            c += 0.35 * sine(snap(f * 2.0, dur), n, r.random() * TWO_PI)
+            c += 0.12 * sine(snap(f * 3.0, dur), n, r.random() * TWO_PI)
+        bgm += c * w
+    bgm = lowpass(bgm, 2600.0, order=2, circular=True) * 0.10
+
+    # --- 呟きと相槌 ---
+    talk = zeros(n)
+    speech = (
+        (0.4, 2.6, 118.0, 4.2, 1.00, 2210),
+        (3.6, 1.9, 112.0, 3.8, 0.92, 2211),
+        (6.2, 3.1, 124.0, 4.5, 1.00, 2212),
+        (10.1, 2.2, 116.0, 4.0, 0.88, 2213),
+        (13.4, 2.8, 121.0, 4.3, 0.96, 2214),
+        (17.0, 2.1, 114.0, 3.9, 0.90, 2215),
+    )
+    for at, d, f0, sps, lv, sd in speech:
+        ns = N(d)
+        v = _speech_blur(
+            ns, sd,
+            [(0.0, f0 * 1.04), (0.5, f0), (0.85, f0 * 0.96), (1.0, f0 * 0.88)],
+            sps, formant_scale=0.86, breath=0.12,
+        )
+        place_wrap(talk, norm_peak(v, -0.5) * lv, at)
+    # 相槌 (別の話者、少し高い。1〜2 音節)
+    for at, f0, sd in ((3.15, 148.0, 2220), (9.5, 155.0, 2221), (12.9, 143.0, 2222), (19.2, 150.0, 2223)):
+        ns = N(0.42)
+        v = _speech_blur(ns, sd, [(0.0, f0), (1.0, f0 * 0.82)], 3.0, formant_scale=0.95, breath=0.14)
+        place_wrap(talk, norm_peak(v, -4.0), at)
+
+    # --- 受信のノイズとチューニングの揺れ ---
+    hiss = band(loop_noise(n, 0.6, 2230), 500.0, 3400.0, order=2, circular=True) * 0.13
+    tune = 0.72 + 0.28 * (0.5 + 0.5 * loop_smooth(n, 0.25, 2231))      # 電波の強弱
+    whistle = sine(snap(2750.0, dur), n) * 0.018 * (1.0 - tune) * 2.0  # ヘテロダインの口笛
+    out = (0.95 * talk + bgm) * tune + hiss + whistle
+    # たまに混信のざわつき
+    for at, sd in ((5.3, 2240), (14.8, 2241)):
+        nb = N(0.55)
+        b = band(white(nb, sd), 600.0, 3400.0, order=2) * segments([(0, 0.0), (0.3, 1.0), (1, 0.0)], nb)
+        place_wrap(out, norm_peak(b, -17.0), at)
+    out = _phone_band(out, noise=0.010, seed=2250, drive=1.6, circular=True)
+    return dc_kill(out, circular=True)
+
+
+@reg("radio_on")
+def radio_on():
+    """カチッ + ノイズの立ち上がり。0.5 秒。"""
+    total = N(0.5)
+    out = zeros(total)
+    place(out, norm_peak(soft_click(2301, 2100.0, 3.0, 1.0, 0.05), -0.5), 0.0)
+    nb = N(0.42)
+    pop = lowpass(white(nb, 2302) * env_ar(nb, 0.0008, 0.020, 5.0), 300.0, order=3) * 1.2
+    place(out, norm_peak(pop, -8.0), 0.012)
+    rise = band(white(nb, 2303), 400.0, 3400.0, order=2)
+    rise *= segments([(0.0, 0.0), (0.10, 0.35), (0.30, 1.0), (1.0, 0.85)], nb)
+    place(out, norm_peak(rise, -9.0), 0.018)
+    out = _phone_band(out, noise=0.0, seed=2304, drive=1.2)
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("radio_off")
+def radio_off():
+    """ノイズが潰れて消える。0.3 秒。"""
+    total = N(0.3)
+    out = zeros(total)
+    nb = N(0.16)
+    fall = band(white(nb, 2311), 400.0, 3400.0, order=2)
+    fall = svf_tv(fall, glide(2600.0, 420.0, nb, 1.6), 1.0, "lp")
+    fall *= segments([(0.0, 1.0), (0.35, 0.45), (1.0, 0.0)], nb)
+    place(out, norm_peak(fall, -6.0), 0.0)
+    place(out, norm_peak(soft_click(2312, 1700.0, 3.0, 1.0, 0.05), -0.5), 0.008)
+    nt = N(0.14)
+    thump = lowpass(white(nt, 2313) * env_ar(nt, 0.0008, 0.014, 5.0), 260.0, order=3) * 1.2
+    place(out, norm_peak(thump, -11.0), 0.012)
+    return norm_peak(dc_kill(out), -0.5)
+
+
+DTMF_LO = {"0": 941.0, "2": 697.0, "4": 770.0, "6": 770.0}
+DTMF_HI = {"0": 1336.0, "2": 1336.0, "4": 1209.0, "6": 1477.0}
+
+
+@reg("phone_dial")
+def phone_dial():
+    """プッシュ音 4 回。DTMF 風。1.2 秒。"""
+    total = N(1.2)
+    out = zeros(total)
+    digits = "0246"
+    for k, dg in enumerate(digits):
+        at = 0.04 + k * 0.275
+        nt = N(0.135)
+        t = sine(DTMF_LO[dg], nt) + sine(DTMF_HI[dg], nt)
+        t *= segments([(0.0, 0.0), (0.02, 1.0), (0.92, 1.0), (1.0, 0.0)], nt)
+        place(out, norm_peak(t, -0.5), at)
+        nb = N(0.06)
+        btn = bandpass(white(nb, 2401 + k) * env_ar(nb, 0.0002, 0.0018, 7.0), 2600.0, 3.0, 1)
+        btn += resonators(white(nb, 2411 + k) * env_ar(nb, 0.0003, 0.002, 7.0), [900.0, 1600.0], [9, 7], [1.0, 0.4])
+        place(out, norm_peak(btn, -13.0), at - 0.006 if at > 0.01 else 0.0)
+    out = _phone_band(out, noise=0.010, seed=2420, drive=1.3)
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("phone_ringback", loop=True)
+def phone_ringback():
+    """呼び出し音。400Hz が 1 秒鳴って 2 秒休む、受話器越しの 3 秒ループ。"""
+    dur = 3.0
+    n = N(dur)
+    out = zeros(n)
+    nr = N(1.0)
+    t = sine(400.0, nr)
+    t *= 0.82 + 0.18 * (0.5 + 0.5 * lfo(nr, 16.0))        # 日本の呼出音のわずかな唸り
+    t += 0.10 * sine(800.0, nr) + 0.04 * sine(1200.0, nr)
+    t *= segments([(0.0, 0.0), (0.012, 1.0), (0.985, 1.0), (1.0, 0.0)], nr)
+    place(out, norm_peak(t, -0.5), 0.0)
+    out = _phone_band(out, noise=0.018, seed=2430, drive=1.4, circular=True)
+    return fade(dc_kill(out), 0.002, 0.03)
+
+
+def _announce(n, seed, f0, syl):
+    """受話器越しの女性アナウンス風。抑揚だけで、言葉は不明瞭。"""
+    v = _speech_blur(
+        n, seed,
+        [(0.0, f0 * 1.06), (0.35, f0), (0.72, f0 * 1.02), (1.0, f0 * 0.80)],   # 最後に下がる
+        syl, formant_scale=1.18, breath=0.08, jitter=0.008, gap=0.5,
+    )
+    return norm_peak(v, -0.5)
+
+
+@reg("phone_voicemail")
+def phone_voicemail():
+    """ピーの後にアナウンス風の抑揚が 3 秒。"""
+    total = N(3.2)
+    out = zeros(total)
+    nb = N(0.42)
+    beep = sine(802.0, nb) * segments([(0.0, 0.0), (0.015, 1.0), (0.96, 1.0), (1.0, 0.0)], nb)
+    place(out, norm_peak(beep, -0.5), 0.02)
+    na = N(2.35)
+    place(out, _announce(na, 2501, 218.0, 5.6), 0.72, 0.85)
+    out = _phone_band(out, noise=0.016, seed=2510, drive=1.5)
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("phone_unavailable")
+def phone_unavailable():
+    """3 音のトーン (SIT) + アナウンス風。3 秒。"""
+    total = N(3.2)
+    out = zeros(total)
+    for k, (f, at, d) in enumerate(((913.8, 0.02, 0.33), (1370.6, 0.36, 0.33), (1776.7, 0.70, 0.38))):
+        nt = N(d)
+        t = sine(f, nt) * segments([(0.0, 0.0), (0.01, 1.0), (0.94, 1.0), (1.0, 0.0)], nt)
+        place(out, norm_peak(t, -0.5 - 1.5 * k), at)
+    na = N(2.0)
+    place(out, _announce(na, 2521, 224.0, 5.9), 1.16, 0.82)
+    out = _phone_band(out, noise=0.016, seed=2530, drive=1.5)
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("cat_chorus")
+def cat_chorus():
+    """猫が十数匹、重なって鳴く 6 秒。低めで、遠近がある。"""
+    total = N(6.0)
+    out = zeros(total)
+    r = rng(2601)
+    for i in range(16):
+        at = 0.05 + r.random() * 5.0
+        dist = r.random() ** 0.8                      # 0 が近い
+        base = 330.0 + 260.0 * r.random()             # 低めに寄せる
+        d = 0.65 + 0.85 * r.random()
+        m = _meow(
+            2610 + i * 3, d,
+            [(0, base * 0.92), (0.18, base * 1.32), (0.55, base * 1.20), (1, base * 0.88)],
+            [(0, base * 0.85), (0.3, base * 1.9), (1, base * 0.95)],
+            [(0, base * 2.4), (0.3, base * 4.2), (1, base * 2.6)],
+            [(0.0, 0.0), (0.08, 0.9), (0.4, 1.0), (0.78, 0.8), (1.0, 0.0)],
+            [(0.0, 0.2), (0.22, 0.9), (0.7, 0.8), (1.0, 0.2)],
+            breath=0.10 + 0.08 * r.random(),
+            rough=0.05 + 0.12 * r.random(),
+            growl=0.30 * r.random(),
+            jitter=0.012,
+        )
+        m = lowpass(m, 9000.0 - 6200.0 * dist, order=1)
+        m = room(m, ROOM_OUT, wet=0.18 + 0.45 * dist)
+        place(out, norm_peak(m, -0.5), at, (1.0 - 0.72 * dist) * (0.6 + 0.4 * r.random()))
+    # 全体をひとつの塊として膨らませる
+    out *= segments([(0.0, 0.55), (0.35, 1.0), (0.75, 0.95), (1.0, 0.5)], total)
+    return norm_peak(dc_kill(trim_tail(out, -60.0)), -0.5)
+
+
+@reg("spark")
+def spark():
+    """ブレーカーの火花「バチッ」+ 電気の唸り。0.6 秒。"""
+    total = N(0.6)
+    out = zeros(total)
+    for at, lv, sd in ((0.0, 1.0, 2701), (0.017, 0.58, 2702), (0.041, 0.40, 2703)):
+        nc = N(0.09)
+        c = highpass(white(nc, sd), 1200.0, order=2) * env_ar(nc, 0.00004, 0.0016, 9.0)
+        c += metal_hit(nc, sd + 100, base=3300.0, decay=0.005, count=5, bright=1.3) * 0.5
+        place(out, norm_peak(c, -0.5), at, lv)
+    na = N(0.24)
+    arc = band(white(na, 2704), 900.0, 9500.0, order=2)
+    arc *= grain_env(na, 70, 2705, dur_sec=0.0018, jitter=0.95)
+    arc *= segments([(0.0, 1.0), (0.3, 0.5), (1.0, 0.0)], na)
+    place(out, norm_peak(arc, -7.0), 0.005)
+    nh = N(0.40)
+    hum = softclip(harm(120.0, nh, [1.0, 0.5, 0.30, 0.15, 0.08]), 3.0) * env_ar(nh, 0.003, 0.085, 4.0)
+    hum = bandpass(hum, 300.0, 1.0, 1) + 0.5 * lowpass(hum, 520.0, order=2)
+    place(out, norm_peak(hum, -5.0), 0.004)
+    nl = N(0.16)
+    lever = metal_hit(nl, 2706, base=1250.0, decay=0.013, count=5, bright=1.0) * env_ar(nl, 0.0002, 0.006, 7.0)
+    place(out, norm_peak(lever, -9.0), 0.30)
+    out = room(out, ROOM_TIGHT, wet=0.20)[:total]
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("safe_wrong")
+def safe_wrong():
+    """ダイヤルが空回りして、鈍い「ガチッ」で止まる。開かない。0.6 秒。"""
+    total = N(0.6)
+    out = zeros(total)
+    r = rng(2801)
+    nrot = N(0.34)
+    rot = band(white(nrot, 2802), 350.0, 3200.0, order=2) * 0.12
+    rot *= segments([(0.0, 0.0), (0.08, 1.0), (0.8, 0.8), (1.0, 0.0)], nrot)
+    place(out, rot, 0.0)
+    t = 0.02
+    while t < 0.30:
+        nc = N(0.05)
+        c = metal_hit(nc, int(r.random() * 1e6), base=2000.0 + 900.0 * r.random(), decay=0.006, count=4, bright=1.1)
+        c *= env_ar(nc, 0.00008, 0.0028, 8.0)
+        place(out, norm_peak(c, -6.0 - 5.0 * r.random()), t)
+        t += 0.030 + 0.020 * r.random()
+    # かんぬきが動かずに突っかかる。鈍く、響かない
+    ng = N(0.28)
+    gachi = lowpass(white(ng, 2803) * env_ar(ng, 0.0006, 0.014, 6.0), 380.0, order=3) * 1.8
+    gachi += resonators(white(ng, 2804) * env_ar(ng, 0.0002, 0.0026, 7.0), [175.0, 305.0, 520.0], [7, 6, 5], [1.0, 0.5, 0.2]) * 1.2
+    gachi += metal_hit(ng, 2805, base=760.0, decay=0.018, count=5, bright=0.55) * 0.45
+    place(out, norm_peak(lowpass(gachi, 2200.0, order=1), -0.5), 0.33)
+    out = room(out, ROOM_TIGHT, wet=0.18)[:total]
+    return norm_peak(dc_kill(out), -0.5)

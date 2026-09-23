@@ -147,12 +147,11 @@ static func _office(b: Building) -> void:
 		Vector3(0.54, 0.64, 0.5), Color(0.26, 0.27, 0.28), true, 180.0)
 
 	# 書類・日誌・ポット・棚
-	# 紙もの(書類・カレンダー・社長の番号の貼り紙)を 1 メッシュにまとめる
+	# 紙もの(書類・カレンダー)を 1 メッシュにまとめる
 	LevelBuild.merge_boxes(node, [
 		[Vector3(-8.85, 0.76, 6.2), Vector3(0.3, 0.08, 0.22)],
 		[Vector3(-6.95, 0.75, 6.5), Vector3(0.26, 0.06, 0.2)],
 		[Vector3(-5.4, 1.62, 4.12), Vector3(0.42, 0.56, 0.03)],
-		[Vector3(-10.91, 1.5, 6.2), Vector3(0.02, 0.22, 0.16)],
 	], paper, "OfficePapers")
 	b.add_prop(R, "Shelf_Office", "shelf", Vector3(-10.6, 0.0, 5.2), 90.0,
 		Vector3(1.8, 1.85, 0.42), WOOD)
@@ -160,12 +159,20 @@ static func _office(b: Building) -> void:
 		Vector3(1.1, 0.85, 0.45), WOOD)
 	b.add_prop(R, "Kettle", "kettle", Vector3(-4.8, 0.85, 9.45), 180.0,
 		Vector3(0.22, 0.3, 0.22), Color(0.6, 0.6, 0.58), false, false)
+	b.add_anchor_prop(R, "Anchor_Radio", "radio", Vector3(-10.58, 1.15, 5.2), -90.0,
+		Vector3(0.30, 0.17, 0.20), Color(0.34, 0.28, 0.22), false, 90.0)
 	b.add_prop(R, "WallClock", "wall_clock", Vector3(-4.12, 1.95, 7.2), -90.0,
 		Vector3(0.33, 0.33, 0.07), Color(0.75, 0.73, 0.68), false, false)
 
-	# 社長の番号を貼った紙(電話の上の壁)
-	LevelBuild.sign_text(node, "090-2214-0077", Vector3(-10.895, 1.5, 6.2), 90.0,
-		0.035, Color(0.1, 0.1, 0.12), false, 192)
+	# 電話番号の貼り紙(script.md E-3)。電話の上の壁に、読める大きさで。
+	LevelBuild.box(node, Vector3(-10.905, 1.44, 6.22), Vector3(0.02, 0.38, 0.50),
+		LevelMaterials.plain(Color(0.30, 0.28, 0.24)), false, "", false)
+	LevelBuild.box(node, Vector3(-10.898, 1.44, 6.22), Vector3(0.012, 0.33, 0.45), paper, false, "", false)
+	var tel := LevelBuild.sign_text(node,
+		"短縮番号\n社長　　　　　0246\n春日 ひかり　3175\n春日(キヨ)宅　4419",
+		Vector3(-10.888, 1.44, 6.22), 90.0, 0.035, Color(0.09, 0.09, 0.11), true, 384)
+	tel.autowrap_mode = TextServer.AUTOWRAP_OFF
+	tel.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 	# ホワイトボード・カレンダー・書類棚
 	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.12), Vector3(1.6, 1.0, 0.05),
@@ -322,6 +329,8 @@ static func _hikaeshitsu(b: Building) -> void:
 		[Vector3(-0.82, 0.18, 4.42), Vector3(0.40, 0.32, 0.34)],
 		[Vector3(-0.82, 0.50, 4.42), Vector3(0.38, 0.30, 0.32)],
 	], LevelMaterials.plain(Color(0.40, 0.32, 0.21)), "OshiireCartons")
+	b.add_anchor_prop(R, "Anchor_OshiireBag", "body_bag", Vector3(-1.18, 0.0, 4.44), 180.0,
+		Vector3(0.42, 0.26, 0.30), Color(0.20, 0.19, 0.18), false)
 	b.add_door(R, "Door_Oshiire", Vector3(-1.25, 0.0, 4.16), 0.0, {
 		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.5, "door_height": 1.80,
 		"door_thickness": 0.035, "build_frame": false,
