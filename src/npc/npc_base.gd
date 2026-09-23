@@ -604,10 +604,18 @@ func _steer(delta: float) -> Vector3:
 	# 分からないときだけ固定角で舵を切る。固定角だけだと壁へ押し付け続けることがある。
 	if _stuck_t > 0.5:
 		var wall := _touching_wall_normal()
-		if wall != Vector3.ZERO:
+		# その壁が本当に進路を塞いでいるときだけ滑る。塞いでいないのに滑ると、
+		# 行きたい向きとは無関係な方へ舵を切ってしまう。
+		if wall != Vector3.ZERO and wall.dot(dir) < -0.1:
 			var t1 := Vector3(-wall.z, 0.0, wall.x).normalized()
 			var t2 := -t1
-			var along: Vector3 = t1 if t1.dot(dir) > t2.dot(dir) else t2
+			# 滑る向きは「目標に近づくほう」で選ぶ。dir で選ぶと壁と直交するときに
+			# どちらを選んでも同点になり、目標と逆へ滑ることがある。
+			var to_goal := Vector3(_nav_target.x - global_position.x, 0.0,
+				_nav_target.z - global_position.z)
+			if to_goal.length_squared() < 0.0001:
+				to_goal = dir
+			var along: Vector3 = t1 if t1.dot(to_goal) > t2.dot(to_goal) else t2
 			# 壁から少し離れる成分を足して、角に吸い付かないようにする
 			dir = (along + wall * 0.25).normalized()
 		else:
@@ -740,13 +748,25 @@ func _touching_wall_normal() -> Vector3:
 func _try_unstick() -> void:
 	if agent == null:
 		return
-	# 経由点は戸口では壁の中心面に乗ることがあるので、ナビメッシュ上へ寄せてから使う
-	var np := NpcUtil.snap(get_world_3d(), agent.get_next_path_position())
-	np.y = global_position.y
+	var world := get_world_3d()
+	# 経路上で 2.5m 以内の「一番先の点」へ出す。戸口では次の経由点が枠の真ん中に乗るので、
+	# そこへ出すだけだと枠に挟まったままになる。その先まで抜ける。
+	var np := Vector3.INF
+	if world != null and NpcUtil.is_nav_ready(world):
+		var path := NavigationServer3D.map_get_path(world.navigation_map,
+			global_position, _nav_target, true)
+		for i in range(1, path.size()):
+			var q := path[i]
+			q.y = global_position.y
+			if _flat_distance(q, global_position) > 2.5:
+				break
+			np = q
+	if np == Vector3.INF:
+		np = NpcUtil.snap(world, agent.get_next_path_position())
+		np.y = global_position.y
 	var d := _flat_distance(np, global_position)
 	if d < 0.05 or d > 2.5:
-		# 経路が無い / 遠すぎる。せめてナビメッシュ上へ押し出す。
-		np = NpcUtil.snap(get_world_3d(), global_position)
+		np = NpcUtil.snap(world, global_position)
 		np.y = global_position.y
 		if _flat_distance(np, global_position) < 0.05:
 			return
