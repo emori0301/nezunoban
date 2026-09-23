@@ -65,6 +65,10 @@ func start_game() -> void:
 		if ResourceLoader.exists(inst_path):
 			var inst: Node = load(inst_path).instantiate()
 			world.add_child(inst)
+	# systems/npc のプロップが置かれた後でナビメッシュを焼き直す(家具の中に NPC が立たないように)
+	if Game.level and Game.level.has_method("rebake_navmesh"):
+		await get_tree().process_frame
+		Game.level.rebake_navmesh()
 	# player
 	if ResourceLoader.exists(PLAYER_PATH):
 		var p: Node3D = load(PLAYER_PATH).instantiate()
