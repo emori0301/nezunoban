@@ -54,6 +54,8 @@ var _event_log: Array[String] = []
 var _last_event_minute: int = -99
 var _drone: StringName = &""
 var _applying_past: bool = false
+var _chase_on: bool = false
+var _heart_t: float = 0.0
 
 
 # ============================================================ 起動
@@ -524,6 +526,12 @@ func _connect_events() -> void:
 	Events.on(&"cat_crossed_coffin", func(_d): _on_cat_crossed())
 	Events.on(&"futon_rest", func(_d): finish(Game.ENDING_PORTRAIT))
 	Events.on(&"relight_success", func(d): timeline.on_relight(int(d.get("n", 1))))
+	Events.on(&"chase_started", func(_d): set_chase_audio(true))
+	Events.on(&"chase_ended", func(_d): set_chase_audio(false))
+	var mon := sys(&"monitor")
+	if mon and mon.has_signal(&"feed_switched"):
+		# カムコーダー側のトラッキングノイズ(モニター本体の CRT 音とは別の層)
+		mon.connect(&"feed_switched", func(_i: int): Audio.play(&"vhs_tracking", -14.0))
 	Game.flag_changed.connect(_on_flag_changed)
 	Dread.level_changed.connect(_on_dread_level)
 	Clock.hour_passed.connect(_on_hour)
@@ -633,6 +641,7 @@ func _on_room(room: StringName) -> void:
 	scares.set_room_ambience(room)
 	match room:
 		&"Room_Shikijo":
+			scares.whisper_from_coffin()
 			if pending_shikijo_reveal:
 				pending_shikijo_reveal = false
 				timeline.on_shikijo_reveal()
@@ -726,6 +735,11 @@ func _process(delta: float) -> void:
 		else:
 			_scare_timer = iv
 			scares.random_scare(int(Clock.game_minutes) < 180)
+	# 追跡中の心音。火車が近いほど大きく、速く、高く。
+	if _chase_on:
+		_heart_t -= delta
+		if _heart_t <= 0.0:
+			_beat()
 	# 火車が居ないときの追跡の代役(音と画面だけ)
 	if _fallback_chase:
 		_fallback_t -= delta
@@ -772,6 +786,26 @@ func _can_scare() -> bool:
 	if timeline.next_event_minute(m) - m < SCARE_GAP_MINUTES:
 		return false
 	return true
+
+
+## 火車との距離 0..1(0 = 目の前、1 = 遠い)
+func _chase_closeness() -> float:
+	var k := npc(&"kasha")
+	if k == null or not k.has_method(&"distance_to_player"):
+		return 0.55                       # 代役のときは中くらいで鳴らす
+	var d: float = float(k.call(&"distance_to_player"))
+	return clampf(inverse_lerp(2.0, 12.0, d), 0.0, 1.0)
+
+
+func _beat() -> void:
+	var far := _chase_closeness()
+	_heart_t = lerpf(0.50, 1.10, far)
+	Audio.play(&"heartbeat", lerpf(-6.0, -18.0, far), lerpf(1.25, 1.0, far))
+
+
+func set_chase_audio(on: bool) -> void:
+	_chase_on = on
+	_heart_t = 0.0 if on else 0.0
 
 
 # ============================================================ 火車(NPC が無いときの代役)
@@ -827,9 +861,10 @@ func kasha_catches() -> void:
 	if p and p.has_method(&"set_locked"):
 		p.set_locked(true)
 	await _body_rises()
-	Audio.play(&"kasha_screech", 2.0)
+	set_chase_audio(false)
 	Audio.set_muffled(true)
-	scares.glitch(1.0)
+	Audio.play(&"kasha_screech", 2.0)
+	scares.glitch(1.5)
 	ScreenFX.shake(1.0, 1.2)
 	var h := hud()
 	if h and h.has_method(&"flash"):

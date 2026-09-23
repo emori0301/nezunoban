@@ -538,7 +538,7 @@ func play_wet_call() -> void:
 func ev_ushimitsu() -> void:
 	dir.log_event("ev_ushimitsu")
 	var b: Building = dir.building()
-	Audio.ambient(&"amb_drone_high", -8.0, 0.6)
+	Audio.ambient(&"amb_drone_high", -9.0, 0.6)
 	var vhs := scares.vhs()
 	if vhs and vhs.has_method(&"set_intensity"):
 		vhs.set_intensity(0.62)
@@ -561,11 +561,12 @@ func ev_ushimitsu() -> void:
 		if inc:
 			dir.quench(&"incense_stand")
 		if coffin:
-			coffin.call(&"scratch")
+			coffin.call(&"scratch")       # coffin_scratch を棺の位置で鳴らす
+		else:
+			Audio.play_at(&"coffin_scratch", Vector3(16.9, 0.8, -0.5), 0.0)
 		if b:
 			b.flicker(&"Room_Shikijo", 1.4)
-		Audio.play_at(&"coffin_scratch", coffin.global_position if coffin else Vector3.ZERO, 0.0)
-		scares.glitch(0.5)
+		scares.glitch(0.3)
 		if i == 1:
 			scares.shikijo_door_opens()   # 猫が棺まで来られるように戸を開ける
 		if i == 3:
@@ -575,6 +576,7 @@ func ev_ushimitsu() -> void:
 			if coffin:
 				coffin.call(&"creak")
 	await Events.wait(step * 0.6)
+	scares.breath_behind()                # 丑三つ時の終わりに一度だけ
 	Audio.stop_ambient(&"amb_drone_high", 2.0)
 	if vhs and vhs.has_method(&"set_intensity"):
 		vhs.set_intensity(0.32 + 0.15 * Dread.level())

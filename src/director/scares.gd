@@ -93,8 +93,16 @@ func glitch(strength: float = 0.4) -> void:
 		v.glitch(strength)
 
 
+## ショック音。必ず VHS のグリッチと画面の揺れを伴わせる(review 指示)。
+## 揺れは Game の "no_shake" フラグで切れる(設定 UI ができたらそこから立てる)。
 func stinger(db: float = -4.0) -> void:
 	Audio.play(StringName("stinger_%d" % rng.randi_range(1, 3)), db)
+	glitch(0.4)
+	if Game.get_flag(&"no_shake", false):
+		return
+	var p := player()
+	if p and p.has_method(&"shake"):
+		p.call(&"shake", 0.6, 0.3)
 
 
 func yaw_to(from: Vector3, to: Vector3) -> float:
@@ -413,6 +421,19 @@ func chair_pulled_out() -> void:
 	chair.position.x -= 0.4
 	chair.rotation_degrees.y += 22.0
 	Audio.play_at(&"chair_drag", chair.global_position, -2.0)
+
+
+## 異変度が上がってから式場に入ったとき、棺の方から囁きが聞こえる(3 回に 1 回ほど)。
+func whisper_from_coffin() -> bool:
+	if Dread.level() < 2:
+		return false
+	if rng.randf() > 0.30:
+		return false
+	var c := sys(&"coffin")
+	var pos: Vector3 = (c as Node3D).global_position + Vector3(0, 0.4, 0) if c else Vector3(16.9, 0.8, -0.5)
+	Audio.play_at(StringName("whisper_%d" % rng.randi_range(1, 3)), pos, -20.0,
+		rng.randf_range(0.92, 1.02), 12.0)
+	return true
 
 
 ## 囁き(すぐ後ろ)
