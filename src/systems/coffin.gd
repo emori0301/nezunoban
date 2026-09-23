@@ -25,6 +25,7 @@ extends Interactable
 ##     await cof.show_face(3.0)        # 小窓を開けて顔を見せる(プレイヤーは固定される)
 ##     Events.on(&"cat_crossed_coffin", func(_d): ...)   # 猫がまたいだ = 異変度 +3
 
+signal lid_reset
 signal face_shown
 signal face_hidden
 signal cat_crossed
@@ -34,6 +35,8 @@ signal cat_crossed
 @export var blocked_open_text: String = "開けてはいけない。"
 @export var blocked_lid_open_text: String = "もう開いている。"
 @export var blocked_viewing_text: String = "……見ている。"
+@export var lid_reset_prompt: String = "蓋を戻す"
+@export var lid_reset_hold_time: float = 1.0
 @export var peek_prompt: String = "小窓を覗く"
 @export var dry_ice_prompt: String = "ドライアイスを交換する"
 @export var dry_ice_hold_time: float = 2.0
@@ -266,12 +269,21 @@ func set_lid_ajar(ajar: bool) -> void:
 	if is_lid_ajar == ajar:
 		return
 	is_lid_ajar = ajar
+	_update_hold_time()
 	Audio.play_at(&"coffin_lid_slide", global_position)
 	if _lid_node == null:
 		return
 	var tw := create_tween()
 	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(_lid_node, "position", _lid_rest + _lid_offset(), 1.4)
+
+## ずれた蓋をプレイヤーが押し戻す。
+func reset_lid() -> void:
+	if not is_lid_ajar:
+		return
+	set_lid_ajar(false)
+	Events.emit_event(&"lid_reset")
+	lid_reset.emit()
 
 ## 棺の蓋を開ける/閉じる(終盤)。Lid を足側の蝶番で回す。
 func set_open(open: bool) -> void:
@@ -400,6 +412,8 @@ func _has_dry_ice() -> bool:
 func get_prompt() -> String:
 	if _has_dry_ice():
 		return dry_ice_prompt
+	if is_lid_ajar:
+		return lid_reset_prompt
 	return peek_prompt
 
 func get_blocked_text() -> String:
@@ -417,6 +431,8 @@ func _can_interact(_player: Node3D) -> bool:
 func _interact(player: Node3D) -> void:
 	if _has_dry_ice():
 		_replace_dry_ice(player)
+	elif is_lid_ajar:
+		reset_lid()
 	elif allow_open_window:
 		show_face(face_view_seconds, "peek")
 	else:
@@ -430,4 +446,14 @@ func _replace_dry_ice(player: Node3D) -> void:
 
 ## hold 時間はドライアイスを持っているかで変える。
 func _physics_process(_delta: float) -> void:
-	hold_time = dry_ice_hold_time if _has_dry_ice() else 0.0
+	_update_hold_time()
+
+## 長押し時間は状況で変わる。持ち物は毎フレーム見るが、蓋の状態が変わった
+## 瞬間にも呼んで 1 フレームの遅れを無くす。
+func _update_hold_time() -> void:
+	if _has_dry_ice():
+		hold_time = dry_ice_hold_time
+	elif is_lid_ajar:
+		hold_time = lid_reset_hold_time
+	else:
+		hold_time = 0.0

@@ -54,6 +54,7 @@ func run() -> int:
 	await t_review_fixes()
 	await t_blocked_text()
 	await t_stock_prompt()
+	await t_difficulty_tweaks()
 
 	print("")
 	if failures.is_empty():
@@ -320,6 +321,56 @@ func t_clock_events() -> void:
 	ok(fired[0], "Clock.skip_to で 23:00 のイベントが出る")
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
+
+## 難易度調整: 残量の合図 / ロウソク 600 秒 / ずれた蓋を戻す
+func t_difficulty_tweaks() -> void:
+	print("\n-- 難易度調整")
+
+	# (1) 残り 25% で incense_low が一度だけ出る
+	var inc := spawn("res://src/systems/incense_stand.tscn") as IncenseStand
+	inc.burn_seconds = 1.0
+	Game.set_flag(&"incense_sticks", 5)
+	clear_events()
+	inc.light()
+	await wait(0.45)
+	ok(not saw(&"incense_low"), "残り半分ではまだ出ない")
+	await wait(0.45)
+	ok(saw(&"incense_low"), "残り 25% を切ると incense_low が出る")
+	var n_low := 0
+	for e in seen:
+		if e[0] == &"incense_low":
+			n_low += 1
+	eq(n_low, 1, "1本につき一度だけ")
+	await wait(0.3)
+	ok(saw(&"incense_out"), "そのまま燃え尽きる")
+	clear_events()
+	inc.light()
+	await wait(0.45)
+	ok(not saw(&"incense_low"), "立て直すと合図もリセットされる")
+	inc.queue_free()
+
+	# (2) ロウソクの既定は 600 秒
+	var c := spawn("res://src/systems/candle.tscn") as Candle
+	eq(c.burn_seconds, 600.0, "ロウソクの既定")
+	c.queue_free()
+
+	# (3) ずれた蓋を戻せる
+	var cof := spawn("res://src/systems/coffin.tscn") as Coffin
+	player.items.clear()
+	player.carried_item = &""
+	eq(cof.get_prompt(), "小窓を覗く", "ずれていないときは通常のプロンプト")
+	cof.set_lid_ajar(true)
+	await get_tree().physics_frame
+	eq(cof.get_prompt(), "蓋を戻す", "ずれていたら戻すプロンプト")
+	eq(cof.hold_time, 1.0, "長押し 1.0 秒")
+	clear_events()
+	cof.interact(player)
+	ok(not cof.is_lid_ajar, "蓋が戻る")
+	ok(saw(&"lid_reset"), "lid_reset が出る")
+	await get_tree().physics_frame
+	eq(cof.get_prompt(), "小窓を覗く", "戻したらプロンプトも戻る")
+	eq(cof.hold_time, 0.0, "長押しも戻る")
+	cof.queue_free()
 
 ## プロンプトに線香の在庫が出ること
 func t_stock_prompt() -> void:

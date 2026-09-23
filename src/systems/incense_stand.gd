@@ -12,12 +12,15 @@ extends Interactable
 
 signal lit
 signal went_out
+signal running_low
 signal burn_progress(ratio: float)
 
 @export var burn_seconds: float = 180.0
 ## 窓が開いていると director が 3.0 にする。0 で止まる。
 @export var burn_multiplier: float = 1.0
 @export var dread_on_out: int = 1
+## この残量を切ったら一度だけ incense_low を出す(director が「線香が短い。」を言う)
+@export var low_ratio: float = 0.25
 @export var stick_height: float = 0.22        # 線香の長さ(m)
 @export var stick_radius: float = 0.0035
 @export var stand_top: float = 0.115          # 香炉の灰の高さ(m。incense_stand.glb に合わせてある)
@@ -43,6 +46,7 @@ var remaining_ratio: float:
 		return clampf(_remaining / burn_seconds, 0.0, 1.0)
 
 var _remaining: float = 0.0
+var _low_emitted: bool = false
 var _t: float = 0.0
 var _stick: MeshInstance3D
 var _stick_mesh: CylinderMesh
@@ -127,6 +131,11 @@ func _process(delta: float) -> void:
 		_remaining = 0.0
 		_extinguish()
 		return
+	if not _low_emitted and remaining_ratio <= low_ratio:
+		_low_emitted = true
+		Audio.play_at(&"incense_hiss", global_position, -16.0)
+		Events.emit_event(&"incense_low")
+		running_low.emit()
 	_apply_visual_state()
 	_flicker()
 	burn_progress.emit(remaining_ratio)
@@ -163,6 +172,7 @@ func light() -> bool:
 		return false
 	Game.add_flag(&"incense_sticks", -1)
 	_remaining = burn_seconds
+	_low_emitted = false
 	is_burning = true
 	_apply_visual_state()
 	Audio.play_at(&"incense_light", global_position)

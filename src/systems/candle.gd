@@ -14,7 +14,7 @@ signal lit
 signal went_out
 signal relight_failed
 
-@export var burn_seconds: float = 720.0
+@export var burn_seconds: float = 600.0
 @export var burn_multiplier: float = 1.0
 @export var dread_on_out: int = 0        # ロウソクは既定では異変度を上げない(director が判断)
 @export var candle_height: float = 0.16
