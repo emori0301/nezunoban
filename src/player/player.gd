@@ -47,6 +47,14 @@ const SURFACE_GROUPS := {
 @export var default_surface: StringName = &"lino"
 ## 両手が塞がっていて運搬物を受け取れないときに HUD へ出す文(director が差し替えられる)
 @export var hands_full_text: String = "両手が塞がっている"
+## can_interact が false の対象を押したときの共通文(Interactable.get_blocked_text() が空のとき)
+@export var blocked_default_text: String = "今は何もできない。"
+## 調べる物ではない物を見て押したときの文
+@export var nothing_here_text: String = "特に何もない。"
+## 「特に何もない。」を出すために視線レイを飛ばす距離
+@export var scenery_probe_distance: float = 2.2
+## Prop 判定ができないときに「物」とみなす近さ(これより遠い壁や床では何も出さない)
+@export var scenery_close_distance: float = 1.5
 
 ## 持ち物
 var carried_item: StringName = &""            ## 両手で運ぶ物(1つだけ)
@@ -374,6 +382,8 @@ func _update_interact(delta: float) -> void:
 	if focus == null or not is_instance_valid(focus) or not focus.can_interact(self):
 		_hold_t = 0.0
 		_set_hold(0.0)
+		if just:
+			_report_no_response()
 		return
 
 	if focus.hold_time > 0.0:
@@ -397,6 +407,46 @@ func _update_interact(delta: float) -> void:
 		_set_hold(0.0)
 		if just:
 			focus.interact(self)
+
+## E を押したのに何も起きなかったとき、理由を一言出す。
+## 1) フォーカス中だが can_interact が false → Interactable.get_blocked_text()(空なら共通文)
+## 2) フォーカスは無いが、目の前に「物」がある → nothing_here_text
+## 3) 壁・床・何も無い → 黙る(押すたびに文が出ると鬱陶しいため)
+func _report_no_response() -> void:
+	if focus != null and is_instance_valid(focus):
+		var t: String = focus.get_blocked_text() if focus.has_method("get_blocked_text") else ""
+		_say_feedback(t if t != "" else blocked_default_text)
+		return
+	if _looking_at_object():
+		_say_feedback(nothing_here_text)
+
+## 視線の先(layer 1)が壁や床ではなく「物」かどうか。
+## Prop クラス / group "prop" を親に辿って探し、見つからなければ近さで代用する。
+func _looking_at_object() -> bool:
+	var space := get_world_3d().direct_space_state
+	var from := camera.global_position
+	var dir := -camera.global_transform.basis.z
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * scenery_probe_distance, 1)
+	q.collide_with_areas = false
+	q.exclude = [get_rid()]
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var n := hit.get("collider") as Node
+	while n != null:
+		if n is Prop or n.is_in_group(&"prop"):
+			return true
+		n = n.get_parent()
+	return from.distance_to(hit.get("position")) <= scenery_close_distance
+
+## 画面下に一言出す(独白と同じ見た目)。連打しても重ならず上書きされる。
+func _say_feedback(text: String) -> void:
+	if text == "":
+		return
+	var h := _hud_node()
+	if h and h.has_method("show_toast"):
+		h.show_toast(text)
+	Audio.play(&"ui_back", -10.0)
 
 func _set_hold(r: float) -> void:
 	hold_progress_changed.emit(r)
@@ -433,10 +483,7 @@ func give_item(name: StringName, carried: bool = false) -> bool:
 
 ## 両手が塞がっていて受け取れなかったことを短く知らせる
 func _show_hands_full() -> void:
-	var h := _hud_node()
-	if h and h.has_method("show_toast"):
-		h.show_toast(hands_full_text)
-	Audio.play(&"ui_back", -10.0)
+	_say_feedback(hands_full_text)
 
 func take_item(name: StringName) -> bool:
 	if carried_item == name:

@@ -8,6 +8,8 @@ extends Interactable
 @export var say_text: String = "調べた。"
 @export var give_on_use: StringName = &""
 @export var give_carried: bool = false
+## true にすると can_interact が常に false(金庫が開かない、など)
+@export var force_blocked: bool = false
 
 var _mesh: MeshInstance3D = null
 
@@ -36,6 +38,9 @@ func _ready() -> void:
 		mat.emission_energy_multiplier = 0.25)
 	unfocused.connect(func() -> void:
 		mat.emission_enabled = false)
+
+func _can_interact(_player: Node3D) -> bool:
+	return not force_blocked
 
 func _interact(player: Node3D) -> void:
 	if give_on_use != &"":

@@ -74,8 +74,14 @@ func _build_world() -> void:
 
 	# 段差 0.3(乗り越えられるか)
 	_wall(Vector3(-2.5, 0.15, 2.5), Vector3(3, 0.3, 3))
-	# 箱
-	_wall(Vector3(2.0, 0.35, 3.4), Vector3(0.7, 0.7, 0.7), Color(0.34, 0.30, 0.26))
+	# 箱(Prop ではないただの StaticBody。近さで「物」と判定される側)
+	_wall(Vector3(2.0, 0.6, 3.4), Vector3(0.7, 1.2, 0.7), Color(0.34, 0.30, 0.26))
+	# Prop(level が置く物。距離に関係なく「物」と判定される側)
+	var pr := Prop.new()
+	pr.position = Vector3(-2.6, 0, -2.0)   # 段差(x -4..-1, z 1..4)と重ならない場所に置く
+	pr.placeholder_size = Vector3(0.8, 1.6, 0.8)
+	pr.placeholder_color = Color(0.30, 0.28, 0.32)
+	world.add_child(pr)
 
 	# 照明(暗め)
 	_light(Vector3(0, 2.7, -4.5), Color(0.96, 0.90, 0.76), 3.2, 11.0)
@@ -88,6 +94,13 @@ func _build_world() -> void:
 	_interactable(Vector3(0, 1.3, -5.4), "線香を立てる", 0.0, &"", "社長", "線香は絶やすなよ。一本が一時間ももたん。")
 	_interactable(Vector3(-1.7, 1.3, -5.4), "棺の小窓を開ける", 1.5, &"", "", "……開けてはいけない。")
 	_interactable(Vector3(1.7, 1.3, -5.4), "ドライアイスを入れる", 0.0, &"dry_ice", "", "ドライアイスを足した。")
+	# 押しても反応しない対象(ユーザー指摘の金庫に相当)
+	var safe := _interactable(Vector3(-3.8, 1.3, -2.0), "金庫を開ける", 0.0, &"", "", "")
+	safe.force_blocked = true
+	safe.blocked_text = "鍵がかかっている。"
+	safe.color = Color(0.26, 0.26, 0.28)
+	safe.say_text = ""
+
 	var giver := _interactable(Vector3(3.8, 1.3, -2.0), "ドライアイスを持つ", 0.0, &"", "", "")
 	giver.color = Color(0.58, 0.60, 0.62)
 	giver.give_on_use = &"dry_ice"
@@ -208,6 +221,13 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 	else:
 		_fails += 1
 		print("  FAIL %s %s" % [label, detail])
+
+## E を1回押して離す(押しっぱなしのゲートに引っかからないように)
+func _press_interact() -> void:
+	Input.action_press(&"interact")
+	await get_tree().create_timer(0.12, false).timeout
+	Input.action_release(&"interact")
+	await get_tree().create_timer(0.25, false).timeout
 
 ## 加速ぶんを除いた定常速度を測る(0.8秒で加速しきってから1.0秒ぶん)
 func _measure_speed() -> float:
@@ -417,6 +437,54 @@ func _run_selftest() -> void:
 	hud._dlg_active = false
 	await get_tree().create_timer(0.3, false).timeout
 
+	# 15) 押しても反応しないときに文が出る ← ユーザー指摘
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 15a) can_interact が false の Interactable(金庫)
+	player.teleport(Vector3(-3.8, 0.05, -0.4), 0.0, -7.0)
+	await get_tree().create_timer(0.4, false).timeout
+	_check(player.focus != null, "blocked な対象にもフォーカスは付く", str(player.focus))
+	_check(player.focus != null and not player.focus.can_interact(player), "can_interact=false")
+	await _press_interact()
+	_check(hud.is_toast_visible(), "押すと文が出る", "「%s」" % hud.get_toast_text())
+	_check(hud.get_toast_text() == "鍵がかかっている。", "blocked_text が使われる", "= 「%s」" % hud.get_toast_text())
+
+	# 15b) blocked_text が空なら共通文
+	player.teleport(Vector3(1.7, 0.05, -3.8), 0.0, -7.0)   # required_item = dry_ice、持っていない
+	await get_tree().create_timer(0.5, false).timeout
+	await _press_interact()
+	_check(hud.get_toast_text() == "何かが要る。", "required_item の既定文", "= 「%s」" % hud.get_toast_text())
+
+	# 15c) 目の前の箱(Prop ではない)に E → 近さで「物」と判定される
+	player.teleport(Vector3(2.0, 0.05, 2.3), 180.0, -32.0)
+	await get_tree().create_timer(0.5, false).timeout
+	_check(player.focus == null, "箱は Interactable ではない")
+	await _press_interact()
+	_check(hud.get_toast_text() == "特に何もない。", "近くの物を見て押すと文が出る", "= 「%s」" % hud.get_toast_text())
+
+	# 15c-2) Prop は 1.5m より遠くても「物」と判定される
+	hud._toast.text = "(なし)"
+	player.teleport(Vector3(-2.6, 0.05, 0.2), 0.0, -5.0)   # Prop まで約 1.8m(近さの閾値 1.5m より遠い)
+	await get_tree().create_timer(0.5, false).timeout
+	await _press_interact()
+	_check(hud.get_toast_text() == "特に何もない。", "Prop は遠くても物と判定", "= 「%s」" % hud.get_toast_text())
+
+	# 15d) 遠い壁に E → 何も出さない
+	hud.show_toast("")                                      # 直前の文を消す
+	hud._toast.text = "(なし)"
+	player.teleport(Vector3(0, 0.05, 0.0), 0.0, 0.0)        # 壁(z=-7.1)まで 7m
+	await get_tree().create_timer(0.5, false).timeout
+	_check(player.focus == null, "壁にはフォーカスが付かない")
+	await _press_interact()
+	_check(hud.get_toast_text() == "(なし)", "遠い壁では黙る", "= 「%s」" % hud.get_toast_text())
+
+	# 15e) 連打しても重ならない(常に最新の1つ)
+	player.teleport(Vector3(-3.8, 0.05, -0.4), 0.0, -7.0)
+	await get_tree().create_timer(0.4, false).timeout
+	for i in 3:
+		await _press_interact()
+	_check(hud.get_toast_text() == "鍵がかかっている。", "連打しても文は1つ")
+
 	print("== %s (fail %d) ==" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	get_tree().quit(0 if _fails == 0 else 1)
 
@@ -556,6 +624,27 @@ func _run_shots(dir: String) -> void:
 	await hud.fade_out(0.4)
 	await _shot(dir, "19b_fade_out")
 	await hud.fade_in(0.4)
+
+	await hud.fade_in(0.4)
+
+	# 20) 押しても反応しない対象(金庫): 薄いプロンプト + 理由の文
+	player.teleport(Vector3(-3.8, 0.05, -0.4), 0.0, -7.0)
+	await get_tree().create_timer(0.6, false).timeout
+	await _shot(dir, "22_blocked_prompt")
+	Input.action_press(&"interact")
+	await get_tree().create_timer(0.15, false).timeout
+	Input.action_release(&"interact")
+	await get_tree().create_timer(0.3, false).timeout
+	await _shot(dir, "23_blocked_text")
+
+	# 21) ただの物を見て押す
+	player.teleport(Vector3(2.0, 0.05, 2.3), 180.0, -32.0)
+	await get_tree().create_timer(0.6, false).timeout
+	Input.action_press(&"interact")
+	await get_tree().create_timer(0.15, false).timeout
+	Input.action_release(&"interact")
+	await get_tree().create_timer(0.3, false).timeout
+	await _shot(dir, "24_nothing_here")
 
 	print("shots done: %s" % dir)
 	get_tree().quit()

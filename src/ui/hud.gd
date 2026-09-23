@@ -260,13 +260,19 @@ func _build_game_layer() -> void:
 	_crosshair.draw.connect(_draw_crosshair)
 	_game.add_child(_crosshair)
 
-	_toast = UiTheme.gothic_label("", 16, UiTheme.TEXT_WARN)
+	# 独白の字幕と同じ位置・同じ見た目(画面下・中央寄せ)
+	_toast = UiTheme.gothic_label("", 16, UiTheme.TEXT)
 	_toast.name = "Toast"
 	_toast.anchor_right = 1.0
-	_toast.offset_top = H * 0.5 + 48.0
-	_toast.offset_bottom = H * 0.5 + 70.0
+	_toast.anchor_top = 1.0
+	_toast.anchor_bottom = 1.0
+	_toast.offset_left = 60.0
+	_toast.offset_right = -60.0
+	_toast.offset_top = -64.0
+	_toast.offset_bottom = -28.0
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast.modulate.a = 0.0
 	_game.add_child(_toast)
 
@@ -791,8 +797,9 @@ func show_prompt(text: String, available: bool = true) -> void:
 		_focused = true
 		_crosshair.queue_redraw()
 
-## 画面中央下に短く出る通知。「両手が塞がっている」など、会話にするほどでもないもの。
-func show_toast(text: String, duration: float = 1.6) -> void:
+## 画面下に短く出る一言。「今は何もできない。」「両手が塞がっている」など、
+## 会話にするほどでもないもの。表示中に呼ばれたら上書きする(連打で重ならない)。
+func show_toast(text: String, duration: float = 1.5) -> void:
 	if text.is_empty():
 		return
 	_toast.text = text
@@ -803,6 +810,12 @@ func show_toast(text: String, duration: float = 1.6) -> void:
 	_toast_tween.tween_property(_toast, "modulate:a", 1.0, 0.12)
 	_toast_tween.tween_interval(maxf(duration, 0.1))
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.45)
+
+func get_toast_text() -> String:
+	return _toast.text
+
+func is_toast_visible() -> bool:
+	return _toast.visible and _toast.modulate.a > 0.5
 
 func hide_prompt() -> void:
 	_prompt.visible = false
