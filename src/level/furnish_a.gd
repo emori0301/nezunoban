@@ -60,12 +60,6 @@ static func _genkan(b: Building) -> void:
 	LevelBuild.sign_text(node, "故 春日 キヨ 儀\n葬儀式場", Vector3(-8.58, 1.55, 1.4), -90.0,
 		0.165, Color(0.03, 0.03, 0.04), true, 384)
 
-	# 「忌中」の半紙(玄関を入ってすぐ、西の壁)
-	LevelBuild.box(node, Vector3(-10.90, 1.72, -1.45), Vector3(0.02, 0.44, 0.31),
-		LevelMaterials.plain(Color(0.88, 0.87, 0.83)), false, "", false)
-	LevelBuild.sign_text(node, "忌中", Vector3(-10.885, 1.72, -1.45), 90.0,
-		0.17, Color(0.06, 0.06, 0.07), true, 320)
-
 	# 受付まわりの小物
 	b.add_prop(R, "ReceptionFlower", "flower_stand", Vector3(-6.3, 0.0, -3.3), 180.0,
 		Vector3(0.5, 1.1, 0.5), Color(0.5, 0.45, 0.4))
@@ -105,6 +99,19 @@ static func _genkan(b: Building) -> void:
 		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.85, "door_height": 2.2,
 		"door_thickness": 0.05, "glass": true, "build_frame": true,
 	})
+
+	# 「忌中」の半紙。自動ドアのガラスに内側から貼った体。花輪に隠れない扉の中央寄り、
+	# 目線の高さ 1.55m。外から読める向きと、内から読める向きの両方に文字を置く。
+	var genkan_door := b.get_door(&"Door_Genkan")
+	var leaf := genkan_door.get_leaf(0) if genkan_door else null
+	if leaf:
+		var lx := -0.4625
+		LevelBuild.box(leaf, Vector3(lx, 1.55, 0.027), Vector3(0.21, 0.297, 0.004),
+			LevelMaterials.plain(Color(0.90, 0.89, 0.85)), false, "", false)
+		LevelBuild.vertical_text(leaf, "忌中", Vector3(lx, 1.565, -0.028), 180.0,
+			0.115, Color(0.06, 0.06, 0.07))
+		LevelBuild.vertical_text(leaf, "忌中", Vector3(lx, 1.565, 0.031), 0.0,
+			0.115, Color(0.10, 0.10, 0.11))
 
 	# 玄関脇のガラス(はめ殺し)
 	var glass := LevelMaterials.translucent(Color(0.4, 0.48, 0.52), 0.25)

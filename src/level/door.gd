@@ -127,6 +127,12 @@ func slam() -> void:
 		Events.emit_event(&"door_closed", {"door": name})
 
 
+## 可動部(扉板)を返す。貼り紙などを板に貼り付けたいとき用。
+## SWING は 0 が回転ピボット、SLIDE_DOUBLE は 0 が -X 側、1 が +X 側の板。
+func get_leaf(i: int) -> Node3D:
+	return _leaves[i] if i >= 0 and i < _leaves.size() else null
+
+
 func set_locked(v: bool) -> void:
 	locked = v
 
