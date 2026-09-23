@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from common import (save_tex, fbm, value_noise, white, norm, rgb, mix, mul_gray,
                     grunge, speckle, scratches, stains, posterize, finish,
-                    rect, disc, ellipse, blur, tile_coords, rgba, stroke)
+                    rect, disc, ellipse, blur, tile_coords, rgba, stroke, _rng)
 
 S = 256
 
@@ -664,7 +664,7 @@ def _old_face(img, cx, cy, sc, eyes="closed", mouth="closed", turn=0.0, seed=400
     return img
 
 
-def _face_plate(eyes, mouth, turn, seed):
+def _face_plate(eyes, mouth, turn, seed, skin=None, shade=None, cool=0.0):
     """白布に囲まれた老女の顔。棺の小窓越しに見る用。"""
     # 白布(皺あり)
     img = rgb(S, (0.84, 0.83, 0.80))
@@ -686,8 +686,8 @@ def _face_plate(eyes, mouth, turn, seed):
     ellipse(img, 26, 128, 22, 48, (0.70, 0.69, 0.68), 0.55, soft=8)
 
     # 血の気の無い、蝋のような肌
-    skin = (0.70, 0.665, 0.635)
-    shade = (0.47, 0.45, 0.45)
+    skin = skin or (0.70, 0.665, 0.635)
+    shade = shade or (0.47, 0.45, 0.45)
     _old_face(img, 132, 128, 88, eyes=eyes, mouth=mouth, turn=turn, seed=seed,
               skin=skin, shade=shade)
 
@@ -700,6 +700,8 @@ def _face_plate(eyes, mouth, turn, seed):
     vg = np.clip(1.0 - ((gx - 105) / 175.0) ** 2 - ((gy - 128) / 175.0) ** 2, 0, 1)
     img = mul_gray(img, 0.30 + vg * 0.85)
     img = mul_gray(img, stains(S, seed + 5, 4, 0.18, 34))
+    if cool:
+        img = img * np.array([1.0 - cool * 0.10, 1.0 - cool * 0.03, 1.0 + cool * 0.07])
     return finish(img, seed + 6, noise=0.05, levels=22)
 
 
@@ -717,6 +719,13 @@ def t_body_face_eyes():
 
 def t_body_face_turned():
     return _face_plate("open", "closed", 0.85, 440)
+
+
+def t_body_face_second():
+    """二人目の死者。青白く、目を見開き、口は閉じている。"""
+    return _face_plate("open", "closed", 0.0, 450,
+                       skin=(0.645, 0.635, 0.650), shade=(0.40, 0.40, 0.45),
+                       cool=1.0)
 
 
 def t_iei_photo():
@@ -1593,6 +1602,292 @@ def t_blood_smear():
     return rgba(posterize(col, 24), np.clip(a * edge, 0, 1))
 
 
+# ---------------------------------------------------------------- 回想・写真
+
+def _sq(fn, H, W, *a, **k):
+    """正方形前提のノイズ関数を (H,W) に切り出す。"""
+    n = fn(max(H, W), *a, **k)
+    return n[:H, :W]
+
+
+def _person(img, cx, cy, h, skin, cloth, hair, seed, face=True,
+            hair_long=False, bald=0.0, back=False, bun=False):
+    """写真の中の人物。cx=縦(頭の中心), cy=横, h=頭の半分の高さ(px)。"""
+    dk = tuple(c * 0.55 for c in cloth)
+    # 胴(肩は台形、腰は少し細く)
+    rect(img, cx + h * 1.30, cy - h * 1.75, cx + h * 5.2, cy + h * 1.75, cloth)
+    for sg in (-1, 1):
+        ellipse(img, cx + h * 1.62, cy + sg * h * 1.75, h * 0.9, h * 0.55,
+                cloth, 1.0, soft=1.6)
+    ellipse(img, cx + h * 5.1, cy, h * 0.6, h * 1.75, cloth, 1.0, soft=1.6)
+    # 腕の境目と襟の影
+    for sgn in (-1, 1):
+        rect(img, cx + h * 1.9, cy + sgn * h * 1.10, cx + h * 5.1,
+             cy + sgn * h * 1.17, dk, 0.55)
+    ellipse(img, cx + h * 1.45, cy, h * 0.40, h * 0.70, dk, 0.60, soft=2)
+    # 首
+    rect(img, cx + h * 0.70, cy - h * 0.28, cx + h * 1.42, cy + h * 0.28, skin)
+    ellipse(img, cx + h * 1.12, cy, h * 0.36, h * 0.28,
+            (skin[0] * 0.70, skin[1] * 0.68, skin[2] * 0.68), 0.60, soft=2)
+    # 頭: 先に髪の塊を置き、その上に顔の面を重ねて生え際を作る
+    ellipse(img, cx, cy, h, h * 0.78, skin, 1.0, soft=1.2)
+    if back:
+        ellipse(img, cx + h * 0.04, cy, h * 1.04, h * 0.84, hair, 1.0, soft=1.2)
+        ellipse(img, cx + h * 0.95, cy, h * 0.45, h * 0.62, hair, 1.0, soft=1.4)
+        return
+    ellipse(img, cx - h * 0.10, cy, h * 0.96, h * 0.84, hair, 1.0, soft=1.0)
+    if bun:
+        ellipse(img, cx - h * 1.00, cy, h * 0.32, h * 0.28, hair, 1.0, soft=1.2)
+    if hair_long:
+        for sgn in (-1, 1):
+            ellipse(img, cx + h * 1.15, cy + sgn * h * 0.76, h * 1.5, h * 0.26,
+                    hair, 1.0, soft=1.4)
+    # 顔の面(bald が大きいほど上へ = 生え際が後退)
+    ellipse(img, cx + h * (0.26 - bald * 0.30), cy, h * (0.76 + bald * 0.12),
+            h * 0.66, skin, 1.0, soft=1.1)
+    if not face:
+        return
+    dark = (skin[0] * 0.26, skin[1] * 0.24, skin[2] * 0.24)
+    for sgn in (-1, 1):                                     # 眉と目
+        ellipse(img, cx - h * 0.10, cy + sgn * h * 0.32, h * 0.07, h * 0.19,
+                dark, 0.55, soft=1.0)
+        ellipse(img, cx + h * 0.14, cy + sgn * h * 0.32, h * 0.09, h * 0.16,
+                dark, 0.90, soft=0.9)
+    ellipse(img, cx + h * 0.44, cy, h * 0.10, h * 0.07, dark, 0.45, soft=1.2)
+    ellipse(img, cx + h * 0.66, cy, h * 0.05, h * 0.20, dark, 0.70, soft=0.9)
+    ellipse(img, cx + h * 0.36, cy, h * 0.38, h * 0.55, dark, 0.09, soft=3)
+
+
+def _family_photo(fourth, seed):
+    """色褪せた家族写真。縁側に 4 人。fourth: "smudge" か "back"。"""
+    H, W = 192, 256
+    img = rgb(H, (0.52, 0.49, 0.43), width=W)
+
+    # 奥: 障子と鴨居(上半分)
+    rect(img, 0, 0, 96, W, (0.40, 0.375, 0.34))
+    rect(img, 0, 0, 16, W, (0.19, 0.155, 0.125))              # 鴨居
+    for k in range(5):                                        # 障子の桟
+        rect(img, 16, 8 + k * 50, 96, 12 + k * 50, (0.27, 0.25, 0.22))
+    for k in range(3):
+        rect(img, 30 + k * 22, 4, 34 + k * 22, W - 4, (0.27, 0.25, 0.22))
+    rect(img, 16, 0, 96, 10, (0.13, 0.12, 0.10))              # 左の柱
+    rect(img, 16, W - 12, 96, W, (0.13, 0.12, 0.10))
+
+    # 縁側の板(下)
+    rect(img, 96, 0, H, W, (0.36, 0.27, 0.185))
+    for k in range(6):
+        rect(img, 100 + k * 16, 0, 102 + k * 16, W, (0.26, 0.19, 0.13))
+    # 庭の光が右下から差す
+    gxx, gyy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+    img = mul_gray(img, np.clip(0.80 + (gxx / float(H)) * 0.45, 0, 1.4))
+
+    # 人物 4 人(左から: 老女 / 60 代の男 / 20 代の女 / 4 人目)
+    _person(img, 100, 50, 15, (0.73, 0.63, 0.55), (0.40, 0.40, 0.38),
+            (0.83, 0.82, 0.80), seed + 1, bun=True)             # 老女(白髪・座り)
+    _person(img, 84, 106, 16, (0.68, 0.56, 0.46), (0.20, 0.22, 0.26),
+            (0.17, 0.15, 0.14), seed + 2, bald=0.55)            # 60 代の男
+    _person(img, 88, 158, 15, (0.82, 0.71, 0.63), (0.74, 0.72, 0.65),
+            (0.11, 0.09, 0.10), seed + 3, hair_long=True)       # 20 代の女
+
+    if fourth == "back":
+        _person(img, 82, 208, 16, (0.10, 0.10, 0.11), (0.06, 0.06, 0.07),
+                (0.04, 0.04, 0.05), seed + 4, back=True)
+    else:
+        _person(img, 82, 208, 16, (0.70, 0.60, 0.52), (0.28, 0.29, 0.32),
+                (0.15, 0.14, 0.13), seed + 4, face=False)
+        # 顔だけ擦れて潰れている(局所的にぼかして白く飛ばす)
+        sm = blur(img.copy(), 6)
+        m = np.clip(1.0 - np.sqrt(((gxx - 82) / 23.0) ** 2
+                                  + ((gyy - 208) / 19.0) ** 2), 0, 1)
+        img = mix(img, sm, np.clip(m * 2.2, 0, 1))
+        scr = np.clip(_sq(white, H, W, seed + 9), 0, 1)
+        img = mix(img, rgb(H, (0.78, 0.75, 0.70), width=W),
+                  np.clip(m * 1.5, 0, 1) * (0.30 + scr * 0.40))
+
+    # 退色: 彩度を落として黄ばみへ寄せる
+    lum = img.mean(axis=2, keepdims=True)
+    img = mix(img, np.repeat(lum, 3, axis=2), 0.34)
+    img = img * np.array([1.07, 1.00, 0.82])
+    img = np.clip((img - 0.5) * 0.95 + 0.50, 0, 1)             # 黒が少し浮く
+
+    # 折り目・擦れ・縁の焼け
+    rect(img, 0, 126, H, 129, (0.86, 0.83, 0.74), 0.28)
+    img = mul_gray(img, 0.93 + _sq(lambda s, c, o, sd: norm(fbm(s, c, o, sd)),
+                                   H, W, 7, 4, seed + 5) * 0.16)
+    edge = np.clip(1.0 - np.minimum(np.minimum(gxx, H - 1 - gxx) / 18.0,
+                                    np.minimum(gyy, W - 1 - gyy) / 18.0), 0, 1)
+    img = mix(img, rgb(H, (0.66, 0.58, 0.44), width=W), edge * 0.55)
+    img = mul_gray(img, _sq(stains, H, W, seed + 6, 7, 0.16, 30))
+    return finish(img, seed + 7, noise=0.055, levels=24)
+
+
+def t_family_photo():
+    return _family_photo("smudge", 600)
+
+
+def t_family_photo_player():
+    return _family_photo("back", 610)
+
+
+# ---------------------------------------------------------------- 回想の静止画
+
+def _recap_finish(img, seed):
+    """粒子とにじみのあるモノクロ写真。512x288。"""
+    H, W = img.shape[0], img.shape[1]
+    gxx, gyy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+    lum = img.mean(axis=2)
+    img = np.stack([lum, lum, lum], axis=2)
+    # ハレーション(強い明部だけがにじむ)
+    hi = np.clip((lum - 0.74) * 3.0, 0, 1)
+    glow = blur(np.stack([hi, hi, hi], axis=2), 5)
+    img = np.clip(img + glow * 0.30, 0, 1)
+    # 粒子
+    g = _sq(white, H, W, seed + 1)
+    img = mul_gray(img, 0.90 + g * 0.20)
+    img = mul_gray(img, 0.94 + _sq(lambda s, c, o, sd: norm(fbm(s, c, o, sd)),
+                                   H, W, 22, 3, seed + 2) * 0.13)
+    # 縦の擦り傷
+    r = _rng(seed + 3)
+    for _ in range(6):
+        c = int(r.random() * W)
+        rect(img, 0, c, H, c + 1, (0.80, 0.80, 0.80), 0.07 + r.random() * 0.10)
+    # ビネット
+    d = np.sqrt(((gxx - H * 0.5) / (H * 0.95)) ** 2
+                + ((gyy - W * 0.5) / (W * 0.88)) ** 2)
+    img = mul_gray(img, np.clip(1.10 - d * 0.55, 0, 1.2))
+    img = np.clip((img - 0.5) * 1.07 + 0.47, 0, 1)
+    img = img * np.array([1.0, 0.985, 0.95])
+    return finish(img, seed + 4, noise=0.05, levels=20)
+
+
+def t_recap_truck():
+    """猫の籠を積んだ軽トラのシルエット。"""
+    H, W = 288, 512
+    img = rgb(H, (0.22, 0.22, 0.24), width=W)
+    gxx, gyy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+    img = mul_gray(img, np.clip(0.55 + (gxx / float(H)) * 0.75, 0, 1.4))
+    rect(img, 202, 0, H, W, (0.30, 0.30, 0.31))                # 路面
+    rect(img, 200, 0, 204, W, (0.44, 0.44, 0.45), 0.6)         # 地平
+    ellipse(img, 214, 150, 22, 260, (0.52, 0.52, 0.52), 0.22, soft=50)
+
+    # 前照灯(左へ走っている)
+    ellipse(img, 180, 10, 40, 140, (0.86, 0.85, 0.80), 0.62, soft=60)
+    ellipse(img, 190, 24, 26, 96, (0.80, 0.79, 0.74), 0.45, soft=50)
+    ellipse(img, 176, 64, 8, 10, (1.0, 0.99, 0.94), 1.0, soft=3)
+
+    body = (0.10, 0.10, 0.11)
+    rect(img, 152, 60, 202, 430, body)                          # シャシ・荷台
+    rect(img, 116, 66, 156, 168, body)                          # 運転席
+    rect(img, 122, 90, 142, 158, (0.36, 0.36, 0.38), 0.75)       # 窓
+    rect(img, 122, 122, 142, 126, (0.12, 0.12, 0.13), 0.9)       # 窓の桟
+    rect(img, 146, 172, 202, 180, (0.16, 0.16, 0.17))           # 荷台の前板
+
+    # 荷台の籠(下段 3 + 上段 2)
+    def cage(x1, y0, w, hh):
+        x0 = x1 - hh
+        rect(img, x0, y0, x1, y0 + w, (0.17, 0.17, 0.18))
+        rect(img, x0, y0, x0 + 2, y0 + w, (0.46, 0.46, 0.47), 0.8)
+        rect(img, x1 - 2, y0, x1, y0 + w, (0.46, 0.46, 0.47), 0.8)
+        for j in range(1, 5):                                   # 金網(横)
+            yy = x0 + int(hh * j / 5.0)
+            rect(img, yy, y0, yy + 1, y0 + w, (0.44, 0.44, 0.45), 0.55)
+        for j in range(1, 5):                                   # 金網(縦)
+            cc = y0 + int(w * j / 5.0)
+            rect(img, x0, cc, x1, cc + 1, (0.44, 0.44, 0.45), 0.40)
+        ellipse(img, x0 + hh * 0.42, y0 + w * 0.34, 2.0, 2.6,
+                (0.92, 0.93, 0.80), 0.95, soft=1)               # 中で光る目
+        ellipse(img, x0 + hh * 0.42, y0 + w * 0.52, 2.0, 2.6,
+                (0.92, 0.93, 0.80), 0.95, soft=1)
+    for k in range(3):
+        cage(152, 188 + k * 76, 70, 44)
+    for k in range(2):
+        cage(108, 226 + k * 76, 70, 44)
+
+    for cy in (118, 372):                                       # 車輪
+        ellipse(img, 202, cy, 24, 24, (0.07, 0.07, 0.07), 1.0, soft=2)
+        ellipse(img, 200, cy, 9, 9, (0.30, 0.30, 0.31), 0.7, soft=2)
+    return _recap_finish(img, 620)
+
+
+def t_recap_cats():
+    """暗闇に並ぶ猫の目。"""
+    H, W = 288, 512
+    img = rgb(H, (0.115, 0.115, 0.130), width=W)
+    img = mul_gray(img, 0.6 + _sq(lambda s, c, o, sd: norm(fbm(s, c, o, sd)),
+                                  H, W, 4, 4, 631) * 0.9)
+    ellipse(img, 300, 256, 120, 320, (0.26, 0.26, 0.27), 0.55, soft=70)  # 床の反射
+    r = _rng(632)
+    pairs = []
+    for _ in range(38):
+        cy = 18 + r.random() * (W - 36)
+        cx = 54 + r.random() * (H - 96)
+        sc = 0.55 + (cx - 54) / float(H - 96) * 1.5          # 手前ほど大きい
+        pairs.append((cx, cy, sc))
+    pairs.sort(key=lambda q: q[2])
+    for (cx, cy, sc) in pairs:
+        ellipse(img, cx + 20 * sc, cy, 24 * sc, 17 * sc,
+                (0.175, 0.175, 0.19), 0.85, soft=9)          # 体
+        ellipse(img, cx, cy, 10 * sc, 9 * sc, (0.165, 0.165, 0.18), 0.9, soft=5)
+        for sg in (-1, 1):                                   # 耳
+            ellipse(img, cx - 8.5 * sc, cy + sg * 6.5 * sc, 6 * sc, 3.2 * sc,
+                    (0.155, 0.155, 0.17), 0.9, soft=3)
+        for sg in (-1, 1):                                   # 目
+            ey = cy + sg * 4.6 * sc
+            ellipse(img, cx, ey, 4.4 * sc, 3.0 * sc, (0.30, 0.32, 0.22), 0.9, soft=3)
+            ellipse(img, cx, ey, 3.1 * sc, 2.2 * sc, (0.88, 0.92, 0.62), 0.95, soft=1.1)
+            ellipse(img, cx, ey, 2.7 * sc, 0.6 * sc, (0.10, 0.12, 0.06), 0.9, soft=0.8)
+    return _recap_finish(img, 633)
+
+
+def t_recap_ledger():
+    """台帳の帳面と印。"""
+    H, W = 288, 512
+    img = rgb(H, (0.115, 0.105, 0.095), width=W)
+    rect(img, 30, 44, 272, 474, (0.055, 0.050, 0.045))          # 机の影
+    rect(img, 22, 36, 264, 466, (0.66, 0.630, 0.565))           # 開いた帳面
+    rect(img, 22, 247, 264, 255, (0.38, 0.360, 0.325))          # 綴じ目
+    ellipse(img, 143, 251, 128, 16, (0.30, 0.29, 0.26), 0.40, soft=22)
+    # 罫線(縦書きの帳簿)
+    for k in range(16):
+        c = 52 + k * 26
+        rect(img, 34, c, 252, c + 1, (0.38, 0.360, 0.325), 0.8)
+    rect(img, 34, 36, 36, 466, (0.38, 0.360, 0.325), 0.85)
+    rect(img, 250, 36, 252, 466, (0.38, 0.360, 0.325), 0.85)
+    # 手書きの文字(縦の点列)
+    r = _rng(641)
+    ink = (0.09, 0.085, 0.085)
+    for k in range(16):
+        c = 52 + k * 26 + 12
+        x = 46 + r.random() * 18
+        while x < 236:
+            n = 1 + int(r.random() * 3)                  # 1 文字 = 数本の画
+            for j in range(n):
+                if r.random() < 0.55:                    # 横画
+                    wdt = 4 + r.random() * 6
+                    rect(img, x + j * 3, c - wdt, x + j * 3 + 2, c + wdt,
+                         ink, 0.65 + r.random() * 0.30)
+                else:                                    # 縦画
+                    hgt = 4 + r.random() * 5
+                    off = (r.random() - 0.5) * 9
+                    rect(img, x, c + off, x + hgt, c + off + 2,
+                         ink, 0.65 + r.random() * 0.30)
+            x += 10 + r.random() * 6
+    # 朱印
+    rect(img, 176, 388, 230, 442, (0.26, 0.13, 0.12), 0.9)
+    rect(img, 182, 394, 224, 436, (0.66, 0.630, 0.565), 0.9)
+    for k in range(2):
+        rect(img, 188 + k * 20, 400, 190 + k * 20, 430, (0.26, 0.13, 0.12), 0.95)
+        rect(img, 188, 406 + k * 14, 218, 408 + k * 14, (0.26, 0.13, 0.12), 0.95)
+    # 紙の汚れと折れ、上からの弱い光
+    img = mul_gray(img, _sq(stains, H, W, 642, 8, 0.20, 44))
+    rect(img, 22, 122, 264, 125, (0.46, 0.44, 0.40), 0.30)
+    gxx, gyy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+    img = mul_gray(img, np.clip(1.16 - np.sqrt(((gxx - 70) / 420.0) ** 2
+                                               + ((gyy - 210) / 420.0) ** 2) * 0.85,
+                                0.62, 1.18))
+    return _recap_finish(img, 643)
+
+
 ALL = {
     # level が使う(シームレス)
     "floor_lino": t_floor_lino,
@@ -1685,7 +1980,15 @@ ALL = {
     "exit_sign": t_exit_sign,
     "blood_handprint": t_blood_handprint,
     "blood_smear": t_blood_smear,
+    # 写真・回想
+    "family_photo": t_family_photo,
+    "family_photo_player": t_family_photo_player,
+    "body_face_second": t_body_face_second,
+    "recap_truck": t_recap_truck,
+    "recap_cats": t_recap_cats,
+    "recap_ledger": t_recap_ledger,
 }
+
 
 
 def main():

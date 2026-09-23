@@ -202,6 +202,47 @@ speed 8 の自動プレイ 1 本で実測した発火(`--debug` で `[scare]` �
 03:00 以降が 1 回しか出ていないのは、03:00 / 03:20 / 03:40 の台本イベントが
 前後 7 分ずつ窓を塞ぐため。台本の山場が続く時間帯なので、これでよいと判断した。
 
+## v0.3 と推奨セット(E-1〜E-12)の実装
+
+時刻表は `docs/design.md` の「v0.3 台本(実装済み)」が正本。
+テキストは `docs/script.md`「v0.3 追加(推奨セット)」がそのまま `ScriptText` に入っている。
+
+| 仕様 | director がやること | 依存(他担当) |
+|---|---|---|
+| E-1 金庫のダイヤル | `Game.set_flag(&"safe_code","1009")`、机のメモと遺影の裏の文面を渡す、`safe_wrong` の独白(3 回で棺のノック) | systems: `Safe.try_code` / `BossDesk.read_memo` / `Iei.read_back`(実装済み) |
+| E-2 分電盤 3 レバー | `breaker_lever{ok:false}` で `spark` + 別の部屋を消灯 + 独白 | systems: レバーと順序(実装済み) |
+| E-3 電話の発信 | `phone_dialed{number}` を受けて 0246/3175/4419 の応答を字幕で。2 回目以降は短縮 | systems: `Phone.dial` / `play_remote`(**未実装**。来るまで発信経路は動かない) |
+| E-4 押入れ・障子 | 収集⑤の Note を 23:00 に有効化、`Window_Hikaeshitsu` を開けたら猫が一斉にこちらを向く | level: `Door_Oshiire` / `Window_Hikaeshitsu` |
+| E-5 血の手形 | 03:00 以降、廊下に入るたび 3 枚ずつ。初回と金庫到達で独白 | level: `Building.handprint_path()`(実装済み)、models: `blood_handprint.png` |
+| E-6 ラジオ | 01:35 に点灯 → 消すと 20 秒後に再点灯 → 途中で濡れた声 → 2 回目に消すと遺影が伏せる | systems: `Radio`(実装済み) |
+| E-7 冷凍庫の袋 | 03:20 で収集⑥の Note を有効化 | models: `body_bag.glb` |
+| E-8 家族写真 | 異変度 3 以上で式場に入ると 2 秒だけ差し替え。03:40 以降は `family_photo_player` | models: `family_photo*.png` |
+| E-9 廊下の猫の目 | 00:00 で 2 対 → 01:30 で 6 対 → 03:00 で 12 対。終盤で消す | なし(director が自前で光る球を置く) |
+| E-10 窓の外の猫の群れ | 03:50 に `window_outside_spots` の各点へ `cat.glb` を `sit` で並べる | level: `window_outside_spots()`(実装済み) |
+| E-11 小窓の隣の顔 | 03:40 以降のフラグを立てるだけ | systems: `Coffin` の第二の顔(**未実装**) |
+| E-12 ストーリー | 導入の追加台詞、収集物ごとの独白、息子の寝言(戸の前 1.5m)、「かえして」の後の猫の合唱、エンディング前の回想 | player: `Ending.show_recap()`(実装済み) |
+
+### 勝手口の施錠
+
+タスク「勝手口を閉めて鍵をかける」は `door_closed` ではなく
+**`door_locked{Door_Backyard}`** で完了する(枠の脇の `DoorLock` を長押し)。
+社長の台詞に「扉の横の金具だ。」を 1 行足した(`ScriptText.ADDED_BOSS_LOCK`)。
+
+### 回想(エンディングの前)
+
+`Endings._recap()` が `Ending.show_recap(images, lines)` を呼ぶ。
+読んだ収集物に対応する行だけ文が出て、未読は「……」。
+対応は `ScriptText.RECAP` の `[画像名, 文, 必要な収集番号]`。
+収集物を読むと director が `page_read_<n>` のフラグを立てる。
+
+### autoplay の追加
+
+- `Dialogue.auto_code` に "1009"(金庫)。電話をかけるときだけ "3175" に切り替える。
+- 分電盤は `required_order` を読んで主幹 → 廊下 → 式場の順にレバーを上げる。
+- ラジオのタスクが出たら消しに行く。
+- morning ボットは押入れの鞄・冷凍庫の袋・遺影の裏を読む。
+- 電話の発信は `Phone.dial` が入るまで飛ばす(has_method で判定)。
+
 ## 脅かしチェックリスト
 
 `--scare=<関数名>` で 1 つだけ発火させて撮った。画像は `out/director/scares/`。

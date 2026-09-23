@@ -28,6 +28,7 @@ var expect_nodes := {
 	"breaker_box": ["Lever"],
 	"phone": ["Handset"],
 	"lantern_rotating": ["Inner"],
+	"radio": ["Dial"],
 }
 
 var fail := 0

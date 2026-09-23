@@ -1,4 +1,4 @@
-"""小物: kettle guest_book_stand umbrella_stand slippers wall_clock
+"""小物: kettle guest_book_stand umbrella_stand slippers wall_clock radio body_bag
 fire_extinguisher notice_board sake_bottle beer_can matches incense_box
 coil_incense hanging_robe
 
@@ -15,7 +15,7 @@ import bpy
 from common import (reset_scene, material, Builder, emit, dump_report,
                     box, box_mm, box_taper, cyl, sphere, prism, tr, frame_quads,
                     make_armature, chain_weights, loft_rings, ring, Anim,
-                    set_scene_frames)
+                    set_scene_frames, build_at)
 
 R = math.radians
 FPS = 30
@@ -385,6 +385,118 @@ def build_hanging_robe():
     emit("hanging_robe", [ao, mesh], animations=True)
 
 
+
+def build_radio():
+    """古いトランジスタラジオ。0.25 x 0.15 x 0.08、正面は -Y。
+    選局つまみは別ノード `Dial`(原点 = つまみの回転軸、軸は Blender +Y)。
+    Godot では `Dial` のローカル Z 回転で回る。"""
+    reset_scene()
+    case = material("RadioCase", "plastic_beige", color=(0.62, 0.575, 0.48), rough=0.72)
+    dk = material("RadioDark", "metal_dark", color=(0.16, 0.16, 0.17), rough=0.55, metal=0.4)
+    mesh = material("RadioMesh", "steel", color=(0.26, 0.26, 0.27), rough=0.60, metal=0.6)
+    scale = material("RadioScale", "paper_yellow", color=(0.80, 0.76, 0.60), rough=0.85)
+
+    W, D, H = 0.25, 0.08, 0.150
+    FY = -D / 2                                  # 正面(-Y)
+    b = Builder("radio")
+    # 筐体と足
+    b.add(box_mm(-W / 2, W / 2, FY, D / 2, 0.009, H), case, 5.0)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            b.add(box_mm(sx * 0.100 - 0.010, sx * 0.100 + 0.010,
+                         sy * 0.028 - 0.008, sy * 0.028 + 0.008, 0.0, 0.010), dk, 16.0)
+    # スピーカー網(左)+ 枠
+    b.add(box_mm(-0.116, 0.004, FY - 0.003, FY, 0.024, 0.130), dk, 7.0)
+    b.add(box_mm(-0.110, -0.002, FY - 0.004, FY - 0.002, 0.030, 0.124), mesh, 9.0)
+    for k in range(9):
+        z0 = 0.032 + k * 0.0105
+        b.add(box_mm(-0.108, -0.004, FY - 0.0052, FY - 0.0038, z0, z0 + 0.0052),
+              dk, 18.0)
+    # 選局の目盛り窓(右上)
+    b.add(box_mm(0.020, 0.118, FY - 0.003, FY, 0.092, 0.134), dk, 8.0)
+    b.add(box_mm(0.024, 0.114, FY - 0.0042, FY - 0.0032, 0.096, 0.130), scale, 1.0,
+          uv=[UVQ] * 6)
+    b.add(box_mm(0.064, 0.067, FY - 0.0050, FY - 0.0044, 0.096, 0.130), dk, 20.0)
+    # 音量つまみ(右側面)
+    b.add(cyl(0.017, 0.014, 8, (W / 2 + 0.005, 0.004, 0.045), axis='X'), dk, 12.0)
+    # 収納したロッドアンテナ(天面の奥)
+    b.add(cyl(0.0035, 0.21, 6, (0.0, 0.031, 0.1455), axis='X'),
+          material("RadioAnt", "metal_gray", color=(0.45, 0.45, 0.47),
+                   rough=0.35, metal=0.85), 14.0)
+    body = b.build()
+
+    # 選局つまみ: 原点をつまみの軸に置いた別ノード
+    d = Builder("Dial")
+    KX, KZ = 0.069, 0.046
+    d.add(cyl(0.026, 0.016, 12, (KX, FY - 0.008, KZ), axis='Y'), dk, 10.0)
+    d.add(cyl(0.010, 0.019, 8, (KX, FY - 0.009, KZ), axis='Y'), mesh, 16.0)
+    for k in range(10):                          # 滑り止めの刻み
+        a = 2 * math.pi * k / 10.0
+        d.add(box_mm(KX + math.cos(a) * 0.025 - 0.002,
+                     KX + math.cos(a) * 0.025 + 0.002,
+                     FY - 0.016, FY - 0.001,
+                     KZ + math.sin(a) * 0.025 - 0.002,
+                     KZ + math.sin(a) * 0.025 + 0.002), mesh, 24.0)
+    dial = build_at(d, (KX, FY, KZ), parent=body)
+    emit("radio", [body, dial])
+
+
+def _sack_ring(x, cz, ry, rz, n=14, wob=0.0, seed=0, flat=0.0):
+    """袋の断面。wob で周方向に皺を付け、flat で上面を潰す。"""
+    pts = []
+    for k in range(n):
+        a = 2 * math.pi * k / n
+        w = 1.0 + wob * math.sin(a * 3.0 + seed * 1.7) \
+                + wob * 0.6 * math.sin(a * 5.0 - seed * 2.3)
+        cy = math.cos(a) * ry * w
+        czz = math.sin(a) * rz * w
+        if czz > 0:
+            czz *= (1.0 - flat)
+        pts.append((x, cy, cz + czz))
+    return pts
+
+
+def build_body_bag():
+    """黒いビニールの遺体袋。0.6 x 0.25 x 0.4、口を縛って左(-X)に寄せる。
+    白い伝票は別マテリアル `Tag`。"""
+    reset_scene()
+    vinyl = material("BagVinyl", "car_black", color=(0.060, 0.060, 0.065),
+                     rough=0.58)
+    cord = material("BagCord", "white_cloth", color=(0.66, 0.64, 0.58), rough=0.85)
+    tag = material("Tag", "notice_paper", color=(0.84, 0.82, 0.76), rough=0.88)
+
+    # (x, 中心 z, 横半径, 縦半径, 皺, 上面の潰し)
+    rows = [(-0.300, 0.258, 0.013, 0.013, 0.00, 0.00),
+            (-0.276, 0.244, 0.020, 0.020, 0.05, 0.00),
+            (-0.256, 0.228, 0.025, 0.025, 0.05, 0.00),   # ここを紐で縛る
+            (-0.240, 0.206, 0.048, 0.052, 0.26, 0.00),   # 縛りの下で一気に広がる
+            (-0.206, 0.158, 0.086, 0.108, 0.20, 0.06),
+            (-0.140, 0.166, 0.112, 0.160, 0.12, 0.10),
+            (-0.050, 0.190, 0.125, 0.186, 0.08, 0.12),   # 胸のあたり
+            ( 0.046, 0.184, 0.123, 0.180, 0.07, 0.14),
+            ( 0.132, 0.162, 0.112, 0.158, 0.08, 0.12),   # 腰
+            ( 0.206, 0.130, 0.092, 0.126, 0.10, 0.08),
+            ( 0.262, 0.086, 0.062, 0.082, 0.12, 0.04),
+            ( 0.300, 0.038, 0.028, 0.034, 0.08, 0.00)]
+    b = Builder("body_bag")
+    b.add(loft_rings([_sack_ring(x, cz, ry, rz, wob=w, seed=i, flat=fl)
+                      for i, (x, cz, ry, rz, w, fl) in enumerate(rows)]),
+          vinyl, 3.0, smooth=True)
+    # 縛った紐(2 周)
+    for k in range(2):
+        b.add(loft_rings([_sack_ring(-0.260 + k * 0.011, 0.228, 0.029, 0.029),
+                          _sack_ring(-0.253 + k * 0.011, 0.228, 0.029, 0.029)],
+                         cap=False), cord, 8.0)
+    # 紐の余り
+    b.add(box_mm(-0.266, -0.238, -0.006, 0.006, 0.248, 0.256), cord, 12.0)
+    # 白い伝票(上面寄りの +Y 側に貼る。上から見て読める角度)
+    q = [(-0.042, -0.134, 0.196), (0.072, -0.134, 0.196),
+         (0.072, -0.134, 0.270), (-0.042, -0.134, 0.270)]
+    b.add((q, [(0, 1, 2, 3)]), tag, 1.0, uv=[UVQ])
+    b.add((list(reversed(q)), [(0, 1, 2, 3)]), tag, 1.0, uv=[UVQ])
+    emit("body_bag", [b.build()])
+
+
 def main():
     build_kettle()
     build_guest_book_stand()
@@ -399,6 +511,8 @@ def main():
     build_incense_box()
     build_coil_incense()
     build_hanging_robe()
+    build_radio()
+    build_body_bag()
     dump_report()
 
 
