@@ -37,6 +37,13 @@ signal cat_crossed
 @export var blocked_viewing_text: String = "……見ている。"
 @export var lid_reset_prompt: String = "蓋を戻す"
 @export var lid_reset_hold_time: float = 1.0
+## 03:40 以降、顔ビューの途中で隣にもう一つの顔が 0.5 秒だけ映る(E-11)。
+@export var second_face_delay: float = 1.2
+@export var second_face_seconds: float = 0.5
+@export var second_face_texture: String = "body_face_second"
+## もう一つの顔の位置(棺ローカル)。故人の顔の隣、小窓の端に来るようにする。
+@export var second_face_offset: Vector3 = Vector3(0.62, 0.305, 0.088)
+@export var second_face_size: Vector2 = Vector2(0.115, 0.145)
 @export var peek_prompt: String = "小窓を覗く"
 @export var dry_ice_prompt: String = "ドライアイスを交換する"
 @export var dry_ice_hold_time: float = 2.0
@@ -70,6 +77,7 @@ var is_lid_ajar: bool = false
 var is_open: bool = false
 var is_window_open: bool = false
 var has_handprint: bool = false
+var has_second_face: bool = false
 var cat_has_crossed: bool = false
 var is_showing_face: bool = false
 
@@ -81,6 +89,7 @@ var _window_node: MeshInstance3D
 var _face_prop: Prop
 var _face_quad: MeshInstance3D          # glb が無いとき用
 var _handprint: MeshInstance3D
+var _second_face: MeshInstance3D
 var _window_light: OmniLight3D
 var _face_cam: Camera3D
 var _cat_zone: Area3D
@@ -309,6 +318,45 @@ func set_window_open(open: bool) -> void:
 		_window_node.visible = not open
 	Audio.play_at(&"coffin_lid_slide", global_position, -8.0, 1.35)
 
+## 顔ビューの途中で、故人の顔の隣にもう一つの顔を出す(E-11)。
+func set_second_face(on: bool) -> void:
+	has_second_face = on
+	if on and _second_face == null:
+		_second_face = MeshInstance3D.new()
+		_second_face.name = "SecondFace"
+		var q := QuadMesh.new()
+		q.size = second_face_size
+		_second_face.mesh = q
+		_second_face.rotation_degrees = Vector3(-90, 0, 90)
+		_second_face.position = second_face_offset
+		_second_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var tex := SystemUtil.load_texture(second_face_texture)
+		if tex == null:
+			tex = SystemUtil.face_texture(2)
+		var m := SystemUtil.alpha_material(tex, Color(1, 1, 1, 1), false, false)
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+		m.emission_enabled = true
+		m.emission = Color(1, 1, 1)
+		m.emission_texture = tex
+		m.emission_energy_multiplier = 0.18
+		m.render_priority = 1
+		_second_face.material_override = m
+		add_child(_second_face)
+	if _second_face:
+		_second_face.visible = false
+
+## 顔ビューの最中に一瞬だけ見せる。
+func _flash_second_face() -> void:
+	if not has_second_face or _second_face == null:
+		return
+	await get_tree().create_timer(second_face_delay, false).timeout
+	if not is_showing_face:
+		return
+	_second_face.visible = true
+	Audio.play_at(&"breath_close", global_position + Vector3(0, 0.3, 0), -8.0, 0.88, 6.0)
+	await get_tree().create_timer(second_face_seconds, false).timeout
+	_second_face.visible = false
+
 ## 小窓の内側についた手形。
 func set_handprint(on: bool) -> void:
 	has_handprint = on
@@ -376,11 +424,14 @@ func show_face(seconds: float = -1.0, reason: String = "peek") -> void:
 	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(_face_cam, "global_position", target + Vector3(0, 0.30, 0.01), minf(seconds * 0.6, 1.6))
 	_breath_timer = 0.0
+	_flash_second_face()
 	await get_tree().create_timer(seconds, false).timeout
 
 	_face_cam.current = false
 	if _prev_cam != null and is_instance_valid(_prev_cam):
 		_prev_cam.make_current()
+	if _second_face:
+		_second_face.visible = false
 	set_window_open(false)
 	SystemUtil.set_locked(p, false)
 	is_showing_face = false

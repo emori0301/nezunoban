@@ -16,6 +16,8 @@ extends Node3D
 ##   --face=<0..3>   棺の顔の状態
 ##   --faceview      起動直後に棺の顔ビューを出す
 ##   --open          金庫を開け、ブレーカーを落とし、棺の蓋を開ける
+##   --hud           src/ui/hud.tscn を載せる(ダイヤル UI や字幕の確認用)
+##   --dial          金庫のダイヤルを開く(--hud と併用)
 ##
 ## 手動操作: WASD 移動 / マウス視点 / Shift 速く / Esc でマウス解放 / P でスクショ
 
@@ -62,6 +64,8 @@ func _ready() -> void:
 	_build_stations()
 	_build_camera()
 	_build_cctv_anchors()
+	if args.has("hud") and ResourceLoader.exists("res://src/ui/hud.tscn"):
+		add_child(load("res://src/ui/hud.tscn").instantiate())
 	if args.has("list"):
 		for k in station_pos.keys():
 			print("%s  %s" % [k, station_pos[k]])
@@ -245,6 +249,11 @@ func _setup_state() -> void:
 	var fl := nodes.get("flower_stand") as FlowerStand
 	if fl and args.has("fresh"):
 		fl.set_wilted(false)
+	if args.has("dial"):
+		var sf3 := nodes.get("safe") as Safe
+		if sf3:
+			Game.set_flag(&"safe_code", "1009")
+			sf3.try_code()
 	if args.has("open"):
 		var sf := nodes.get("safe") as Safe
 		if sf:

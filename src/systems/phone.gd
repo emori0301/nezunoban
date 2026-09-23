@@ -15,6 +15,7 @@ extends Interactable
 signal answered
 signal missed
 signal call_ended(was_answered: bool)
+signal dialed(number: String)
 
 @export var ring_interval: float = 2.6      # ベルの間隔(秒)
 @export var dread_on_missed: int = 1
@@ -23,6 +24,10 @@ signal call_ended(was_answered: bool)
 @export var hangup_prompt: String = "受話器を置く"
 @export var shake_while_ringing: bool = true
 @export var dial_tone_text: String = "発信音だけだ。"
+## 自分からかける(E-3)。空文字で入力を閉じるとそのまま受話器を置く。
+@export var dial_title: String = "番号"
+@export var dial_length: int = 4
+@export var remote_volume_db: float = -6.0
 
 var is_ringing: bool = false
 var off_hook: bool = false
@@ -35,6 +40,9 @@ var _prop: Node3D
 var _prop_rest: Vector3 = Vector3.ZERO
 var _handset: Node3D
 var _handset_rest: Transform3D
+var _asking: bool = false
+var _remote: AudioStreamPlayer3D
+var last_number: String = ""
 
 func _ready() -> void:
 	super._ready()
@@ -122,18 +130,74 @@ func answer() -> void:
 	answered.emit()
 	call_ended.emit(true)
 
-## 鳴っていないのに受話器を取る。無音。
+## 鳴っていないのに受話器を取る → 番号を回す(E-3)。
 func pick_up() -> void:
-	if off_hook:
+	if off_hook or _asking:
 		return
 	off_hook = true
 	prompt = hangup_prompt
 	_apply_handset()
 	Audio.play_at(&"phone_pickup", global_position)
+	_ask_number()
+
+func _ask_number() -> void:
+	_asking = true
+	var number: String = await Dialogue.code_input(dial_title, dial_length)
+	_asking = false
+	if not off_hook:
+		return
+	if number == "":
+		hang_up()
+		return
+	last_number = number
+	Audio.play_at(&"phone_dial", global_position)
+	Events.emit_event(&"phone_dialed", {"number": number})
+	dialed.emit(number)
+
+## 受話器の向こうの音(呼び出し音・留守電・声)。director が応答を流すのに使う。
+func play_remote(sound: StringName, loop: bool = false) -> void:
+	stop_remote()
+	var path := "res://assets/audio/%s.wav" % sound
+	if not ResourceLoader.exists(path):
+		path = "res://assets/audio/%s.ogg" % sound
+	if not ResourceLoader.exists(path):
+		push_warning("Phone: 音が無い %s(音なしで動く)" % sound)
+		return
+	_remote = AudioStreamPlayer3D.new()
+	_remote.name = "Remote"
+	_remote.volume_db = remote_volume_db
+	_remote.max_distance = 6.0
+	_remote.bus = &"SFX" if AudioServer.get_bus_index("SFX") >= 0 else &"Master"
+	_remote.position = _handset.position if _handset else Vector3(0, 0.1, 0)
+	add_child(_remote)
+	var s: AudioStream = load(path)
+	if loop and s is AudioStreamWAV:
+		var w := (s as AudioStreamWAV).duplicate() as AudioStreamWAV
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_begin = 0
+		w.loop_end = 0
+		_remote.stream = w
+	elif loop and s is AudioStreamOggVorbis:
+		var o := (s as AudioStreamOggVorbis).duplicate() as AudioStreamOggVorbis
+		o.loop = true
+		_remote.stream = o
+	else:
+		_remote.stream = s
+	_remote.play()
+
+func stop_remote() -> void:
+	if _remote and is_instance_valid(_remote):
+		_remote.stop()
+		_remote.queue_free()
+	_remote = null
+
+func is_off_hook() -> bool:
+	return off_hook
 
 func hang_up() -> void:
 	if not off_hook:
 		return
+	stop_remote()
 	off_hook = false
 	prompt = ring_prompt if is_ringing else idle_prompt
 	_apply_handset()
@@ -167,6 +231,9 @@ func get_blocked_text() -> String:
 	if not is_ringing:
 		return dial_tone_text
 	return super.get_blocked_text()
+
+func _can_interact(_player: Node3D) -> bool:
+	return not _asking
 
 func _interact(_player: Node3D) -> void:
 	if off_hook:

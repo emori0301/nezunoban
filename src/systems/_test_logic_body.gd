@@ -55,6 +55,7 @@ func run() -> int:
 	await t_blocked_text()
 	await t_stock_prompt()
 	await t_difficulty_tweaks()
+	await t_v03_gimmicks()
 
 	print("")
 	if failures.is_empty():
@@ -322,6 +323,122 @@ func t_clock_events() -> void:
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
 
+## v0.3 の追加ギミック(E-1〜E-3, E-6, E-7, E-11)
+func t_v03_gimmicks() -> void:
+	print("\n-- v0.3 の追加ギミック")
+	player.items.clear()
+	player.carried_item = &""
+
+	# E-1 金庫は 4 桁ダイヤル
+	var sf := spawn("res://src/systems/safe.tscn") as Safe
+	eq(sf.required_item, &"", "鍵は要らなくなった")
+	ok(sf.can_interact(player), "鍵が無くても回せる")
+	Game.set_flag(&"safe_code", "1009")
+	eq(sf.expected_code(), "1009", "正解は director のフラグ")
+	clear_events()
+	Dialogue.auto_advance = true
+	Dialogue.auto_code = "1234"
+	await sf.try_code()
+	ok(saw(&"safe_wrong"), "違う番号なら safe_wrong")
+	eq(int(data_of(&"safe_wrong").get("count", 0)), 1, "外した回数が乗る")
+	ok(not sf.is_open, "開かない")
+	Dialogue.auto_code = ""
+	await sf.try_code()
+	eq(sf.wrong_count, 1, "空文字はキャンセルなので回数は増えない")
+	Dialogue.auto_code = "1009"
+	await sf.try_code()
+	await wait(0.9)
+	ok(sf.is_open, "正しい番号で開く")
+	ok(sf.get_note() != null and sf.get_note().enabled, "台帳が読めるようになる")
+	Dialogue.auto_advance = false
+	sf.queue_free()
+
+	# E-1 社長の机はメモ、遺影の裏に答え
+	var bd := spawn("res://src/systems/boss_desk.tscn") as BossDesk
+	ok(bd.memo_body.contains("命日"), "机のメモが金庫の手がかり")
+	bd.enable_key(true)
+	eq(bd.get_prompt(), "メモを読む", "enable_key は無視される")
+	bd.queue_free()
+	var iei := spawn("res://src/systems/iei.tscn") as Iei
+	eq(iei.get_prompt(), "遺影の裏を見る", "伏せていなければ裏を見る")
+	ok(iei.back_body.contains("十月九日"), "裏に没年月日がある")
+	iei.set_face_down(true)
+	eq(iei.get_prompt(), "遺影を直す", "伏せていたら直すほうが優先")
+	iei.queue_free()
+
+	# E-2 分電盤は 3 本のレバー、順序がある
+	var br := spawn("res://src/systems/breaker.tscn") as Breaker
+	eq(br.required_order.size(), 3, "レバーは 3 本")
+	ok(br.get_lever(&"Lever_Main") != null, "主幹のレバーがある")
+	br.trip_all()
+	eq(br.levers_up(), 0, "停電で 3 本とも落ちる")
+	clear_events()
+	ok(not br.raise_lever(&"Lever_Shikijo"), "順が違うと上がらない")
+	eq(bool(data_of(&"breaker_lever").get("ok", true)), false, "breaker_lever{ok:false}")
+	ok(br.raise_lever(&"Lever_Main"), "主幹から上がる")
+	ok(br.raise_lever(&"Lever_Hall"), "次は廊下")
+	ok(not br.is_on, "2 本ではまだ点かない")
+	ok(br.raise_lever(&"Lever_Shikijo"), "最後は式場")
+	ok(br.is_on and saw(&"breaker_on"), "3 本揃うと breaker_on")
+	br.queue_free()
+
+	# E-3 自分から電話をかける
+	var ph := spawn("res://src/systems/phone.tscn") as Phone
+	clear_events()
+	Dialogue.auto_advance = true
+	Dialogue.auto_code = "3175"
+	ph.pick_up()
+	await wait(0.4)
+	ok(ph.is_off_hook(), "受話器が上がる")
+	ok(saw(&"phone_dialed"), "phone_dialed が出る")
+	eq(String(data_of(&"phone_dialed").get("number", "")), "3175", "かけた番号が乗る")
+	ph.play_remote(&"phone_ringback", true)
+	ph.stop_remote()
+	ph.hang_up()
+	ok(not ph.is_off_hook(), "置ける")
+	Dialogue.auto_advance = false
+	ph.queue_free()
+
+	# E-6 ラジオ
+	var rd := spawn("res://src/systems/radio.tscn") as Radio
+	clear_events()
+	eq(rd.get_prompt(), "ラジオをつける", "消えているときのプロンプト")
+	rd.turn_on()
+	ok(rd.is_on and saw(&"radio_on"), "つく")
+	eq(rd.get_prompt(), "ラジオを消す", "ついているときのプロンプト")
+	rd.play_voice(&"phone_voice_wet")
+	eq(rd.voice_name, &"phone_voice_wet", "途中で声を差し替えられる")
+	rd.turn_off()
+	ok(not rd.is_on and saw(&"radio_off"), "消える")
+	rd.queue_free()
+
+	# E-7 冷凍庫の奥の袋
+	var fz := spawn("res://src/systems/freezer.tscn") as Freezer
+	ok(fz.get_bag_note() == null, "最初は袋が無い")
+	fz.set_empty(true)
+	fz.set_bag(true)
+	var bn := fz.get_bag_note()
+	ok(bn != null and bn.enabled, "空でも袋は調べられる")
+	eq(bn.page_number, 6, "収容票は収集⑥")
+	ok(bn.body.contains("十月九日"), "収容票の日付")
+	eq(bn.get_prompt(), "袋を調べる", "袋のプロンプト")
+	fz.queue_free()
+
+	# E-11 小窓の隣のもう一つの顔
+	var cof := spawn("res://src/systems/coffin.tscn") as Coffin
+	ok(not cof.has_second_face, "既定では出ない")
+	cof.set_second_face(true)
+	ok(cof.has_second_face, "set_second_face で有効になる")
+	cof.second_face_delay = 0.1
+	cof.second_face_seconds = 0.2
+	cof.show_face(0.8, "test")
+	await wait(0.25)
+	var sfn := cof.get_node_or_null(^"SecondFace") as MeshInstance3D
+	ok(sfn != null and sfn.visible, "顔ビューの途中で一瞬出る")
+	await wait(0.8)
+	ok(sfn != null and not sfn.visible, "すぐ消える")
+	cof.queue_free()
+
 ## 難易度調整: 残量の合図 / ロウソク 600 秒 / ずれた蓋を戻す
 func t_difficulty_tweaks() -> void:
 	print("\n-- 難易度調整")
@@ -396,8 +513,11 @@ func t_blocked_text() -> void:
 	player.carried_item = &""
 
 	# 実際に can_interact が false になる状態
+	# 金庫はダイヤル式になったので鍵なしでも回せる。塞がるのは開けた後だけ。
 	var sf := spawn("res://src/systems/safe.tscn") as Safe
-	ok(not sf.can_interact(player) and sf.get_blocked_text() != "", "金庫(鍵なし): %s" % sf.get_blocked_text())
+	ok(sf.can_interact(player), "金庫は最初から回せる(ダイヤル式)")
+	sf.is_open = true
+	ok(not sf.can_interact(player) and sf.get_blocked_text() != "", "金庫(開けた後): %s" % sf.get_blocked_text())
 	sf.queue_free()
 
 	var br := spawn("res://src/systems/breaker.tscn") as Breaker
@@ -419,8 +539,9 @@ func t_blocked_text() -> void:
 	ok(not fl.can_interact(player) and fl.get_blocked_text() != "", "供花(水なし): %s" % fl.get_blocked_text())
 	fl.queue_free()
 
+	# 遺影は伏せていなければ「裏を見る」ができるので、常に押せる
 	var iei := spawn("res://src/systems/iei.tscn") as Iei
-	ok(not iei.can_interact(player) and iei.get_blocked_text() != "", "遺影(伏せていない): %s" % iei.get_blocked_text())
+	ok(iei.can_interact(player), "遺影は常に調べられる(伏せていれば直す、でなければ裏を見る)")
 	iei.queue_free()
 
 	var cof := spawn("res://src/systems/coffin.tscn") as Coffin

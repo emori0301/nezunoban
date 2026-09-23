@@ -34,6 +34,7 @@ const MAP := {
 	"Anchor_IncenseBox": "incense_box",
 	"Anchor_Matches": "matches",
 	"Anchor_BossDesk": "boss_desk",
+	"Anchor_Radio": "radio",
 }
 
 ## 向きの決め方
@@ -107,7 +108,13 @@ func _demo_state() -> void:
 		sf.open()
 	var br := find(&"breaker") as Breaker
 	if br and _has_cli_flag("systems-tripped"):
-		br.trip()
+		br.trip_all()
+	var sf2 := find(&"safe") as Safe
+	if sf2 and _has_cli_flag("systems-dial"):
+		sf2.try_code()
+	var rd := find(&"radio") as Radio
+	if rd and _has_cli_flag("systems-radio"):
+		rd.turn_on()
 	var cof := find(&"coffin") as Coffin
 	if cof and _has_cli_flag("systems-face"):
 		cof.set_face_state(int(_cli_value("systems-face", "2")))

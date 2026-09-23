@@ -13,7 +13,6 @@ signal back_read
 
 @export var fix_prompt: String = "遺影を直す"
 @export var idle_prompt: String = "遺影"
-@export var upright_text: String = "そのままでいい。"
 ## 遺影の裏(E-1)。金庫の番号の答え。
 @export var back_prompt: String = "遺影の裏を見る"
 @export var back_hold_time: float = 0.8

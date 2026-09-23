@@ -6,6 +6,8 @@ extends Interactable
 ##     var fz := SystemsInstaller.find(&"freezer") as Freezer
 ##     fz.set_empty(true)     # 2回目の交換ができなくなる
 
+const NOTE_SCENE := "res://src/systems/note.tscn"
+
 signal taken
 signal found_empty
 
@@ -24,6 +26,12 @@ signal found_empty
 @export var lid_open_degrees: float = -74.0
 ## 庫内のドライアイス箱の位置(庫内は Y 0.285..0.785)
 @export var ice_offset: Vector3 = Vector3(0.0, 0.30, 0.0)
+## 03:40 以降、庫内の奥に黒い袋(E-7)。収容票は収集⑥。
+@export var bag_offset: Vector3 = Vector3(0.0, 0.33, -0.16)
+@export var bag_prompt: String = "袋を調べる"
+@export var bag_note_title: String = "動物愛護センター 収容票"
+@export_multiline var bag_note_body: String = "動物愛護センター 収容票\n種別 猫　頭数 十九\n依頼者 春日 誠\n受付 十月九日"
+@export var bag_note_page: int = 6
 @export var chest_size: Vector3 = Vector3(1.244, 0.86, 0.717)   # freezer_chest.glb の実寸
 
 var is_lid_open: bool = false
@@ -31,6 +39,9 @@ var is_lid_open: bool = false
 var _lid_pivot: Node3D
 var _lid_node: Node3D
 var _ice: Prop
+var _bag: Prop
+var _bag_note: Note
+var has_bag: bool = false
 var _fog: GPUParticles3D
 var _prop: Prop
 var _busy: bool = false
@@ -105,6 +116,35 @@ func _set_lid(open: bool) -> void:
 # --------------------------------------------------------------------------
 # 公開 API
 # --------------------------------------------------------------------------
+
+## 庫内の奥に黒い袋を出す(E-7)。空でも調べられる。
+func set_bag(on: bool) -> void:
+	has_bag = on
+	if on and _bag == null:
+		_bag = Prop.new()
+		_bag.name = "BodyBag"
+		_bag.add_collision = false
+		_bag.position = bag_offset
+		_bag.placeholder_size = Vector3(0.5, 0.18, 0.28)
+		_bag.placeholder_color = Color(0.08, 0.08, 0.09)
+		_bag.model_name = "body_bag"
+		add_child(_bag)
+		if ResourceLoader.exists(NOTE_SCENE):
+			_bag_note = (load(NOTE_SCENE) as PackedScene).instantiate() as Note
+			_bag_note.name = "BagNote"
+			_bag_note.show_paper = false
+			_bag_note.read_prompt = bag_prompt
+			_bag_note.position = bag_offset + Vector3(0, 0.12, 0)
+			add_child(_bag_note)
+			_bag_note.set_text(bag_note_title, bag_note_body, bag_note_page)
+	if _bag:
+		_bag.visible = on
+	if _bag_note:
+		_bag_note.enabled = on
+		_bag_note.visible = on
+
+func get_bag_note() -> Note:
+	return _bag_note
 
 ## 蓋の開閉(確認用・台本用)。
 func set_lid_open(open: bool) -> void:
