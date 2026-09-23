@@ -29,7 +29,17 @@ signal quit_requested
 @export var clipboard_footer: String = "やすらぎ会館"
 @export var clipboard_tasks_header: String = "今夜のこと"
 @export var note_close_hint: String = "閉じる"
-@export var pause_items: PackedStringArray = ["再開", "タイトルへ", "終了"]
+@export var pause_items: PackedStringArray = ["再開", "設定", "タイトルへ", "終了"]
+## 設定画面の行。並びは固定(感度/マスター/効果音/環境音/VHS/画面揺れ/操作ヒント/戻る)
+@export var settings_items: PackedStringArray = [
+	"マウス感度", "全体の音量", "効果音の音量", "環境音の音量",
+	"VHS の強さ", "画面の揺れ", "操作ヒント", "戻る",
+]
+@export var settings_on_text: String = "入"
+@export var settings_off_text: String = "切"
+## 初回だけ画面下に出る操作説明
+@export var controls_hint_text: String = "WASD 移動 / マウス 視点 / E 調べる / Tab 心得 / Esc ポーズ"
+@export var controls_hint_seconds: float = 6.0
 @export var typewriter_cps: float = 34.0
 
 const W := 640.0
@@ -77,6 +87,12 @@ var _clip_rules: VBoxContainer = null
 
 var _pause: Control
 var _pause_rows: VBoxContainer
+var _settings_rows: VBoxContainer
+var _settings_title: Label
+var _pause_page: int = 0          ## 0=ポーズ本体 / 1=設定
+var _settings_index: int = 0
+var _hint: Label
+var _hint_tween: Tween = null
 
 var _flash: ColorRect
 var _fade: ColorRect
@@ -113,10 +129,17 @@ func _ready() -> void:
 	layer = 5
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_interact_key = _key_for(&"interact")
+	Settings.load_all()
 	_build()
 	Dialogue.register_ui(self)
 	Tasks.changed.connect(_on_tasks_changed)
 	_on_tasks_changed(Tasks.current(), [])
+	# player / VhsLayer は main.gd がこの後に足すので、1フレーム待ってから反映する
+	call_deferred("_apply_settings_and_hint")
+
+func _apply_settings_and_hint() -> void:
+	Settings.apply()
+	_maybe_show_controls_hint()
 
 func _key_for(action: StringName) -> String:
 	return UiTheme.key_name(action, "E")
@@ -259,6 +282,21 @@ func _build_game_layer() -> void:
 	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_crosshair.draw.connect(_draw_crosshair)
 	_game.add_child(_crosshair)
+
+	# 初回だけ出る操作説明(画面の一番下)
+	_hint = UiTheme.gothic_label("", 13, UiTheme.TEXT)
+	_hint.name = "ControlsHint"
+	_hint.anchor_right = 1.0
+	_hint.anchor_top = 1.0
+	_hint.anchor_bottom = 1.0
+	_hint.offset_left = 118.0
+	_hint.offset_right = -14.0
+	_hint.offset_top = -44.0
+	_hint.offset_bottom = -26.0
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hint.modulate.a = 0.0
+	_game.add_child(_hint)
 
 	# 独白の字幕と同じ位置・同じ見た目(画面下・中央寄せ)
 	_toast = UiTheme.gothic_label("", 16, UiTheme.TEXT)
@@ -560,6 +598,16 @@ func _build_pause() -> void:
 	_pause_rows.add_theme_constant_override("separation", 4)
 	v.add_child(_pause_rows)
 
+	_settings_title = UiTheme.gothic_label("", 15, UiTheme.TEXT_DIM)
+	_settings_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_settings_title.visible = false
+	v.add_child(_settings_title)
+
+	_settings_rows = VBoxContainer.new()
+	_settings_rows.add_theme_constant_override("separation", 3)
+	_settings_rows.visible = false
+	v.add_child(_settings_rows)
+
 # ================================================================ 毎フレーム
 
 func _process(delta: float) -> void:
@@ -575,10 +623,8 @@ func _process(delta: float) -> void:
 		_prompt.visible = false
 	_cam_row.visible = not hide_reticle
 	_task_row.visible = not hide_reticle
-	if hide_reticle:
-		_toast.visible = false
-	else:
-		_toast.visible = true
+	_toast.visible = not hide_reticle
+	_hint.visible = not hide_reticle
 
 	_handle_input()
 	if not get_tree().paused:
@@ -598,8 +644,38 @@ func _handle_input() -> void:
 	var u2 := _just(&"move_forward")
 	var d1 := _just(&"ui_down")
 	var d2 := _just(&"move_back")
+	var l1 := _just(&"ui_left")
+	var l2 := _just(&"move_left")
+	var r1 := _just(&"ui_right")
+	var r2 := _just(&"move_right")
 	var up: bool = u1 or u2
 	var down: bool = d1 or d2
+	var left: bool = l1 or l2
+	var right: bool = r1 or r2
+
+	if _paused and _pause_page == 1:
+		var sn := _settings_rows.get_child_count()
+		if sn > 0:
+			if up:
+				_settings_index = (_settings_index - 1 + sn) % sn
+				_update_settings_rows()
+				Audio.play(&"ui_select", -10.0)
+			if down:
+				_settings_index = (_settings_index + 1) % sn
+				_update_settings_rows()
+				Audio.play(&"ui_select", -10.0)
+			if left:
+				_nudge_setting(-1)
+			if right:
+				_nudge_setting(1)
+			if adv:
+				_activate_setting()
+				return
+		if pause_just:
+			Audio.play(&"ui_back", -8.0)
+			_show_pause_page(0)
+			_update_pause_rows()
+		return
 
 	if _paused:
 		var n := _pause_rows.get_child_count()
@@ -897,6 +973,16 @@ func _build_pause_rows() -> void:
 		var l := UiTheme.gothic_label(String(pause_items[i]), 19, UiTheme.TEXT_DIM)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		l.custom_minimum_size = Vector2(132, 0)
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		var idx := i
+		l.mouse_entered.connect(func() -> void:
+			if _paused and _pause_page == 0 and _pause_index != idx:
+				_pause_index = idx
+				_update_pause_rows())
+		l.gui_input.connect(func(e: InputEvent) -> void:
+			if _paused and _pause_page == 0 and e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_pause_index = idx
+				_activate_pause(idx))
 		_pause_rows.add_child(l)
 
 func _update_pause_rows() -> void:
@@ -909,12 +995,13 @@ func _update_pause_rows() -> void:
 func _open_pause() -> void:
 	if Dialogue.busy or _note_open or _choice_open:
 		return
-	_clip_open = false
-	_clip.visible = false
+	_close_clipboard()
 	_paused = true
+	_pause_page = 0
 	_pause_index = 0
 	_build_pause_rows()
 	_update_pause_rows()
+	_show_pause_page(0)
 	_pause.visible = true
 	_latch[&"pause"] = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -923,8 +1010,15 @@ func _open_pause() -> void:
 func _close_pause() -> void:
 	_paused = false
 	_pause.visible = false
+	_pause_page = 0
 	get_tree().paused = false
 	_latch[&"pause"] = true
+
+func _show_pause_page(page: int) -> void:
+	_pause_page = page
+	_pause_rows.visible = page == 0
+	_settings_rows.visible = page == 1
+	_settings_title.visible = page == 1
 
 func _activate_pause(index: int) -> void:
 	Audio.play(&"ui_confirm", -6.0)
@@ -932,6 +1026,8 @@ func _activate_pause(index: int) -> void:
 		0:
 			_close_pause()
 		1:
+			_open_settings()
+		2:
 			_close_pause()
 			title_requested.emit()
 			Clock.stop()
@@ -939,12 +1035,168 @@ func _activate_pause(index: int) -> void:
 			Tasks.clear()
 			Audio.stop_all_ambient(0.2)
 			get_tree().call_deferred("reload_current_scene")
-		2:
+		3:
 			quit_requested.emit()
 			get_tree().quit()
 
 func is_paused() -> bool:
 	return _paused
+
+# ================================================================ 設定
+
+func _open_settings() -> void:
+	_settings_index = 0
+	_settings_title.text = String(pause_items[1]) if pause_items.size() > 1 else "設定"
+	_build_settings_rows()
+	_update_settings_rows()
+	_show_pause_page(1)
+
+## 行 = [マーカー][項目名][値]。マーカーぶんの溝を空けて左揃えにする。
+func _build_settings_rows() -> void:
+	for c in _settings_rows.get_children():
+		c.queue_free()
+	for i in settings_items.size():
+		var idx := i
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 2)
+		row.mouse_filter = Control.MOUSE_FILTER_STOP
+		var mark := UiTheme.gothic_label("　", 16, UiTheme.SELECT)
+		mark.custom_minimum_size = Vector2(18, 0)
+		row.add_child(mark)
+		var name_l := UiTheme.gothic_label(String(settings_items[i]), 16, UiTheme.TEXT_DIM)
+		name_l.custom_minimum_size = Vector2(168, 0)
+		row.add_child(name_l)
+		var val_l := UiTheme.gothic_label("", 16, UiTheme.TEXT_DIM)
+		val_l.custom_minimum_size = Vector2(76, 0)
+		val_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row.add_child(val_l)
+		row.mouse_entered.connect(func() -> void:
+			if _paused and _pause_page == 1 and _settings_index != idx:
+				_settings_index = idx
+				_update_settings_rows())
+		row.gui_input.connect(func(e: InputEvent) -> void:
+			if not (_paused and _pause_page == 1):
+				return
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_settings_index = idx
+				_activate_setting()
+			elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_settings_index = idx
+				_nudge_setting(1)
+			elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_settings_index = idx
+				_nudge_setting(-1))
+		_settings_rows.add_child(row)
+
+func _update_settings_rows() -> void:
+	for i in _settings_rows.get_child_count():
+		var row := _settings_rows.get_child(i) as HBoxContainer
+		var on := i == _settings_index
+		(row.get_child(0) as Label).text = "＞" if on else "　"
+		var name_l := row.get_child(1) as Label
+		var val_l := row.get_child(2) as Label
+		name_l.label_settings.font_color = UiTheme.SELECT if on else UiTheme.TEXT_DIM
+		val_l.label_settings.font_color = UiTheme.SELECT if on else UiTheme.TEXT_DIM
+		val_l.text = _setting_value_text(i)
+
+func _setting_value_text(i: int) -> String:
+	match i:
+		0: return "%.1f" % Settings.mouse_sensitivity
+		1: return "%d%%" % roundi(Settings.volume_master * 100.0)
+		2: return "%d%%" % roundi(Settings.volume_sfx * 100.0)
+		3: return "%d%%" % roundi(Settings.volume_ambient * 100.0)
+		4: return "%d%%" % roundi(Settings.vhs_intensity * 100.0)
+		5: return settings_on_text if Settings.screen_shake else settings_off_text
+		6: return settings_on_text if Settings.show_hints else settings_off_text
+	return ""
+
+## dir = +1 / -1。つまみを1段動かす。端で止まる(トグルは反転)。
+func _nudge_setting(dir: int) -> void:
+	match _settings_index:
+		0:
+			Settings.mouse_sensitivity = clampf(snappedf(Settings.mouse_sensitivity + dir * Settings.SENS_STEP, Settings.SENS_STEP), Settings.SENS_MIN, Settings.SENS_MAX)
+		1:
+			Settings.volume_master = clampf(snappedf(Settings.volume_master + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
+		2:
+			Settings.volume_sfx = clampf(snappedf(Settings.volume_sfx + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
+		3:
+			Settings.volume_ambient = clampf(snappedf(Settings.volume_ambient + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
+		4:
+			Settings.vhs_intensity = clampf(snappedf(Settings.vhs_intensity + dir * Settings.VHS_STEP, Settings.VHS_STEP), 0.0, 1.0)
+		5:
+			Settings.screen_shake = not Settings.screen_shake
+		6:
+			_set_show_hints(not Settings.show_hints)
+		7:
+			return
+	Settings.apply()
+	Settings.save()
+	_update_settings_rows()
+	Audio.play(&"ui_select", -8.0)
+
+## 決定キー: トグルは反転、つまみは1段上げる(端まで行ったら最小に戻る)、最後の行は戻る。
+func _activate_setting() -> void:
+	if _settings_index == settings_items.size() - 1:
+		Audio.play(&"ui_back", -8.0)
+		_show_pause_page(0)
+		_update_pause_rows()
+		return
+	if _settings_index == 5 or _settings_index == 6:
+		_nudge_setting(1)
+		return
+	if _setting_at_max():
+		_set_setting_to_min()
+		Settings.apply()
+		Settings.save()
+		_update_settings_rows()
+		Audio.play(&"ui_select", -8.0)
+		return
+	_nudge_setting(1)
+
+func _setting_at_max() -> bool:
+	match _settings_index:
+		0: return Settings.mouse_sensitivity >= Settings.SENS_MAX - 0.001
+		1: return Settings.volume_master >= 0.999
+		2: return Settings.volume_sfx >= 0.999
+		3: return Settings.volume_ambient >= 0.999
+		4: return Settings.vhs_intensity >= 0.999
+	return false
+
+func _set_setting_to_min() -> void:
+	match _settings_index:
+		0: Settings.mouse_sensitivity = Settings.SENS_MIN
+		1: Settings.volume_master = 0.0
+		2: Settings.volume_sfx = 0.0
+		3: Settings.volume_ambient = 0.0
+		4: Settings.vhs_intensity = 0.0
+
+func _set_show_hints(v: bool) -> void:
+	Settings.show_hints = v
+	# 「入」に戻したら次の起動でもう一度出す
+	if v:
+		Settings.seen_hint = false
+
+# ================================================================ 操作ヒント(初回のみ)
+
+func _maybe_show_controls_hint() -> void:
+	if not Settings.show_hints or Settings.seen_hint:
+		return
+	Settings.seen_hint = true
+	Settings.save()
+	show_controls_hint()
+
+## 設定に関係なく操作説明を出す(デバッグや「もう一度見る」用)
+func show_controls_hint(duration: float = -1.0) -> void:
+	var dur := controls_hint_seconds if duration < 0.0 else duration
+	_hint.text = controls_hint_text
+	if _hint_tween and _hint_tween.is_valid():
+		_hint_tween.kill()
+	_hint.modulate.a = 0.0
+	_hint_tween = create_tween()
+	_hint_tween.tween_interval(1.0)
+	_hint_tween.tween_property(_hint, "modulate:a", 1.0, 0.6)
+	_hint_tween.tween_interval(maxf(dur, 0.5))
+	_hint_tween.tween_property(_hint, "modulate:a", 0.0, 1.0)
 
 # ================================================================ フェード / 画面演出
 

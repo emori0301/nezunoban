@@ -10,6 +10,10 @@ signal quit_requested
 @export var subtitle_text: String = "The Wake"
 @export var menu_items: PackedStringArray = ["はじめる", "おわる"]
 @export var tracking_text: String = "TRACKING"
+## 到達エンディングの表示(右下)。並びは Settings.ENDING_IDS と同じ
+@export var ending_names: PackedStringArray = ["朝", "火車", "代わり", "遺影"]
+@export var ending_unknown_text: String = "？"
+@export var ending_count_format: String = "終 %d/%d"
 @export var intro_duration: float = 1.6
 @export var skip_intro: bool = false
 
@@ -21,6 +25,7 @@ var _sub: Label
 var _menu: VBoxContainer
 var _tracking: Label
 var _stamp: Label
+var _endings: Label
 var _overlay: ColorRect
 var _fade: ColorRect
 var _index: int = 0
@@ -33,8 +38,10 @@ func _ready() -> void:
 	layer = 8
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().paused = false
+	Settings.load_all()
 	_build()
 	_ensure_vhs()
+	Settings.apply()   # VhsLayer を作ったあとに反映する(VHS の強さも設定に従う)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Audio.ambient(&"amb_drone_low", -12.0, 2.0)
 	if skip_intro:
@@ -140,6 +147,20 @@ func _build() -> void:
 	_stamp.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_root.add_child(_stamp)
 
+	# 右下: 到達したエンディング(director が user://progress.cfg に書いたもの)
+	_endings = UiTheme.gothic_label(_endings_text(), 12, Color(0.62, 0.64, 0.62))
+	_endings.anchor_left = 1.0
+	_endings.anchor_right = 1.0
+	_endings.anchor_top = 1.0
+	_endings.anchor_bottom = 1.0
+	_endings.offset_left = -260.0
+	_endings.offset_right = -14.0
+	_endings.offset_top = -54.0
+	_endings.offset_bottom = -16.0
+	_endings.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_endings.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_root.add_child(_endings)
+
 	# VHS ノイズ(タイトルには SubViewportContainer が無いので簡易版を重ねる)
 	_overlay = ColorRect.new()
 	UiTheme.full_rect(_overlay)
@@ -158,6 +179,20 @@ func _build() -> void:
 	_fade.color = Color(0, 0, 0, 1)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_fade)
+
+## 「終 1/4」と、到達した名だけを並べた行。未到達は「？」。
+func _endings_text() -> String:
+	var reached := Settings.reached_endings()
+	var n := 0
+	var parts: PackedStringArray = []
+	for i in reached.size():
+		if reached[i]:
+			n += 1
+			parts.append(String(ending_names[i]) if i < ending_names.size() else "")
+		else:
+			parts.append(ending_unknown_text)
+	var head := ending_count_format % [n, reached.size()]
+	return "%s\n%s" % [head, "　".join(parts)]
 
 func _intro() -> void:
 	# 最初はテープの砂嵐。TRACKING の点滅だけが見えている状態から始める。

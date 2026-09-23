@@ -485,6 +485,103 @@ func _run_selftest() -> void:
 		await _press_interact()
 	_check(hud.get_toast_text() == "鍵がかかっている。", "連打しても文は1つ")
 
+	# 16) 設定の保存と復元
+	await get_tree().create_timer(0.3, false).timeout
+	# 元の設定を控えておき、最後に書き戻す
+	var backup := {
+		"sens": Settings.mouse_sensitivity, "m": Settings.volume_master,
+		"s": Settings.volume_sfx, "a": Settings.volume_ambient,
+		"v": Settings.vhs_intensity, "shake": Settings.screen_shake,
+		"hints": Settings.show_hints, "seen": Settings.seen_hint,
+	}
+
+	Settings.mouse_sensitivity = 1.7
+	Settings.volume_master = 0.4
+	Settings.volume_sfx = 0.2
+	Settings.volume_ambient = 0.6
+	Settings.vhs_intensity = 0.8
+	Settings.screen_shake = false
+	Settings.show_hints = false
+	Settings.seen_hint = true
+	Settings.save()
+
+	# 別の値で汚してから読み直す
+	Settings.mouse_sensitivity = 1.0
+	Settings.volume_master = 1.0
+	Settings.vhs_intensity = 0.1
+	Settings.screen_shake = true
+	Settings.show_hints = true
+	Settings.load_all(true)
+	_check(is_equal_approx(Settings.mouse_sensitivity, 1.7), "感度が復元される", "= %.2f" % Settings.mouse_sensitivity)
+	_check(is_equal_approx(Settings.volume_master, 0.4) and is_equal_approx(Settings.volume_sfx, 0.2) and is_equal_approx(Settings.volume_ambient, 0.6), "音量3つが復元される")
+	_check(is_equal_approx(Settings.vhs_intensity, 0.8), "VHS の強さが復元される", "= %.2f" % Settings.vhs_intensity)
+	_check(Settings.screen_shake == false and Settings.show_hints == false, "トグル2つが復元される")
+
+	# apply() が実際の音量 / 感度 / VHS に届く
+	Settings.apply()
+	var mi := AudioServer.get_bus_index("Master")
+	var si := AudioServer.get_bus_index("SFX")
+	_check(mi >= 0 and is_equal_approx(AudioServer.get_bus_volume_db(mi), linear_to_db(0.4)), "Master バスの db が変わる", "= %.2f db" % AudioServer.get_bus_volume_db(mi))
+	_check(si >= 0 and is_equal_approx(AudioServer.get_bus_volume_db(si), linear_to_db(0.2)), "SFX バスの db が変わる")
+	_check(is_equal_approx(player.get_sensitivity_scale(), 1.7), "player に感度が届く", "= %.2f" % player.get_sensitivity_scale())
+	_check(is_equal_approx(vhs.get_intensity(), 0.8), "VhsLayer に強さが届く", "= %.2f" % vhs.get_intensity())
+
+	# 画面揺れ切り: shake() が無視される
+	player._shake_amount = 0.0
+	player.shake(1.0, 0.5)
+	_check(is_equal_approx(player._shake_amount, 0.0), "画面揺れ切で shake() が効かない")
+	Settings.screen_shake = true
+	player.shake(1.0, 0.5)
+	_check(player._shake_amount > 0.5, "画面揺れ入なら効く")
+	player._shake_amount = 0.0
+
+	# 音量 0 はミュート
+	Settings.volume_sfx = 0.0
+	Settings.apply()
+	_check(AudioServer.is_bus_mute(si), "音量 0 でミュートになる")
+
+	# 設定画面の操作: 上下で移動、左右で値が動く
+	hud._open_pause()
+	hud._activate_pause(1)
+	await get_tree().create_timer(0.3, true).timeout
+	_check(hud._pause_page == 1, "設定ページが開く")
+	hud._settings_index = 0
+	var before_sens: float = Settings.mouse_sensitivity
+	hud._nudge_setting(1)
+	_check(Settings.mouse_sensitivity > before_sens, "右で感度が上がる", "%.1f -> %.1f" % [before_sens, Settings.mouse_sensitivity])
+	hud._settings_index = 5
+	var before_shake: bool = Settings.screen_shake
+	hud._activate_setting()
+	_check(Settings.screen_shake != before_shake, "決定でトグルが反転する")
+	hud._settings_index = hud.settings_items.size() - 1
+	hud._activate_setting()
+	_check(hud._pause_page == 0, "「戻る」でポーズ本体に戻る")
+	hud._close_pause()
+	await get_tree().create_timer(0.2, false).timeout
+
+	# 後片付け: 元の設定に戻して保存
+	Settings.mouse_sensitivity = backup["sens"]
+	Settings.volume_master = backup["m"]
+	Settings.volume_sfx = backup["s"]
+	Settings.volume_ambient = backup["a"]
+	Settings.vhs_intensity = backup["v"]
+	Settings.screen_shake = backup["shake"]
+	Settings.show_hints = backup["hints"]
+	Settings.seen_hint = backup["seen"]
+	Settings.apply()
+	Settings.save()
+
+	# 17) タイトルの到達エンディング表示
+	var pcf := ConfigFile.new()
+	pcf.set_value("endings", "morning", true)
+	pcf.set_value("endings", "substitute", true)
+	pcf.save(Settings.PROGRESS_PATH)
+	var reached := Settings.reached_endings()
+	_check(reached[0] and not reached[1] and reached[2] and not reached[3], "progress.cfg を読める")
+	_check(Settings.reached_count() == 2, "到達数 = 2", "= %d" % Settings.reached_count())
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.PROGRESS_PATH))
+	_check(Settings.reached_count() == 0, "progress.cfg が無ければ 0/4")
+
 	print("== %s (fail %d) ==" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	get_tree().quit(0 if _fails == 0 else 1)
 
@@ -645,6 +742,38 @@ func _run_shots(dir: String) -> void:
 	Input.action_release(&"interact")
 	await get_tree().create_timer(0.3, false).timeout
 	await _shot(dir, "24_nothing_here")
+
+	# 22) 設定画面
+	hud._open_pause()
+	hud._activate_pause(1)
+	await get_tree().create_timer(0.4, true).timeout   # ポーズ中なので process_always
+	await _shot(dir, "25_settings")
+	hud._settings_index = 4                            # VHS の強さを選んだ状態
+	hud._update_settings_rows()
+	await get_tree().create_timer(0.3, true).timeout
+	await _shot(dir, "26_settings_vhs")
+	hud._close_pause()
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 23) 初回の操作ヒント
+	player.teleport(Vector3(0, 0.05, -1.0), 0.0, -3.0)
+	hud.show_controls_hint(6.0)
+	await get_tree().create_timer(2.0, false).timeout
+	await _shot(dir, "27_controls_hint")
+
+	# 24) タイトルの到達エンディング(4つ中2つ到達した状態)
+	var pcf := ConfigFile.new()
+	pcf.set_value("endings", "morning", true)
+	pcf.set_value("endings", "substitute", true)
+	pcf.save(Settings.PROGRESS_PATH)
+	var title2: Node = load(TITLE_PATH).instantiate()
+	title2.skip_intro = true
+	viewport.add_child(title2)
+	await get_tree().create_timer(1.6, false).timeout
+	await _shot(dir, "28_title_endings")
+	title2.queue_free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.PROGRESS_PATH))
+	await get_tree().create_timer(0.3, false).timeout
 
 	print("shots done: %s" % dir)
 	get_tree().quit()

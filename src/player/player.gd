@@ -88,6 +88,7 @@ var _mouse_captured: bool = false
 var _rng := RandomNumberGenerator.new()
 var _head_base_y: float = 1.6
 var _moving: bool = false
+var _sens_scale: float = 1.0   ## 設定のマウス感度倍率(0.5〜2.0)
 
 func _ready() -> void:
 	add_to_group(&"player")
@@ -127,8 +128,9 @@ func _input(event: InputEvent) -> void:
 		_apply_look(rel)
 
 func _apply_look(rel: Vector2) -> void:
-	_yaw -= rel.x * mouse_sensitivity
-	var dy := rel.y * mouse_sensitivity
+	var sens := mouse_sensitivity * _sens_scale
+	_yaw -= rel.x * sens
+	var dy := rel.y * sens
 	_pitch += dy if invert_y else -dy
 	var lim := deg_to_rad(pitch_limit_deg)
 	_pitch = clampf(_pitch, -lim, lim)
@@ -613,9 +615,19 @@ func look_at_point(pos: Vector3, duration: float = 0.8) -> void:
 		_yaw = lerpf(yaw_from, yaw_to, t)
 		_pitch = lerpf(pitch_from, target_pitch, t), 0.0, 1.0, maxf(duration, 0.01))
 
+## 設定で「画面揺れ」を切っていたら何もしない
 func shake(intensity: float = 0.5, duration: float = 0.4) -> void:
+	if not Settings.screen_shake:
+		return
 	_shake_amount = maxf(_shake_amount, clampf(intensity, 0.0, 2.0))
 	_shake_decay = _shake_amount / maxf(duration, 0.05)
+
+## 設定画面から渡されるマウス感度の倍率(0.5〜2.0)
+func set_sensitivity_scale(f: float) -> void:
+	_sens_scale = clampf(f, 0.1, 5.0)
+
+func get_sensitivity_scale() -> float:
+	return _sens_scale
 
 func set_speed_multiplier(f: float) -> void:
 	speed_multiplier = clampf(f, 0.0, 4.0)
