@@ -146,10 +146,10 @@ func _act() -> void:
 	# 5. 猫
 	if await _shoo_cat():
 		return
-	# 6. いまのタスク
-	var t := Tasks.current()
-	if not t.is_empty():
-		if await _do_task(StringName(t.get("id", &""))):
+	# 6. いまのタスク(モードによっては線香を無視する)
+	var id := _pick_task()
+	if id != &"":
+		if await _do_task(id):
 			return
 	# 7. ロウソク(終盤以外)
 	if not dir.timeline.finale_running() and mode != &"kasha":
@@ -194,6 +194,26 @@ func _shoo_cat() -> bool:
 			c.call(&"flee")
 			return true
 	return false
+
+
+## 優先順にタスクを選ぶ。Tasks.current() は先頭固定なので、
+## kasha モードで線香を放置すると以後のタスクに進めなくなる。
+const TASK_ORDER := [
+	&"talk_boss", &"relight", &"cat", &"breaker", &"backdoor", &"window",
+	&"dry_ice", &"flowers", &"candle", &"incense_stock", &"incense", &"last_incense",
+]
+## kasha モード(導入後)は線香に触らない。異変度を溜めるのが目的。
+const KASHA_IGNORE := [&"incense", &"incense_stock", &"last_incense"]
+
+func _pick_task() -> StringName:
+	var ignore_incense: bool = mode == &"kasha" and bool(Game.get_flag(&"intro_done", false))
+	for id in TASK_ORDER:
+		if not Tasks.has(id):
+			continue
+		if ignore_incense and KASHA_IGNORE.has(id):
+			continue
+		return id
+	return &""
 
 
 func _do_task(id: StringName) -> bool:
@@ -279,7 +299,7 @@ func _use(n: Node, dist: float = 1.1) -> bool:
 		return false
 	_log.append("%s use %s" % [Clock.hhmm(), n.name])
 	n.call(&"interact", p)
-	await get_tree().create_timer(0.35 / maxf(speed, 0.1)).timeout
+	await Events.wait(0.35 / maxf(speed, 0.1))
 	return true
 
 
@@ -391,7 +411,7 @@ func _on_ended(id: StringName) -> void:
 		await _take_shot()
 	_write_log(id)
 	var want: StringName = EXPECTED.get(mode, mode)
-	await get_tree().create_timer(0.4).timeout
+	await Events.wait(0.4)
 	if id != want:
 		printerr("AUTOPLAY MISMATCH expected=%s got=%s" % [want, id])
 		get_tree().quit(1)

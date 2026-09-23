@@ -22,6 +22,10 @@ func decide() -> StringName:
 		return Game.ENDING_KASHA
 	if Dread.is_doomed() or Game.get_flag(&"cat_crossed_coffin", false):
 		return Game.ENDING_KASHA
+	# 終盤の灯し直し(3回)を終えていないなら、火を戻せなかった = 亡骸を奪われる。
+	# docs/design.md v0.2「朝: 04:40 の灯し直しに成功。異変度 < 6」
+	if not Game.get_flag(&"relight_done", false):
+		return Game.ENDING_KASHA
 	return Game.ENDING_MORNING
 
 
@@ -61,14 +65,14 @@ func run(id: StringName) -> void:
 	if hud and hud.has_method(&"fade_out"):
 		await hud.fade_out(1.6)
 	else:
-		await get_tree().create_timer(1.6).timeout
+		await Events.wait(1.6)
 	_show_screen(id)
 
 
 ## 05:00 の朝。鴉と鐘、そして車の音。
 func _morning_prologue(id: StringName) -> void:
 	Audio.play(&"crow_morning", -2.0)
-	await get_tree().create_timer(2.2).timeout
+	await Events.wait(2.2)
 	Audio.play(&"chime_dawn", -4.0)
 	var b: Building = dir.building()
 	if b:
@@ -77,7 +81,7 @@ func _morning_prologue(id: StringName) -> void:
 		var coffin: Node = dir.sys(&"coffin")
 		if coffin:
 			coffin.call(&"set_open", true)
-	await get_tree().create_timer(2.6).timeout
+	await Events.wait(2.6)
 
 
 ## 布団で休んだとき。目覚めたら 05:00、遺影が自分の顔になっている。
@@ -85,7 +89,7 @@ func _portrait_prologue() -> void:
 	var hud: Node = dir.hud()
 	if hud and hud.has_method(&"fade_out"):
 		await hud.fade_out(1.4)
-	await get_tree().create_timer(1.6).timeout
+	await Events.wait(1.6)
 	Clock.skip_to(480)
 	# 目覚めた式場の状態を作る
 	var inc: Node = dir.sys(&"incense_stand")
@@ -118,10 +122,10 @@ func _portrait_prologue() -> void:
 	if hud and hud.has_method(&"fade_in"):
 		await hud.fade_in(2.2)
 	Audio.play(&"crow_morning", -6.0)
-	await get_tree().create_timer(1.2).timeout
+	await Events.wait(1.2)
 	if p and p.has_method(&"look_at_point") and iei:
 		p.look_at_point((iei as Node3D).global_position + Vector3(0, 0.33, 0), 1.6)
-	await get_tree().create_timer(3.4).timeout
+	await Events.wait(3.4)
 
 
 func _show_screen(id: StringName) -> void:
@@ -129,7 +133,7 @@ func _show_screen(id: StringName) -> void:
 	var vp: Node = dir.ui_parent()
 	if not ResourceLoader.exists(ENDING_SCENE) or vp == null:
 		print("ENDING %s" % id)
-		await get_tree().create_timer(1.0).timeout
+		await Events.wait(1.0)
 		get_tree().reload_current_scene()
 		return
 	var e: Node = load(ENDING_SCENE).instantiate()

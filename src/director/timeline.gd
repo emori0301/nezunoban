@@ -77,7 +77,7 @@ func apply_past(m: int) -> void:
 	if m > 140:
 		dir.cats_enabled = true
 		_cat_visits_left = 3
-		_activate_cats()
+		_activate_cats_when_ready()
 	if m > 180:
 		Game.set_flag(&"breaker_restored", true)
 	if m > 210:
@@ -103,8 +103,8 @@ func apply_past(m: int) -> void:
 	if m > 465:
 		scares.dawn_now()
 	if m > 420:
-		# 終盤の途中から始めたときは、終盤そのものを動かす
-		call_deferred(&"ev_finale")
+		# 終盤の途中から始めたときは、終盤そのものを動かす(独白は出さない)
+		call_deferred(&"ev_finale", true)
 	if m > 400:
 		var fz: Node = dir.sys(&"freezer")
 		if fz:
@@ -136,7 +136,7 @@ func ev_window() -> void:
 	if inc:
 		inc.set(&"burn_multiplier", 3.0)
 		inc.call(&"set_wind", Vector3(-0.8, 0, -0.5))
-	Dialogue.monologue(ScriptText.M_WINDOW)
+	dir.monologue(ScriptText.M_WINDOW)
 	Tasks.set_task(&"window", ScriptText.TASK_WINDOW)
 
 
@@ -148,7 +148,7 @@ func on_shikijo_window_closed() -> void:
 		inc.call(&"set_wind", Vector3.ZERO)
 	Tasks.complete(&"window")
 	# 閉めた瞬間、外の駐車場に猫が1匹座ってこちらを見ている
-	await get_tree().create_timer(0.7).timeout
+	await Events.wait(0.7)
 	var cat: Node = dir.npc(&"cat", 0)
 	if cat and cat.has_method(&"sit_at"):
 		cat.call(&"set_active", true)
@@ -172,14 +172,14 @@ func ev_phone_silent() -> void:
 
 func play_silent_call() -> void:
 	var ph: Node = dir.sys(&"phone")
-	await Dialogue.monologue(ScriptText.M_PHONE_HELLO)
+	await dir.monologue(ScriptText.M_PHONE_HELLO)
 	Audio.play(&"phone_breath", -2.0)
-	await get_tree().create_timer(3.0).timeout
+	await Events.wait(3.0)
 	if ph:
 		ph.call(&"hang_up")
-	await Dialogue.monologue(ScriptText.M_PHONE_CUT)
+	await dir.monologue(ScriptText.M_PHONE_CUT)
 	# 受話器を置くと受付の芳名帳のページがめくれる
-	await get_tree().create_timer(0.8).timeout
+	await Events.wait(0.8)
 	var gb: Node = dir.sys(&"guest_book")
 	if gb:
 		gb.call(&"rustle")
@@ -214,10 +214,10 @@ func on_shikijo_reveal() -> void:
 		mon.set(&"auto_switch", true)
 		mon.call(&"set_static", 0.1)
 	scares.chair_pulled_out()
-	await get_tree().create_timer(0.6).timeout
-	await Dialogue.monologue(ScriptText.M_CHAIR)
+	await Events.wait(0.6)
+	await dir.monologue(ScriptText.M_CHAIR)
 	if Dread.value >= 3:
-		await get_tree().create_timer(0.4).timeout
+		await Events.wait(0.4)
 		scares.zabuton_before_coffin()
 
 
@@ -229,6 +229,15 @@ func ev_cats_begin() -> void:
 	_cat_visits_left = scares.rng.randi_range(3, 5)
 	_activate_cats()
 	_schedule_next_cat(2.0)
+
+
+## 起動1フレーム目は NavigationRegion3D のマップがまだ同期しておらず、
+## map_get_closest_point() が失敗する(review H5)。物理フレームを2回待ってから動かす。
+func _activate_cats_when_ready() -> void:
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if dir.cats_enabled:
+		_activate_cats()
 
 
 func _activate_cats() -> void:
@@ -247,7 +256,7 @@ func _schedule_next_cat(minutes: float) -> void:
 	if _cat_visits_left <= 0:
 		return
 	var secs := minutes * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
-	await get_tree().create_timer(secs).timeout
+	await Events.wait(secs)
 	if not dir.cats_enabled or Game.state == Game.State.ENDING:
 		return
 	_cat_visits_left -= 1
@@ -290,11 +299,11 @@ func on_tv_approach() -> void:
 	var tv: Node = dir.sys(&"tv")
 	if tv == null:
 		return
-	await get_tree().create_timer(0.5).timeout
+	await Events.wait(0.5)
 	tv.call(&"flash_face", 0.4)
 	scares.glitch(0.5)
 	scares.stinger(-6.0)
-	await get_tree().create_timer(0.9).timeout
+	await Events.wait(0.9)
 	tv.call(&"turn_off")
 
 
@@ -307,9 +316,9 @@ func ev_blackout() -> void:
 	if b:
 		# 廊下の蛍光灯が1本ずつ落ちる
 		b.flicker(&"Room_Hall", 1.6)
-		await get_tree().create_timer(1.8).timeout
+		await Events.wait(1.8)
 		b.set_room_lights(&"Room_Hall", false)
-		await get_tree().create_timer(0.6).timeout
+		await Events.wait(0.6)
 		b.set_room_lights(&"Room_Office", false)
 	if br:
 		br.call(&"trip")
@@ -340,8 +349,8 @@ func on_blackout_reveal() -> void:
 	if iei:
 		iei.call(&"set_face_down", true)
 	scares.glitch(0.5)
-	await get_tree().create_timer(0.6).timeout
-	await Dialogue.monologue(ScriptText.M_IEI)
+	await Events.wait(0.6)
+	await dir.monologue(ScriptText.M_IEI)
 
 
 # ============================================================ 00:30 息子
@@ -351,17 +360,18 @@ func ev_son() -> void:
 	var b: Building = dir.building()
 	for i in 3:
 		Audio.play_at(StringName("door_knock_%d" % (i + 1)), Vector3(-11.4, 1.2, 0.0), 2.0, 1.0, 26.0)
-		await get_tree().create_timer(0.55).timeout
+		await Events.wait(0.55)
 	var son: Node = dir.npc(&"son")
 	if son and son.has_method(&"enter_from_genkan"):
 		son.call(&"set_active", true)
 		await son.call(&"enter_from_genkan", Vector3(-9.2, 0.0, 0.0))
-		await dir.face_off(son)       # カメラに密着させない
+		# teleport すると祭壇まわりの家具に挟まって以後動けなくなる(review M4)
+		await dir.face_off(son, false)
 	else:
 		var d: Door = b.get_door(&"Door_Genkan") if b else null
 		if d:
 			d.open(true)
-			await get_tree().create_timer(1.2).timeout
+			await Events.wait(1.2)
 			d.close()
 	for l in ScriptText.SON_KNOCK:
 		await Dialogue.say(ScriptText.SPEAKER_SON, l)
@@ -381,7 +391,7 @@ func _son_refused(son) -> void:
 		await Dialogue.say(ScriptText.SPEAKER_SON, l)
 	if son and son.has_method(&"go_to"):
 		son.call(&"set_talkable", false)
-		await son.call(&"go_to", Vector3(-1.35, 0.0, 3.8))
+		await dir.walk_via_hall(son, Vector3(-1.35, 0.0, 3.8))
 		if son.has_method(&"face"):
 			son.call(&"face", Vector3(-1.35, 0.0, 2.0))
 	else:
@@ -428,12 +438,12 @@ func ev_dry_ice() -> void:
 ## Director が carried_item == dry_ice で呼ぶ
 func on_dry_ice_carried() -> void:
 	scares.set_second_footsteps(true)
-	await get_tree().create_timer(3.0).timeout
+	await Events.wait(3.0)
 	if Game.get_flag(&"heard_second_steps", false):
 		return
 	Game.set_flag(&"heard_second_steps", true)
-	await Dialogue.monologue(ScriptText.M_FOOTSTEPS)
-	await get_tree().create_timer(1.4).timeout
+	await dir.monologue(ScriptText.M_FOOTSTEPS)
+	await Events.wait(1.4)
 	scares.breath_behind()
 
 
@@ -443,12 +453,12 @@ func on_dry_ice_replaced() -> void:
 	var coffin: Node = dir.sys(&"coffin")
 	if coffin and int(coffin.get(&"face_state")) < 1:
 		coffin.call(&"set_face_state", 1)
-	await get_tree().create_timer(0.4).timeout
+	await Events.wait(0.4)
 	var st := int(coffin.get(&"face_state")) if coffin else 1
 	match st:
-		3: Dialogue.monologue(ScriptText.M_FACE3)
-		2: Dialogue.monologue(ScriptText.M_FACE2)
-		_: Dialogue.monologue(ScriptText.M_FACE1)
+		3: dir.monologue(ScriptText.M_FACE3)
+		2: dir.monologue(ScriptText.M_FACE2)
+		_: dir.monologue(ScriptText.M_FACE1)
 
 
 # ============================================================ 01:30 宿直日誌
@@ -462,7 +472,7 @@ func ev_office_note() -> void:
 func on_office_note_read() -> void:
 	var b: Building = dir.building()
 	var d: Door = b.get_door(&"Door_Office") if b else null
-	await get_tree().create_timer(0.5).timeout
+	await Events.wait(0.5)
 	if d:
 		d.slam()
 	scares.stinger(-4.0)
@@ -476,7 +486,7 @@ func ev_yukan() -> void:
 	var b: Building = dir.building()
 	var pos := Vector3(6.4, 1.0, -7.5)
 	Audio.play_at(&"door_locked", pos, 2.0, 1.0, 26.0)
-	await get_tree().create_timer(1.1).timeout
+	await Events.wait(1.1)
 	Audio.play_at(&"door_open", pos, 2.0, 1.0, 26.0)
 	var d: Door = b.get_door(&"Door_Yukan") if b else null
 	if d:
@@ -507,17 +517,17 @@ func ev_phone_wet() -> void:
 
 func play_wet_call() -> void:
 	var ph: Node = dir.sys(&"phone")
-	await Dialogue.monologue(ScriptText.M_PHONE_HELLO)
+	await dir.monologue(ScriptText.M_PHONE_HELLO)
 	Audio.play(&"phone_voice_wet", 0.0)
 	await Dialogue.say("", ScriptText.PHONE_WET_LINE)
-	await get_tree().create_timer(1.0).timeout
+	await Events.wait(1.0)
 	if ph:
 		ph.call(&"hang_up")
 	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
 		dir.quench(&"incense_stand")
 	scares.glitch(0.5)
-	await Dialogue.monologue(ScriptText.M_PHONE_WET_AFTER)
+	await dir.monologue(ScriptText.M_PHONE_WET_AFTER)
 
 
 # ============================================================ 03:00 丑三つ時
@@ -541,7 +551,7 @@ func ev_ushimitsu() -> void:
 	var step := 5.0 * Clock.seconds_per_game_minute / maxf(Clock.speed, 0.01)
 	var coffin: Node = dir.sys(&"coffin")
 	for i in 4:
-		await get_tree().create_timer(step).timeout
+		await Events.wait(step)
 		if Game.state == Game.State.ENDING:
 			return
 		var inc: Node = dir.sys(&"incense_stand")
@@ -559,7 +569,7 @@ func ev_ushimitsu() -> void:
 				dir.quench(&"candle")
 			if coffin:
 				coffin.call(&"creak")
-	await get_tree().create_timer(step * 0.6).timeout
+	await Events.wait(step * 0.6)
 	Audio.stop_ambient(&"amb_drone_high", 2.0)
 	if vhs and vhs.has_method(&"set_intensity"):
 		vhs.set_intensity(0.32 + 0.15 * Dread.level())
@@ -584,7 +594,7 @@ func _prepare_safe() -> void:
 
 ## Director が page_read{n:4} で呼ぶ
 func on_ledger_read() -> void:
-	await get_tree().create_timer(0.8).timeout
+	await Events.wait(0.8)
 	scares.hall_figure("kasha", 1.2)
 
 
@@ -604,11 +614,13 @@ func ev_freezer_empty() -> void:
 
 # ============================================================ 04:00 終盤
 
-func ev_finale() -> void:
+func ev_finale(quiet: bool = false) -> void:
 	if _finale_running:
 		return
 	_finale_running = true
 	dir.log_event("ev_finale")
+	if quiet:
+		dir.set_quiet(true)       # --time= で終盤を組むときは独白を出さない
 	var b: Building = dir.building()
 	var inc: Node = dir.sys(&"incense_stand")
 	var cnd: Node = dir.sys(&"candle")
@@ -646,8 +658,11 @@ func ev_finale() -> void:
 	else:
 		dir.start_fallback_chase()
 		Events.emit_event(&"chase_started")
-	await Dialogue.monologue(ScriptText.M_LIGHTS_OUT)
-	await Dialogue.monologue(ScriptText.M_MATCHES)
+	if quiet:
+		dir.set_quiet(false)
+	else:
+		await dir.monologue(ScriptText.M_LIGHTS_OUT)
+		await dir.monologue(ScriptText.M_MATCHES)
 
 
 ## relight_success を受ける
@@ -656,7 +671,7 @@ func on_relight(n: int) -> void:
 		return
 	_finale_relights = n
 	Tasks.complete(&"relight")
-	Dialogue.monologue(ScriptText.M_RELIGHT_OK)
+	dir.monologue(ScriptText.M_RELIGHT_OK)
 	var k: Node = dir.npc(&"kasha")
 	if n >= 3:
 		_finish_finale()
@@ -665,7 +680,7 @@ func on_relight(n: int) -> void:
 		k.call(&"retreat")
 	else:
 		dir.set_fallback_chase(false)
-	await get_tree().create_timer(18.0 / maxf(Clock.speed, 0.01)).timeout
+	await Events.wait(18.0 / maxf(Clock.speed, 0.01))
 	if not _finale_running or Game.state == Game.State.ENDING:
 		return
 	var cnd: Node = dir.sys(&"candle")
@@ -687,15 +702,17 @@ func on_relight(n: int) -> void:
 func on_relight_failed() -> void:
 	if not _finale_running:
 		return
-	Dialogue.monologue(ScriptText.M_RELIGHT_FAIL)
+	dir.monologue(ScriptText.M_RELIGHT_FAIL)
 	scares.glitch(1.0)
 	Audio.play(&"kasha_screech", 0.0)
-	await get_tree().create_timer(2.2 / maxf(Clock.speed, 0.01)).timeout
+	await Events.wait(2.2 / maxf(Clock.speed, 0.01))
 	dir.kasha_catches()
 
 
 func _finish_finale() -> void:
 	_finale_running = false
+	Game.set_flag(&"relight_done", true)
+	_restore_hikaeshitsu_door()
 	var k: Node = dir.npc(&"kasha")
 	if k and k.has_method(&"stop_chase"):
 		k.call(&"stop_chase")
@@ -715,7 +732,20 @@ func _finish_finale() -> void:
 
 # ---------------------------------------------------------- 控室の戸
 
+func _restore_hikaeshitsu_door() -> void:
+	if _hikaeshitsu_spot and is_instance_valid(_hikaeshitsu_spot):
+		_hikaeshitsu_spot.queue_free()
+	_hikaeshitsu_spot = null
+	var b: Building = dir.building()
+	var d: Door = b.get_door(&"Door_Hikaeshitsu") if b else null
+	if d:
+		d.enabled = true
+
+
 func _install_hikaeshitsu_choice() -> void:
+	# 息子が控室で寝ている夜だけ差し替える。居ない夜に選択肢を出しても何も起きない。
+	if not Game.get_flag(&"son_asleep", false) and not Game.get_flag(&"son_refused", false):
+		return
 	var b: Building = dir.building()
 	if b == null:
 		return
@@ -732,7 +762,7 @@ func _ask_hikaeshitsu(_p: Node3D) -> void:
 		_hikaeshitsu_spot.enabled = false
 	var i: int = await Dialogue.choose(ScriptText.CHOICE_HIKAESHITSU, ScriptText.CHOICE_HIKAESHITSU_OPTIONS)
 	if i != 1:
-		if _hikaeshitsu_spot:
+		if _hikaeshitsu_spot and is_instance_valid(_hikaeshitsu_spot):
 			_hikaeshitsu_spot.enabled = true
 		return
 	var b: Building = dir.building()
@@ -759,7 +789,7 @@ func ev_dawn_light() -> void:
 	Audio.stop_ambient(&"amb_drone_high", 3.0)
 	# 外で鴉が鳴きはじめる
 	for i in 3:
-		await get_tree().create_timer(secs * 0.28).timeout
+		await Events.wait(secs * 0.28)
 		if Game.state == Game.State.ENDING:
 			return
 		Audio.play_at(&"crow_morning", Vector3(13.0, 3.0, 6.0), -10.0 + i * 3.0, 1.0, 40.0)

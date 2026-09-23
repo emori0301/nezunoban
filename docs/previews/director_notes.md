@@ -279,6 +279,29 @@ QA は `--scare=body_rises` で単体発火できる。
 
 `--reload-test=4` で 30 秒走らせて 6 回再読み込みし、エラーも警告も出ないことを確認した。
 
+## review_1.md の指摘への対応(director 分)
+
+| 番号 | 直したこと |
+|---|---|
+| H1 | `get_tree().create_timer()` 56 か所を `Events.wait()`(ポーズを尊重)に置換。終盤の灯し直し猶予、丑三つ時の連続消火、エンディングの間、autoplay の待ちがポーズ中に進まなくなった |
+| H5 | `apply_past` の猫の起動を `_activate_cats_when_ready()` に変更。物理フレームを 2 回待ってからナビを使う。`--time=23:30` / `04:00` で NavigationServer エラーが出ないことを確認 |
+| H6 | `Endings.decide()` に `relight_done` を条件追加。終盤の灯し直しを 3 回終えていないまま 05:00 を迎えたら火車エンド。`_finish_finale()` でフラグを立てる |
+| M5 | `_finish_finale()` と代わりエンドで `Door_Hikaeshitsu.enabled` を戻し `Spot` を解放。息子が寝ていない夜は `_install_hikaeshitsu_choice()` 自体を打ち切る |
+| M6 | `_wait_event` を `Events.wait_event()` に、`_wait_signal_or_timeout` を接続を必ず外す実装に変更 |
+| M4 | `face_off` / `_walk` の `teleport_to` を `NpcUtil.snap()` 経由に。孫娘と息子は teleport せず(`face_off(who, false)`)、式場から館の西側へ行くときは廊下の合流点 `(3, 0, 0)` を経由(`Director.walk_via_hall`)。それでも着けなかったときだけ位置を合わせる。自動プレイ 4 本で「到達できないので打ち切り」が 0 件になった |
+| 補足 | `--time=` で過去のイベントの結果を組み立てるあいだ独白を出さない(`Director.monologue()` と `set_quiet()`)。04:58 のスクショに「灯りが全部落ちた。」が残っていた件 |
+
+### ついでに直したもの: 導入中の線香で異変度が溜まる
+
+導入のあいだ `Clock` は止まっているが線香は実時間で燃えるので、会話が長引くほど
+`incense_out` が積み上がって異変度が上がっていた(自動プレイの kasha で 54 まで行った)。
+`_setup_static()` で `IncenseStand.dread_on_out = 0` にしておき、導入が終わった時点
+(`_arm_incense_dread()`)で 1 に戻す。`--time=` 起動時も同じ場所で戻している。
+
+あわせて autoplay のタスク選択を `Tasks.current()`(先頭固定)から優先順表
+`Autoplay.TASK_ORDER` に変えた。kasha モードは導入後の線香タスクを飛ばすので、
+先頭に居座る線香タスクで以後の用事に進めなくなる問題が出ていた。
+
 ## 未解決・判断したこと
 
 ### 丑三つ時の長さを 2 分から 20 ゲーム分に変えた

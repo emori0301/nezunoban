@@ -343,7 +343,7 @@ func zabuton_before_coffin() -> bool:
 	Game.set_flag(&"scare_zabuton_coffin", true)
 	for i in 3:
 		spawn_prop("zabuton", Vector3(15.45, 0.03, -1.5 + i * 1.0), 90.0)
-	Dialogue.monologue(ScriptText.M_ZABUTON)
+	dir.monologue(ScriptText.M_ZABUTON)
 	return true
 
 
@@ -400,9 +400,9 @@ func ceiling_steps() -> bool:
 	for i in 3:
 		var pos := base + Vector3(rng.randf_range(-1.2, 1.2), 0, rng.randf_range(-1.2, 1.2))
 		Audio.play_at(StringName("footstep_ceiling_%d" % (i + 1)), pos, 0.0, 1.0, 12.0)
-		await get_tree().create_timer(rng.randf_range(0.28, 0.45)).timeout
+		await Events.wait(rng.randf_range(0.28, 0.45))
 	if rng.randf() < 0.5:
-		Dialogue.monologue(ScriptText.M_CEILING)
+		dir.monologue(ScriptText.M_CEILING)
 	return true
 
 
@@ -419,7 +419,7 @@ func smoke_sideways() -> bool:
 	if inc == null or not bool(inc.get(&"is_burning")):
 		return false
 	inc.call(&"set_wind", Vector3(0.9, 0, -0.4))
-	await get_tree().create_timer(9.0).timeout
+	await Events.wait(9.0)
 	if is_instance_valid(inc):
 		inc.call(&"set_wind", Vector3.ZERO)
 	return true
@@ -472,7 +472,7 @@ func clock_reverse() -> bool:
 			(arm as Node3D).rotation_degrees.z += d * 60.0 * float(arm.get_meta(&"rate", 1.0))
 		await get_tree().process_frame
 	if rng.randf() < 0.8:
-		Dialogue.monologue(ScriptText.M_CLOCK)
+		dir.monologue(ScriptText.M_CLOCK)
 	return true
 
 
@@ -503,9 +503,9 @@ func hall_flicker_shadow() -> bool:
 	fig.visible = false
 	b.flicker(&"Room_Hall", 2.4)
 	for i in 5:
-		await get_tree().create_timer(0.24).timeout
+		await Events.wait(0.24)
 		fig.visible = not fig.visible
-	await get_tree().create_timer(1.2).timeout
+	await Events.wait(1.2)
 	if is_instance_valid(fig):
 		fig.queue_free()
 		_spawned.erase(fig)
@@ -517,7 +517,7 @@ func hall_figure(model: String = "kasha", seconds: float = 1.4) -> void:
 	var fig := spawn_figure(model, Vector3(6.4, 0.0, -7.1), 0.0, false, &"idle")
 	glitch(0.35)
 	Audio.play_at(&"kasha_growl", fig.global_position, -8.0)
-	await get_tree().create_timer(seconds).timeout
+	await Events.wait(seconds)
 	if is_instance_valid(fig):
 		fig.queue_free()
 		_spawned.erase(fig)
@@ -543,7 +543,7 @@ func robe_sway() -> void:
 		var amp := clampf(3.0 + _robe_visits * 3.0, 3.0, 16.0)
 		tw.tween_property(robe, "rotation_degrees:z", amp, 1.1)
 		tw.tween_property(robe, "rotation_degrees:z", -amp, 1.1)
-	Dialogue.monologue(ScriptText.M_YUKAN)
+	dir.monologue(ScriptText.M_YUKAN)
 
 
 func robe_drop() -> void:
@@ -591,7 +591,7 @@ func paw_prints() -> void:
 			d.rotation_degrees = Vector3(0, y, 0)
 			attach(d)
 			left = not left
-	Dialogue.monologue(ScriptText.M_PAW)
+	dir.monologue(ScriptText.M_PAW)
 
 
 ## 濡れた足跡。暗い廊下でも見えるように、わずかに濡れ光らせる。
@@ -635,10 +635,10 @@ func tv_player_back() -> bool:
 		return false
 	if not bool(tv.get(&"is_on")):
 		tv.call(&"turn_on")
-		await get_tree().create_timer(0.6).timeout
+		await Events.wait(0.6)
 	tv.call(&"show_player_back", 4.0)
 	glitch(0.3)
-	await get_tree().create_timer(5.0).timeout
+	await Events.wait(5.0)
 	if is_instance_valid(tv) and bool(tv.get(&"is_on")):
 		tv.call(&"turn_off")
 	return true
@@ -653,7 +653,7 @@ func monitor_ghost_genkan() -> bool:
 	mon.set(&"auto_switch", false)
 	mon.call(&"switch_feed", 1)
 	mon.call(&"glitch", 0.7)
-	await get_tree().create_timer(9.0).timeout
+	await Events.wait(9.0)
 	if is_instance_valid(fig):
 		fig.queue_free()
 		_spawned.erase(fig)

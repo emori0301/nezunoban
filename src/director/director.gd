@@ -18,6 +18,7 @@ const POS_OFFICE_DESK := Vector3(-7.0, 0.0, 5.2)
 const POS_SHIKIJO_COFFIN := Vector3(15.2, 0.0, -1.9)
 const POS_SHIKIJO_BACK := Vector3(10.35, 0.0, 1.1)
 const POS_GENKAN_INSIDE := Vector3(-9.6, 0.0, 0.0)
+const POS_HALL_JUNCTION := Vector3(3.0, 0.0, 0.0)
 const POS_HIKAESHITSU_ZABUTON := Vector3(-1.35, 0.0, 3.8)
 const POS_OFFICE_NOTE := Vector3(-8.85, 0.76, 6.15)
 const POS_YUKAN_NOTE := Vector3(7.3, 0.87, -9.55)
@@ -52,6 +53,7 @@ var _fallback_t: float = 0.0
 var _event_log: Array[String] = []
 var _last_event_minute: int = -99
 var _drone: StringName = &""
+var _applying_past: bool = false
 
 
 # ============================================================ 起動
@@ -126,6 +128,7 @@ func _boot() -> void:
 		if p and p.has_method(&"set_locked"):
 			p.set_locked(false)
 		scares.set_room_ambience(building().current_room if building() else &"Room_Genkan")
+		_arm_incense_dread()
 		Clock.start()
 	else:
 		await play_intro()
@@ -133,7 +136,7 @@ func _boot() -> void:
 
 
 func _reload_loop(sec: float) -> void:
-	await get_tree().create_timer(maxf(sec, 1.0)).timeout
+	await Events.wait(maxf(sec, 1.0))
 	if is_inside_tree():
 		print("[dir] reload-test: reload_current_scene")
 		get_tree().reload_current_scene()
@@ -149,7 +152,7 @@ const SCARE_ARGS := {
 
 ## 脅かしを1つだけ撃つ。--screenshot / --cctv-shot と組み合わせて使う。
 func _fire_scare(n: String) -> void:
-	await get_tree().create_timer(0.7).timeout
+	await Events.wait(0.7)
 	match n:
 		"body_rises":                 # QA: 火車エンド直前の起き上がり
 			_body_rises()
@@ -197,7 +200,7 @@ func _fire_scare(n: String) -> void:
 
 ## 監視モニターの SubViewport をそのまま PNG に落とす(QA 専用)
 func _grab_cctv(path: String, wait: float) -> void:
-	await get_tree().create_timer(maxf(wait, 0.5)).timeout
+	await Events.wait(maxf(wait, 0.5))
 	var mon := sys(&"monitor")
 	if mon == null or not mon.has_method(&"get_viewport_node"):
 		printerr("CCTV: モニターが見つからない")
@@ -207,7 +210,7 @@ func _grab_cctv(path: String, wait: float) -> void:
 	if args.has("cctv-feed"):
 		mon.set(&"auto_switch", false)
 		mon.call(&"switch_feed", int(String(args["cctv-feed"])))
-		await get_tree().create_timer(0.6).timeout
+		await Events.wait(0.6)
 	var vp: SubViewport = mon.call(&"get_viewport_node")
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
@@ -304,6 +307,19 @@ func npc_all(id: StringName) -> Array:
 	return out
 
 
+## 独白。--time= で過去のイベントの結果だけを適用しているあいだは出さない
+## (04:58 に「灯りが全部落ちた。」が出る、のような取り残しを防ぐ)。
+## 台本の結果だけを組み立てるあいだ、独白を黙らせる。
+func set_quiet(on: bool) -> void:
+	_applying_past = on
+
+
+func monologue(text: String) -> void:
+	if _applying_past or Game.state == Game.State.ENDING:
+		return
+	await Dialogue.monologue(text)
+
+
 func matches_pickup() -> Node:
 	return sys(&"matches")
 
@@ -330,6 +346,9 @@ func _setup_static() -> void:
 	var inc := sys(&"incense_stand")
 	if inc:
 		inc.set(&"no_stock_line", ScriptText.M_INCENSE_NONE)
+		# 導入(チュートリアル)のあいだは Clock が止まっているのに線香は実時間で燃える。
+		# ここで消えたぶんを数えると、会話が長引くほど異変度が上がってしまう。
+		inc.set(&"dread_on_out", 0)
 	var gb := sys(&"guest_book")
 	if gb:
 		gb.call(&"set_lines", ScriptText.GUEST_BOOK)
@@ -421,6 +440,12 @@ func spawn_son_asleep(with_sound: bool = true) -> void:
 
 ## その時刻より前のイベントの「結果」だけを適用する。--time= と QA に必須。
 func apply_state_for_time(m: int) -> void:
+	_applying_past = true
+	_apply_state_body(m)
+	_applying_past = false
+
+
+func _apply_state_body(m: int) -> void:
 	_setup_static()
 	var b := building()
 	var inc := sys(&"incense_stand")
@@ -493,7 +518,7 @@ func _connect_events() -> void:
 	var fz := sys(&"freezer")
 	if fz and fz.has_signal(&"found_empty"):
 		fz.connect(&"found_empty", func():
-			Dialogue.monologue(ScriptText.M_FREEZER_EMPTY)
+			monologue(ScriptText.M_FREEZER_EMPTY)
 			Tasks.complete(&"dry_ice"))
 	var gb := sys(&"guest_book")
 	if gb and gb.has_signal(&"viewed"):
@@ -511,7 +536,7 @@ func _connect_events() -> void:
 func _on_incense_out() -> void:
 	if Game.state == Game.State.ENDING:
 		return
-	Dialogue.monologue(ScriptText.M_INCENSE_OUT)
+	monologue(ScriptText.M_INCENSE_OUT)
 	Tasks.set_task(&"incense", ScriptText.TASK_INCENSE)
 
 
@@ -533,7 +558,7 @@ func _on_flag_changed(key: StringName, value: Variant) -> void:
 		Game.set_flag(&"stock_box_out", true)
 		enable_stock_box()
 		Tasks.set_task(&"incense_stock", ScriptText.TASK_INCENSE_STOCK)
-		Dialogue.monologue(ScriptText.M_INCENSE_NONE)
+		monologue(ScriptText.M_INCENSE_NONE)
 	elif int(value) > 0 and Game.get_flag(&"stock_box_out", false):
 		Game.set_flag(&"stock_box_out", false)
 		Tasks.complete(&"incense_stock")
@@ -579,7 +604,7 @@ func _on_phone_answered() -> void:
 		_:
 			var ph := sys(&"phone")
 			if ph:
-				await get_tree().create_timer(2.0).timeout
+				await Events.wait(2.0)
 				ph.call(&"hang_up")
 
 
@@ -614,11 +639,11 @@ func _on_page_read(n: int) -> void:
 func _on_guest_book_viewed() -> void:
 	if int(Clock.game_minutes) >= 180:
 		scares.guest_book_self_name()
-		Dialogue.monologue(ScriptText.M_GUEST_BOOK)
+		monologue(ScriptText.M_GUEST_BOOK)
 
 
 func _on_cat_entered() -> void:
-	Dialogue.monologue(ScriptText.M_CAT)
+	monologue(ScriptText.M_CAT)
 	Tasks.set_task(&"cat", ScriptText.TASK_CAT)
 
 
@@ -770,7 +795,7 @@ func _body_rises() -> void:
 		p.look_at_point(c3.global_position + Vector3(0, 0.9, 0), 0.6)
 	if br.has_method(&"rise"):
 		br.call(&"rise")
-	await get_tree().create_timer(2.0).timeout
+	await Events.wait(2.0)
 
 
 ## 火車に追いつかれた
@@ -790,7 +815,7 @@ func kasha_catches() -> void:
 	var h := hud()
 	if h and h.has_method(&"flash"):
 		h.flash(Color(0.6, 0.0, 0.0), 0.5)
-	await get_tree().create_timer(1.6).timeout
+	await Events.wait(1.6)
 	Audio.set_muffled(false)
 	finish(Game.ENDING_KASHA)
 
@@ -808,15 +833,15 @@ func kasha_takes_son() -> void:
 		if k.has_signal(&"took_target"):
 			await _wait_signal_or_timeout(k, &"took_target", 12.0)
 	else:
-		await get_tree().create_timer(1.2).timeout
+		await Events.wait(1.2)
 	Audio.play(&"kasha_screech", 0.0)
 	scares.glitch(1.0)
 	Audio.play_at(&"tatami_creak", POS_HIKAESHITSU_ZABUTON, 4.0)
-	await get_tree().create_timer(1.4).timeout
+	await Events.wait(1.4)
 	Audio.play(&"kasha_growl", -2.0)
 	_fallback_chase = false
 	timeline._finish_finale()
-	await get_tree().create_timer(2.0).timeout
+	await Events.wait(2.0)
 	if int(Clock.game_minutes) < 475:
 		Clock.skip_to(475)
 
@@ -824,11 +849,14 @@ func kasha_takes_son() -> void:
 func _wait_signal_or_timeout(obj: Object, sig: StringName, seconds: float) -> void:
 	var done := [false]
 	var cb := func(_a = null): done[0] = true
-	obj.connect(sig, cb, CONNECT_ONE_SHOT)
+	obj.connect(sig, cb)
 	var t := 0.0
 	while not done[0] and t < seconds:
 		await get_tree().process_frame
-		t += get_process_delta_time()
+		if not get_tree().paused:
+			t += get_process_delta_time()
+	if obj.is_connected(sig, cb):
+		obj.disconnect(sig, cb)
 
 
 # ============================================================ 終わり
@@ -857,7 +885,7 @@ func play_intro() -> void:
 	if p and p.has_method(&"set_locked"):
 		p.set_locked(true)
 	scares.set_room_ambience(&"Room_Genkan")
-	await get_tree().create_timer(0.8).timeout
+	await Events.wait(0.8)
 	if h and h.has_method(&"fade_in"):
 		await h.fade_in(2.6)
 	if p and p.has_method(&"set_locked"):
@@ -887,7 +915,7 @@ func play_intro() -> void:
 	Audio.play(&"paper_rustle", -4.0)
 	if h and h.has_method(&"toggle_clipboard") and not Dialogue.auto_advance:
 		h.toggle_clipboard()
-		await get_tree().create_timer(3.4).timeout
+		await Events.wait(3.4)
 		if h.has_method(&"toggle_clipboard"):
 			h.toggle_clipboard()
 
@@ -906,7 +934,7 @@ func play_intro() -> void:
 	# --- 孫娘 ---
 	if hikari:
 		hikari.call(&"set_active", true)
-		await face_off(hikari)
+		await face_off(hikari, false)
 	await _say_lines(ScriptText.SPEAKER_HIKARI, ScriptText.HIKARI)
 	var page1 := _make_note(Vector3(15.1, 0.9, 1.1), ScriptText.PAGE1_TITLE, ScriptText.PAGE1_BODY, 1)
 	if page1:
@@ -914,8 +942,7 @@ func play_intro() -> void:
 		page1.visible = false
 		await page1.read()
 	await _say_lines(ScriptText.SPEAKER_HIKARI, ScriptText.HIKARI_AFTER)
-	if hikari and hikari.has_method(&"leave_via_genkan"):
-		hikari.call(&"leave_via_genkan")
+	_send_home(hikari)
 
 	# --- 社長が帰る ---
 	await _walk(boss, POS_GENKAN_INSIDE)
@@ -934,11 +961,12 @@ func play_intro() -> void:
 		var d: Door = b.get_door(&"Door_Genkan") if b else null
 		if d:
 			d.open(true)
-			await get_tree().create_timer(1.4).timeout
+			await Events.wait(1.4)
 			d.close()
 
 	# --- 勝手口 ---
 	Tasks.set_task(&"backdoor", ScriptText.TASK_BACKDOOR)
+	_arm_incense_dread()
 	Game.set_flag(&"intro_done", true)
 	intro_running = false
 	log_event("intro_done")
@@ -949,9 +977,43 @@ func _say_lines(speaker: String, lines: Array) -> void:
 		await Dialogue.say(speaker, String(l))
 
 
+## 導入が終わったら、線香を絶やした罰を有効にする。
+func _arm_incense_dread() -> void:
+	var inc := sys(&"incense_stand")
+	if inc:
+		inc.set(&"dread_on_out", 1)
+
+
+## 玄関まで歩かせてから帰す。式場から直接 leave_via_genkan すると
+## 経路が作れずその場で消える(review M4)。
+func _send_home(who) -> void:
+	if who == null:
+		return
+	await walk_via_hall(who, POS_GENKAN_INSIDE)
+	if who.has_method(&"leave_via_genkan"):
+		who.call(&"leave_via_genkan")
+	else:
+		Events.emit_event(&"npc_left", {"name": who.get(&"npc_id")})
+
+
+## 式場から館の西側へ一息に歩かせると、経路はあるのに途中で詰まる。
+## 廊下の合流点を経由させると通る(review M4)。
+func walk_via_hall(who, dest: Vector3) -> void:
+	if who == null or not who.has_method(&"go_to"):
+		return
+	var n3 := who as Node3D
+	if n3 and n3.global_position.x > 7.0 and dest.x < 7.0:
+		await who.call(&"go_to", _snap_nav(POS_HALL_JUNCTION))
+	await who.call(&"go_to", _snap_nav(dest))
+	# 折りたたみ椅子の列で挟まって動けなくなることがある(npc/level 側の課題)。
+	# 台本が止まらないよう、着けなかったときだけ位置を合わせる。
+	if n3 and n3.global_position.distance_to(dest) > 2.5 and who.has_method(&"teleport_to"):
+		who.call(&"teleport_to", _snap_nav(dest))
+
+
 ## 会話の前に、プレイヤーから TALK_DISTANCE だけ離れた位置で向き合わせる。
 ## NPC がカメラに密着すると顔が画面いっぱいになるので、台詞の前に必ず通す。
-func face_off(who) -> void:
+func face_off(who, allow_teleport: bool = true) -> void:
 	if who == null:
 		return
 	var p := Game.player
@@ -967,27 +1029,36 @@ func face_off(who) -> void:
 		# 真上に乗っているときはプレイヤーの正面へ回り込ませる
 		away = -p.global_transform.basis.z
 		away.y = 0.0
-	var target := to + away.normalized() * TALK_DISTANCE
-	target.y = 0.0
+	var target := _snap_nav(to + away.normalized() * TALK_DISTANCE)
 	if who.has_method(&"go_to") and npc3.global_position.distance_to(target) > 0.5:
 		await who.call(&"go_to", target)
-	# 歩いているあいだにプレイヤーが動いていることがあるので、現在位置から測り直す
-	if npc3.global_position.distance_to(p.global_position) > TALK_DISTANCE + 1.5 \
+	# 歩いているあいだにプレイヤーが動いていることがあるので、現在位置から測り直す。
+	# このあと自力で歩いて帰る NPC(孫娘)は飛ばすと経路を作れなくなるので teleport しない。
+	if allow_teleport and npc3.global_position.distance_to(p.global_position) > TALK_DISTANCE + 1.5 \
 			and who.has_method(&"teleport_to"):
 		var away2 := npc3.global_position - p.global_position
 		away2.y = 0.0
 		if away2.length() < 0.6:
 			away2 = -p.global_transform.basis.z
 			away2.y = 0.0
-		var t2 := p.global_position + away2.normalized() * TALK_DISTANCE
-		t2.y = 0.0
-		who.call(&"teleport_to", t2)
+		who.call(&"teleport_to", _snap_nav(p.global_position + away2.normalized() * TALK_DISTANCE))
 	if who.has_method(&"face_player"):
 		who.call(&"face_player")
 	look_at_npc(who)
 	if Game.debug or autoplay != null:
 		var d := npc3.global_position.distance_to(p.global_position)
 		print("[dir] face_off %s dist=%.2fm" % [String(who.get(&"npc_id")), d])
+
+
+## ナビメッシュ上のいちばん近い点に寄せる。
+## ここを通さずに teleport_to すると、以後その NPC は経路を作れなくなる(review M4)。
+func _snap_nav(pos: Vector3) -> Vector3:
+	var out := pos
+	out.y = 0.0
+	var p := Game.player
+	if p == null or not p.is_inside_tree():
+		return out
+	return NpcUtil.snap(p.get_world_3d(), out)
 
 
 ## プレイヤーの視線を NPC の顔(Head)へ向ける。
@@ -1005,14 +1076,14 @@ func look_at_npc(who) -> void:
 
 func _walk(who, pos: Vector3) -> void:
 	if who == null or not who.has_method(&"go_to"):
-		await get_tree().create_timer(0.35 if Dialogue.auto_advance else 1.2).timeout
+		await Events.wait(0.35 if Dialogue.auto_advance else 1.2)
 		return
 	await who.call(&"go_to", pos)
 	# ナビが通らなかったときは位置だけ合わせる。
 	# (Spawn_Boss が受付台の裏の 0.7m の隙間にあり、ナビメッシュが届かない。npc/level に依頼済み)
 	var n3 := who as Node3D
 	if n3 and n3.global_position.distance_to(pos) > 1.6 and who.has_method(&"teleport_to"):
-		who.call(&"teleport_to", pos)
+		who.call(&"teleport_to", _snap_nav(pos))
 	if who.has_method(&"face_player"):
 		who.call(&"face_player")
 
@@ -1026,10 +1097,4 @@ func _wait_talk(who) -> void:
 
 
 func _wait_event(name: StringName, timeout: float = 120.0) -> void:
-	var done := [false]
-	var cb := func(_d): done[0] = true
-	Events.on(name, cb)
-	var t := 0.0
-	while not done[0] and t < timeout:
-		await get_tree().process_frame
-		t += get_process_delta_time()
+	await Events.wait_event(name, timeout)
