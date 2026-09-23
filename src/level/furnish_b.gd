@@ -323,7 +323,7 @@ static func _yukan(b: Building) -> void:
 		"hinge_side": 1.0, "swing_degrees": -92.0, "locked": true,
 		"panel_color": Color(0.90, 0.94, 0.92), "panel_tex": "wall_plaster",
 	})
-	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "湯灌室", Vector3(5.72, 1.62, -7.41), 0.0)
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "湯灌室", Vector3(5.72, 1.55, -7.41), 0.0)
 
 
 # -------------------------------------------------------------------- 外周
@@ -499,6 +499,20 @@ static func _outside(b: Building) -> void:
 		LevelMaterials.plain(Color(0.18, 0.18, 0.19)), false, "", false)
 	var cam := b.add_anchor(R, "Anchor_Cam_Genkan", Vector3(-11.24, 2.08, 1.66), 0.0)
 	_aim(cam, Vector3(-13.9, 0.75, -0.35))
+
+	# 窓の外の薄い外光。屋内から窓の位置が分かるように、外側から窓を舐める。
+	for wl in [[13.0, 1.75, 4.2], [0.7, 1.75, 4.3], [-8.0, 1.65, 10.7], [-3.0, 1.4, 5.4]]:
+		var wlight := OmniLight3D.new()
+		wlight.name = "Light_WindowGlow"
+		wlight.position = Vector3(wl[0], wl[1], wl[2])
+		wlight.light_color = Color(0.62, 0.72, 0.92)
+		wlight.light_energy = 0.5
+		wlight.omni_range = 3.0
+		wlight.omni_attenuation = 1.3
+		wlight.shadow_enabled = false
+		wlight.light_specular = 0.0
+		node.add_child(wlight)
+		b.add_light(R, wlight)
 
 	# スポーン(息子は玄関の外、猫は外周の各所)
 	b.add_anchor(R, "Spawn_Son", Vector3(-13.2, 0.0, 0.0), -90.0)

@@ -453,7 +453,7 @@ func _build_environment() -> void:
 	env.sky_custom_fov = 0.0
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.11, 0.13, 0.20)
-	env.ambient_light_energy = 0.055
+	env.ambient_light_energy = 0.083
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.055, 0.062, 0.085)
 	env.fog_light_energy = 1.0
@@ -552,7 +552,7 @@ func _build_walls() -> void:
 	LevelBuild.wall(holder, -11.0, -4.0, -4.0, -4.0, 2.9, plaster)
 	# 廊下の北面(バックヤードとの境 / 廊下 L 字の合流部は開口)
 	LevelBuild.wall(holder, -4.0, -1.1, 7.5, -1.1, 2.9, plaster,
-		[{"t": 10.4, "w": 2.2, "sill": 0.0, "head": 2.35}])
+		[{"t": 10.4, "w": 2.2, "sill": 0.0, "head": 2.9}])
 	_threshold(6.4, -1.1, true, 2.2)
 	# 廊下の南面(控室の戸・トイレの戸・外壁)
 	LevelBuild.wall(holder, -4.0, 1.1, 7.5, 1.1, 2.9, plaster,

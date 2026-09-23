@@ -207,7 +207,7 @@ static func _office(b: Building) -> void:
 		"door_thickness": 0.045, "hinge_side": 1.0,
 		"panel_color": Color(1.75, 1.95, 2.15), "upper_glass": true,
 	})
-	LevelBuild.name_plate(node, "事務所", Vector3(-8.72, 1.62, 3.90), 180.0)
+	LevelBuild.name_plate(node, "事務所", Vector3(-8.72, 1.55, 3.90), 180.0)
 
 
 # ------------------------------------------------------------------------ 廊下
@@ -246,15 +246,10 @@ static func _hall(b: Building) -> void:
 
 	# 蛍光灯(等間隔)。突き当たり(z <= -6.5)には灯りを置かない → 暗い。
 	for x in [-2.4, 0.6, 3.4, 5.5]:
-		b.add_fluorescent(R, Vector3(x, 2.42, 0.0), 1.15, COOL, 0.8, 4.8, true)
+		b.add_fluorescent(R, Vector3(x, 2.42, 0.0), 1.15, COOL, 0.8, 5.8, true)
 	for z in [-3.0, -5.4]:
-		b.add_fluorescent(R, Vector3(6.4, 2.42, z), 1.15, COOL, 0.62, 4.2, true)
+		b.add_fluorescent(R, Vector3(6.4, 2.42, z), 1.15, COOL, 0.62, 5.0, true)
 
-	# 非常口サイン。廊下の両端と、L 字の突き当たり(湯灌室の扉の上)。
-	# 全消灯でも消えないので、真っ暗な廊下でも進む向きが分かる。
-	b.add_exit_sign(R, Vector3(-3.2, 2.28, 0.0), 90.0)
-	b.add_exit_sign(R, Vector3(7.16, 2.3, 0.0), -90.0)
-	b.add_exit_sign(R, Vector3(6.4, 2.2, -7.3), 0.0)
 
 	# 式場の入口(引き分け戸)
 	b.add_door(R, "Door_Shikijo", Vector3(7.5, 0.0, 0.0), 90.0, {
@@ -262,7 +257,7 @@ static func _hall(b: Building) -> void:
 		"door_thickness": 0.07, "framed": true,
 		"panel_color": Color(1.35, 1.45, 1.55),
 	})
-	LevelBuild.name_plate(node, "式場", Vector3(7.40, 1.65, -1.0), -90.0)
+	LevelBuild.name_plate(node, "式場", Vector3(7.40, 1.55, -1.0), -90.0)
 
 
 # -------------------------------------------------------------------- 控室(和室)
@@ -307,30 +302,45 @@ static func _hikaeshitsu(b: Building) -> void:
 	LevelBuild.box(node, Vector3(-0.95, 0.21, 1.75), Vector3(0.78, 0.42, 0.48), wood)
 	b.add_anchor_prop(R, "Anchor_TV", "tv_crt", Vector3(-0.95, 0.42, 1.75), 135.0,
 		Vector3(0.54, 0.45, 0.47), Color(0.22, 0.21, 0.2), false, -45.0)
-	# 押入れ(襖)
-	LevelBuild.box(node, Vector3(-1.25, 1.0, 4.4), Vector3(1.52, 2.0, 0.48), wood)
-	for fx in [-1.63, -0.87]:
-		LevelBuild.box(node, Vector3(fx, 1.0, 4.14), Vector3(0.72, 1.92, 0.03),
-			LevelMaterials.plain(Color(0.68, 0.64, 0.55)), false, "", false)
+	# 押入れ。開けられる引き戸(Door_Oshiire)にして、中に布団と段ボールを積む。
+	var dark := LevelMaterials.get_mat_tinted("wall_wood", 2.0, Color(0.30, 0.24, 0.17))
+	# 奥・左右・天井・中棚。前面は開口にして戸を入れる。
+	LevelBuild.box(node, Vector3(-1.25, 1.1, 4.60), Vector3(1.60, 2.2, 0.06), dark)
+	LevelBuild.box(node, Vector3(-2.04, 1.1, 4.39), Vector3(0.06, 2.2, 0.48), dark)
+	LevelBuild.box(node, Vector3(-0.46, 1.1, 4.39), Vector3(0.06, 2.2, 0.48), dark)
+	LevelBuild.box(node, Vector3(-1.25, 1.83, 4.39), Vector3(1.52, 0.06, 0.48), dark, false, "", false)
+	LevelBuild.box(node, Vector3(-1.25, 0.90, 4.39), Vector3(1.52, 0.05, 0.46), dark, false, "", false)
+	LevelBuild.box(node, Vector3(-1.25, 2.12, 4.39), Vector3(1.60, 0.52, 0.50), wood)
+	# 中身: 畳んだ布団の山と段ボール
+	LevelBuild.merge_boxes(node, [
+		[Vector3(-1.55, 1.02, 4.40), Vector3(0.78, 0.18, 0.40)],
+		[Vector3(-1.55, 1.20, 4.40), Vector3(0.76, 0.17, 0.39)],
+		[Vector3(-1.55, 1.37, 4.40), Vector3(0.74, 0.16, 0.38)],
+	], LevelMaterials.plain(Color(0.58, 0.56, 0.52)), "OshiireFuton")
+	LevelBuild.merge_boxes(node, [
+		[Vector3(-1.62, 0.20, 4.40), Vector3(0.44, 0.34, 0.36)],
+		[Vector3(-0.82, 0.18, 4.42), Vector3(0.40, 0.32, 0.34)],
+		[Vector3(-0.82, 0.50, 4.42), Vector3(0.38, 0.30, 0.32)],
+	], LevelMaterials.plain(Color(0.40, 0.32, 0.21)), "OshiireCartons")
+	b.add_door(R, "Door_Oshiire", Vector3(-1.25, 0.0, 4.16), 0.0, {
+		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.5, "door_height": 1.80,
+		"door_thickness": 0.035, "build_frame": false,
+		"panel_tex": "wall_plaster", "panel_color": Color(1.02, 0.98, 0.86),
+	})
 
-	# 障子窓(南の壁、開口 x = -3.0)
-	LevelBuild.box(node, Vector3(-3.0, 1.25, 4.64), Vector3(1.38, 1.38, 0.03),
-		LevelMaterials.translucent(Color(0.86, 0.84, 0.76), 0.75), false, "", false)
-	for gx in [-3.46, -3.0, -2.54]:
-		LevelBuild.box(node, Vector3(gx, 1.25, 4.62), Vector3(0.025, 1.38, 0.02), wood, false, "", false)
-	for gy in [0.72, 1.25, 1.78]:
-		LevelBuild.box(node, Vector3(-3.0, gy, 4.62), Vector3(1.38, 0.025, 0.02), wood, false, "", false)
+	# 障子窓(南の壁、開口 x = -3.0)。開けると駐車場が見える。
+	b.add_window(R, "Window_Hikaeshitsu", Vector3(-3.0, 1.25, 4.7), 0.0,
+		{"pane_width": 1.36, "pane_height": 1.36})
 
-	# 湯呑みと急須
-	var cup := LevelMaterials.plain(Color(0.72, 0.70, 0.64))
-	for cp in [[-1.62, 2.76], [-1.08, 2.82], [-1.38, 3.28]]:
-		LevelBuild.box(node, Vector3(cp[0], 0.375, cp[1]), Vector3(0.07, 0.07, 0.07), cup, false, "", false)
-	b.add_prop(R, "Kyusu", "kettle", Vector3(-1.60, 0.34, 3.22), 200.0,
-		Vector3(0.17, 0.15, 0.17), Color(0.32, 0.28, 0.24), false, false)
-	# 座布団の山(テレビ台の脇)
-	for si in 4:
-		b.add_prop(R, "ZabutonStack_%d" % si, "zabuton", Vector3(-0.78, si * 0.075, 2.45),
-			si * 7.0, Vector3(0.55, 0.08, 0.55), Color(0.35, 0.16, 0.16), false, false)
+	# 奥の壁の鏡と柱時計
+	LevelBuild.box(node, Vector3(-3.92, 1.45, 2.2), Vector3(0.05, 0.62, 0.46), wood)
+	LevelBuild.box(node, Vector3(-3.89, 1.45, 2.2), Vector3(0.02, 0.52, 0.38),
+		LevelMaterials.plain(Color(0.16, 0.18, 0.20), 0.3), false, "", false)
+	LevelBuild.box(node, Vector3(-0.52, 1.35, 3.70), Vector3(0.11, 0.74, 0.26), wood)
+	LevelBuild.box(node, Vector3(-0.575, 1.55, 3.70), Vector3(0.02, 0.24, 0.20),
+		LevelMaterials.plain(Color(0.78, 0.76, 0.70)), false, "", false)
+	LevelBuild.box(node, Vector3(-0.575, 1.14, 3.70), Vector3(0.02, 0.30, 0.05),
+		LevelMaterials.plain(Color(0.55, 0.45, 0.24)), false, "", false)
 
 	b.add_fluorescent(R, Vector3(-2.0, 2.3, 2.9), 0.9, Color(1.0, 0.93, 0.79), 0.8, 4.6, true)
 
@@ -339,7 +349,7 @@ static func _hikaeshitsu(b: Building) -> void:
 		"door_thickness": 0.04, "hinge_side": -1.0, "lattice": true,
 		"panel_color": Color(1.70, 1.90, 2.10),
 	})
-	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "控室", Vector3(-2.95, 1.62, 1.00), 180.0)
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "控室", Vector3(-2.95, 1.55, 1.00), 180.0)
 
 
 # ------------------------------------------------------------------- トイレ
@@ -362,7 +372,7 @@ static func _toilet(b: Building) -> void:
 
 	b.add_fluorescent(R, Vector3(0.7, 2.2, 2.3), 0.6, Color(0.96, 0.96, 0.92), 0.45, 3.0, false)
 
-	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "便所", Vector3(1.45, 1.62, 1.00), 180.0)
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "便所", Vector3(1.45, 1.55, 1.00), 180.0)
 	b.add_door(R, "Door_Toilet", Vector3(0.7, 0.0, 1.1), 0.0, {
 		"kind": Door.Kind.SWING, "door_width": 0.9, "door_height": 2.0,
 		"panel_color": Color(1.06, 1.05, 1.03), "panel_tex": "wall_plaster",

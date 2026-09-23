@@ -98,7 +98,8 @@ func _build() -> void:
 	cs.shape = bs
 	add_child(cs)
 
-	var fm := LevelMaterials.plain(Color(0.42, 0.42, 0.40))
+	# 枠は壁より明るく。暗い室内でも窓の位置が分かるようにする。
+	var fm := LevelMaterials.plain(Color(0.64, 0.63, 0.59))
 	var half := pane_width * 0.5
 	var hh := pane_height * 0.5
 	# 窓枠(上下・左右)
@@ -107,7 +108,11 @@ func _build() -> void:
 	LevelBuild.box(self, Vector3(-half - 0.03, 0, 0), Vector3(0.07, pane_height, frame_depth), fm, false, "", false)
 	LevelBuild.box(self, Vector3(half + 0.03, 0, 0), Vector3(0.07, pane_height, frame_depth), fm, false, "", false)
 
-	var glass := LevelMaterials.translucent(Color(0.45, 0.52, 0.56), 0.26)
+	# ガラスはごく弱く発光させて、外光を受けている体にする(暗室でも窓が見える)
+	var glass := LevelMaterials.translucent(Color(0.45, 0.52, 0.56), 0.26).duplicate()
+	glass.emission_enabled = true
+	glass.emission = Color(0.42, 0.50, 0.62)
+	glass.emission_energy_multiplier = 0.06
 	# 固定側(右)
 	LevelBuild.box(self, Vector3(half * 0.5, 0, 0.022), Vector3(half, pane_height, 0.02), glass, false, "", false)
 	LevelBuild.box(self, Vector3(half * 0.5, 0, 0.022), Vector3(half, 0.05, 0.03), fm, false, "", false)

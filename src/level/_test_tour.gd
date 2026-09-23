@@ -129,11 +129,11 @@ func _api(b: Node3D) -> void:
 			print("  %-22s pos=(%.2f, %.2f, %.2f) yaw=%.0f" % [a, n.global_position.x,
 				n.global_position.y, n.global_position.z, rad_to_deg(n.global_rotation.y)])
 	for d in ["Door_Genkan", "Door_Backyard", "Door_Shikijo", "Door_Office",
-			"Door_Hikaeshitsu", "Door_Toilet", "Door_Yukan"]:
+			"Door_Hikaeshitsu", "Door_Toilet", "Door_Yukan", "Door_Oshiire"]:
 		var dr = b.get_door(StringName(d))
 		print("  door %-18s %s locked=%s pos=(%.2f, %.2f)" % [d, "OK" if dr else "MISSING",
 			dr.locked if dr else "-", dr.global_position.x if dr else 0.0, dr.global_position.z if dr else 0.0])
-	for w in ["Window_Shikijo", "Window_Toilet", "Window_Office"]:
+	for w in ["Window_Shikijo", "Window_Toilet", "Window_Office", "Window_Hikaeshitsu"]:
 		var wp = b.get_window_pane(StringName(w))
 		print("  window %-16s %s pos=(%.2f, %.2f, %.2f)" % [w, "OK" if wp else "MISSING",
 			wp.global_position.x if wp else 0.0, wp.global_position.y if wp else 0.0,

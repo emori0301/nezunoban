@@ -155,12 +155,22 @@ static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
 	holder.rotation_degrees.y = yaw_deg
 	parent.add_child(holder)
 	var emat := LevelMaterials.emissive(Color(0.13, 0.78, 0.30), 1.7)
-	box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
-	# 非常口の白いピクトグラム代わり
-	box(holder, Vector3(-0.035, 0.0, 0.016), Vector3(0.045, 0.075, 0.006),
-		LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
-	box(holder, Vector3(0.06, 0.0, 0.016), Vector3(0.02, 0.075, 0.006),
-		LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
+	var tex_path := "res://assets/textures/exit_sign.png"
+	if ResourceLoader.exists(tex_path):
+		# models の絵柄(緑地に走る人と矢印)。発光させて板そのものを光らせる。
+		emat.albedo_texture = load(tex_path)
+		emat.emission_texture = emat.albedo_texture
+		emat.albedo_color = Color.WHITE
+		emat.emission = Color.WHITE
+		emat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
+		box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
+	else:
+		box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
+		# 絵柄ができるまでの代用(白い板に見えないよう淡い緑)
+		box(holder, Vector3(-0.035, 0.0, 0.016), Vector3(0.045, 0.075, 0.006),
+			LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
+		box(holder, Vector3(0.06, 0.0, 0.016), Vector3(0.02, 0.075, 0.006),
+			LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
 	# 天吊りの金具
 	box(holder, Vector3(0, 0.11, 0), Vector3(0.36, 0.06, 0.07),
 		LevelMaterials.plain(Color(0.20, 0.20, 0.21)), false, "", false)
@@ -275,20 +285,17 @@ static func prop(parent: Node, node_name: String, model: String, pos: Vector3,
 	parent.add_child(p)
 	return p
 
-## 扉の脇の室名札。小さな木の板に明朝で部屋の名前。
+## 扉の脇の室名札。壁付けの小さなサイン(0.12 x 0.30)。遠目に白い板に見えないよう明度は抑える。
 static func name_plate(parent: Node, text: String, pos: Vector3, yaw_deg: float) -> void:
 	var holder := Node3D.new()
 	holder.name = "NamePlate"
 	holder.position = pos
 	holder.rotation_degrees.y = yaw_deg
 	parent.add_child(holder)
-	box(holder, Vector3.ZERO, Vector3(0.17, 0.46, 0.02),
-		get_plate_mat(), false, "", false)
-	box(holder, Vector3(0, 0, 0.012), Vector3(0.13, 0.4, 0.004),
-		LevelMaterials.plain(Color(0.88, 0.86, 0.80)), false, "", false)
-	var l := sign_text(holder, text, Vector3(0, 0, 0.02), 0.0, 0.1, Color(0.08, 0.08, 0.09), true, 256)
-	l.width = 0.12 / l.pixel_size
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box(holder, Vector3.ZERO, Vector3(0.12, 0.30, 0.018), get_plate_mat(), false, "", false)
+	box(holder, Vector3(0, 0, 0.011), Vector3(0.095, 0.265, 0.004),
+		LevelMaterials.plain(Color(0.60, 0.57, 0.50)), false, "", false)
+	vertical_text(holder, text, Vector3(0, 0.005, 0.016), 0.0, 0.055, Color(0.09, 0.09, 0.10))
 
 
 static func get_plate_mat() -> StandardMaterial3D:
