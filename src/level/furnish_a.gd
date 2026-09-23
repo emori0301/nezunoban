@@ -97,7 +97,7 @@ static func _genkan(b: Building) -> void:
 	# 玄関の自動ドア風(引き分け戸・ガラス)。施錠可。
 	b.add_door(R, "Door_Genkan", Vector3(-11.0, 0.0, 0.0), 90.0, {
 		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.85, "door_height": 2.2,
-		"door_thickness": 0.05, "glass": true, "build_frame": true,
+		"door_thickness": 0.05, "glass": true, "build_frame": true, "lockable": true,
 	})
 
 	# 「忌中」の半紙。自動ドアのガラスに内側から貼った体。花輪に隠れない扉の中央寄り、

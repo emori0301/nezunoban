@@ -349,6 +349,43 @@ func _check(b: Node3D) -> void:
 			trapped, pair2[1], d2, off2, h2, pth2.size()])
 
 	# 廊下北枝の直線掃引。NPC が詰まる区間に何があるか名前で出す。
+	# 施錠のふるまい。猫は open(force=false) で押し開けるので、施錠されていたら失敗すること。
+	print("--- 施錠 ---")
+	for dn in ["Door_Backyard", "Door_Genkan", "Door_Toilet"]:
+		var dr: Door = b.get_door(StringName(dn))
+		if dr == null:
+			print("  [NG ] %-16s 扉が無い" % dn)
+			continue
+		var has_lock := dr.find_child("Lock", false, false) != null
+		if not dr.lockable:
+			print("  [%s] %-16s lockable=false  締り金具 %s" % [
+				"OK " if not has_lock else "NG ", dn, "あり(不要)" if has_lock else "なし"])
+			continue
+		dr.close()
+		dr.locked = false
+		dr.lock()
+		var locked_ok := dr.locked
+		dr.open()                      # 猫の押し開け相当(force なし)
+		var refused := not dr.is_open
+		dr.open(true)                  # director の強制開放
+		var forced := dr.is_open
+		dr.close()
+		dr.unlock()
+		dr.open()
+		var opens := dr.is_open
+		dr.close()
+		dr.locked = false
+		dr.open()
+		dr.lock()
+		var no_lock_while_open := not dr.locked
+		dr.close()
+		var ok3: bool = has_lock and locked_ok and refused and forced and opens and no_lock_while_open
+		print("  [%s] %-16s 金具%s 施錠%s 押し開け拒否%s 強制開放%s 解錠後開く%s 開放中は施錠不可%s" % [
+			"OK " if ok3 else "NG ", dn,
+			"○" if has_lock else "×", "○" if locked_ok else "×",
+			"○" if refused else "×", "○" if forced else "×",
+			"○" if opens else "×", "○" if no_lock_while_open else "×"])
+
 	print("--- 廊下の掃引(北枝と本線) ---")
 	var sweep := CapsuleShape3D.new()
 	sweep.radius = 0.3

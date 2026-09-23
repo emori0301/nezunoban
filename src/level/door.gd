@@ -36,6 +36,9 @@ const SLAM_TIME := 0.13
 @export var lattice: bool = false      ## 障子の桟(控室の引き戸)
 @export var start_open: bool = false
 @export var build_frame: bool = true
+## true なら枠の脇に締り金具(DoorLock)を付け、プレイヤーが施錠/解錠できる。
+## 閉めただけでは施錠されない(猫は閉まっているだけの扉を押し開ける)。
+@export var lockable: bool = false
 
 @export var open_prompt: String = "開ける"
 @export var close_prompt: String = "閉める"
@@ -137,6 +140,28 @@ func set_locked(v: bool) -> void:
 	locked = v
 
 
+## 施錠する(閉まっているときだけ)。プレイヤーの長押しと director の両方から呼べる。
+func lock() -> void:
+	if locked or is_open:
+		return
+	locked = true
+	Audio.play(_lock_sound())
+	Events.emit_event(&"door_locked", {"door": name})
+
+
+## 解錠する。
+func unlock() -> void:
+	if not locked:
+		return
+	locked = false
+	Audio.play(_lock_sound(), -2.0, 1.12)
+
+
+## audio が door_lock を作るまでは door_locked で代用する。
+func _lock_sound() -> StringName:
+	return &"door_lock" if ResourceLoader.exists("res://assets/audio/door_lock.wav") else &"door_locked"
+
+
 # ---------------------------------------------------------------- internals
 
 func _animate(opening: bool, dur: float) -> void:
@@ -202,6 +227,29 @@ func _build() -> void:
 			_make_slide_single()
 		Kind.SLIDE_DOUBLE:
 			_make_slide_double()
+
+	if lockable:
+		_build_lock()
+
+
+## 締り金具。扉板の当たり判定(幅 door_width + 0.1)の外に出して、狙い分けられるようにする。
+func _build_lock() -> void:
+	var lx: float = door_width * 0.5 + 0.125
+	var metal := LevelMaterials.plain(Color(0.60, 0.58, 0.48), 0.4)
+	LevelBuild.box(self, Vector3(lx, 1.05, door_thickness * 0.5 + 0.02),
+		Vector3(0.07, 0.11, 0.05), metal, false, "", false)
+	LevelBuild.box(self, Vector3(lx, 1.05, door_thickness * 0.5 + 0.055),
+		Vector3(0.025, 0.07, 0.03), metal, false, "", false)
+	var lock := DoorLock.new()
+	lock.name = "Lock"
+	lock.door = self
+	lock.position = Vector3(lx, 1.05, 0)
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(0.16, 0.26, 0.4)
+	cs.shape = bs
+	lock.add_child(cs)
+	add_child(lock)
 
 
 func _make_swing() -> void:

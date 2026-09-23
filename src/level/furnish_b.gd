@@ -270,6 +270,7 @@ static func _backyard(b: Building) -> void:
 	b.add_door(R, "Door_Backyard", Vector3(0.0, 0.0, -7.5), 0.0, {
 		"kind": Door.Kind.SWING, "door_width": 0.95, "door_height": 2.0,
 		"door_thickness": 0.07, "steel": true, "hinge_side": -1.0, "swing_degrees": -92.0,
+		"lockable": true,
 	})
 
 	LevelBuild.box(node, Vector3(0.0, 0.01, -7.1), Vector3(1.2, 0.03, 0.7), conc, false, "concrete", false)
