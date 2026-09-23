@@ -30,10 +30,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
 import bmesh
 import addon_utils
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 from common import (reset_scene, material, Builder, emit, dump_report, box_taper,
-                    tube, cyl, tr, Anim, set_scene_frames, TEX_DIR)
+                    tube, cyl, tr, Anim, set_scene_frames, TEX_DIR,
+                    world_quat_from, add_chain_weights, add_rigid_weights,
+                    bind_weights, box_mm)
 import build_chars as BC
 
 MPFB = "bl_ext.user_default.mpfb"
@@ -61,15 +63,75 @@ def ensure_mpfb():
 
 # ---------------------------------------------------------------- 素体
 
-def make_body(macro, height_m):
-    """マクロから素体を作り、リグを入れて (mesh, armature) を返す。"""
+def bake_transform(body, arm, scale, dz):
+    """メッシュの頂点とボーンの位置を同じ変換で動かす。
+
+    オブジェクトの location/scale を使って transform_apply すると、
+    親子付け(メッシュはアーマチュアの子)のせいでズレる。データを直接動かす。
+    """
+    for v in body.data.vertices:
+        c = v.co.copy() * scale
+        c.z += dz
+        v.co = c
+    body.data.update()
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='EDIT')
+    for eb in arm.data.edit_bones:
+        h, t = eb.head.copy() * scale, eb.tail.copy() * scale
+        h.z += dz
+        t.z += dz
+        eb.head, eb.tail = h, t
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
+
+
+# scale=0.1 で作ったときの素体の身長(実測)。目標身長から生成スケールを逆算する。
+BASE_HEIGHT_AT_01 = 1.695
+
+
+def _spawn(macro, scale):
     HS, TS = ensure_mpfb()
     d = TS.get_default_macro_info_dict()
     d.update({k: v for k, v in macro.items() if k != "race"})
     d["race"] = macro.get("race", {"african": 0.0, "asian": 1.0, "caucasian": 0.0})
-    body = HS.create_human(mask_helpers=True, detailed_helpers=False,
-                           extra_vertex_groups=True, feet_on_ground=True,
-                           scale=0.1, macro_detail_dict=d)
+    return HS.create_human(mask_helpers=True, detailed_helpers=False,
+                           extra_vertex_groups=True, feet_on_ground=False,
+                           scale=scale, macro_detail_dict=d)
+
+
+def _real_height(body):
+    """ヘルパー形状を除いた実際の身長。"""
+    gi = {g.name: g.index for g in body.vertex_groups}
+    bad = {gi.get("HelperGeometry", -1), gi.get("JointCubes", -1)}
+    zs = [v.co.z for v in body.data.vertices
+          if not any(g.group in bad for g in v.groups)]
+    return (max(zs) - min(zs)) if zs else 1.0
+
+
+def make_body(macro, height_m):
+    """マクロから素体を作り、リグを入れて (mesh, armature) を返す。
+
+    MPFB の癖が 3 つある。
+    - `feet_on_ground=True` はメッシュだけ持ち上げてリグを動かさず 0.8m ズレる
+    - `add_builtin_rig` は MPFB 側の基準フレームで骨を作るので、先に頂点を
+      動かしても骨は付いてこない
+    - マクロはシェイプキーとして乗るので、素の頂点座標から身長は測れない
+
+    なので **一度作って実身長を測り、生成スケールを直して作り直す**。
+    足を床に乗せるのはアーマチュアの location でやる(メッシュは子)。
+    """
+    probe = _spawn(macro, 0.1)
+    bake_shape(probe)
+    h0 = _real_height(probe)
+    for o in (probe, ):
+        bpy.data.objects.remove(o, do_unlink=True)
+    for m in list(bpy.data.meshes):
+        if m.users == 0:
+            bpy.data.meshes.remove(m)
+
+    body = _spawn(macro, 0.1 * (height_m / max(h0, 0.01)))
+    bake_shape(body)
+    HS, _ = ensure_mpfb()
     arm = HS.add_builtin_rig(body, "game_engine", import_weights=True)
 
     # ヘルパー形状(服合わせ用の余分なメッシュ)を削除
@@ -87,33 +149,82 @@ def make_body(macro, height_m):
         bm.to_mesh(body.data)
         bm.free()
         body.data.update()
-
-    # 身長を合わせる(マクロだけでは細かく決まらないので最後に等倍スケール)
     bpy.context.view_layer.update()
-    zs = [(body.matrix_world @ v.co).z for v in body.data.vertices]
-    cur = max(zs) - min(zs)
-    if cur > 0.01:
-        s = height_m / cur
-        for o in (body, arm):
-            o.scale = (s, s, s)
-        bpy.ops.object.select_all(action='DESELECT')
-        body.select_set(True)
-        arm.select_set(True)
-        bpy.context.view_layer.objects.active = arm
-        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    zs = [v.co.z for v in body.data.vertices]
+    bz = [b.head_local.z for b in arm.data.bones] + [b.tail_local.z for b in arm.data.bones]
+    print("    body z %+.3f..%+.3f (H %.3f)  bones z %+.3f..%+.3f" %
+          (min(zs), max(zs), max(zs) - min(zs), min(bz), max(bz)))
+    return body, arm
 
-    # 足を床に乗せる
+
+def feet_to_floor(body, arm):
+    """アーマチュアの location で足を床(z=0)に乗せる。データは触らない。"""
     bpy.context.view_layer.update()
     zmin = min((body.matrix_world @ v.co).z for v in body.data.vertices)
-    for o in (body, arm):
-        o.location.z -= zmin
-    bpy.ops.object.select_all(action='DESELECT')
-    arm.select_set(True)
-    body.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+    arm.location.z -= zmin
     bpy.context.view_layer.update()
-    return body, arm
+
+
+# レストポーズで真下(あるいは指定方向)へ向けたいボーンと、その向き
+STRAIGHTEN = [
+    ("upperarm_l", (0.0, 0.0, -1.0)), ("lowerarm_l", (0.0, 0.0, -1.0)),
+    ("hand_l", (0.0, 0.0, -1.0)),
+    ("upperarm_r", (0.0, 0.0, -1.0)), ("lowerarm_r", (0.0, 0.0, -1.0)),
+    ("hand_r", (0.0, 0.0, -1.0)),
+    ("thigh_l", (0.0, 0.0, -1.0)), ("calf_l", (0.0, 0.0, -1.0)),
+    ("thigh_r", (0.0, 0.0, -1.0)), ("calf_r", (0.0, 0.0, -1.0)),
+]
+
+
+def straighten_rest(body, arm, verbose=False):
+    """素体の A ポーズを「腕も脚も真下」に直して、それをレストポーズにする。
+
+    自作のアニメは「腕が真下」を前提に書いてあるので、A ポーズのまま当てると
+    肘から先がねじれる。レストポーズ自体を正立させれば、アニメはそのまま使える。
+
+    親が既に回っている状態で子に回転を足すので、`matrix_local`(レスト)を
+    基準にした変換では合わない。`pose_bone.matrix`(アーマチュア空間)を
+    直接書き換えて、親子関係は Blender に解かせる。
+    """
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='POSE')
+    for pb in arm.pose.bones:
+        pb.rotation_mode = 'QUATERNION'
+        pb.rotation_quaternion = (1, 0, 0, 0)
+        pb.location = (0, 0, 0)
+    bpy.context.view_layer.update()
+
+    for bone_name, target in STRAIGHTEN:
+        if bone_name not in arm.pose.bones:
+            continue
+        pb = arm.pose.bones[bone_name]
+        cur = (pb.tail - pb.head)
+        if cur.length < 1e-6:
+            continue
+        q = cur.normalized().rotation_difference(Vector(target))
+        # pose_bone.matrix にそのまま掛けると「アーマチュア原点まわり」の回転に
+        # なって骨の頭ごと動く。頭を原点に戻してから回して、戻す。
+        head = pb.matrix.translation.copy()
+        T = Matrix.Translation(head)
+        pb.matrix = T @ q.to_matrix().to_4x4() @ T.inverted() @ pb.matrix
+        bpy.context.view_layer.update()
+        if verbose:
+            d = (pb.tail - pb.head).normalized()
+            print("    %-12s -> (%+.2f,%+.2f,%+.2f)" % (bone_name, d.x, d.y, d.z))
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # メッシュ: 今の変形を焼いてから、モディファイアを付け直す
+    bpy.context.view_layer.objects.active = body
+    for m in [m for m in body.modifiers if m.type == 'ARMATURE']:
+        bpy.ops.object.modifier_apply(modifier=m.name)
+    nm = body.modifiers.new("Armature", 'ARMATURE')
+    nm.object = arm
+    # アーマチュア: 今のポーズをレストにする
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.armature_apply()
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.update()
 
 
 def bake_shape(obj):
@@ -158,38 +269,48 @@ def decimate(obj, target_verts):
 
 # ---------------------------------------------------------------- 部位分け
 
+BONE_REGION = {
+    "head": "head", "neck_01": "neck",
+    "clavicle_l": "torso", "clavicle_r": "torso",
+    "pelvis": "torso", "spine_01": "torso", "spine_02": "torso", "spine_03": "torso",
+    "upperarm_l": "arm", "upperarm_r": "arm",
+    "lowerarm_l": "arm", "lowerarm_r": "arm",
+    "hand_l": "hand", "hand_r": "hand",
+    "thigh_l": "leg", "thigh_r": "leg", "calf_l": "leg", "calf_r": "leg",
+    "foot_l": "foot", "foot_r": "foot", "ball_l": "foot", "ball_r": "foot",
+}
+FINGER_PREFIX = ("index_", "middle_", "ring_", "pinky_", "thumb_")
+
+
 def body_regions(obj):
-    """高さと位置から、頭・首・胴・腕・手・脚・足に分ける。
-    戻り値は {region: set(polygon index)}。MakeHuman の頂点グループには
-    部位別のものが無いので、姿勢が分かっている素体の形から判定する。"""
+    """リグの頂点グループから部位を決める。
+
+    高さや x のしきい値で切ると、腰と手のように「高さが近くて別部位」の
+    ところが混ざって、まだら模様になる。ウェイトを持つ骨で判定する。
+    """
     me = obj.data
-    zs = [v.co.z for v in me.vertices]
-    z0, z1 = min(zs), max(zs)
-    H = z1 - z0
-    xs = [abs(v.co.x) for v in me.vertices]
-    xmax = max(xs)
-
-    def h(z):
-        return (z - z0) / H
-
-    reg = {k: set() for k in ("head", "neck", "torso", "hand", "leg", "foot")}
+    g2r = {}
+    for g in obj.vertex_groups:
+        n = g.name
+        if n in BONE_REGION:
+            g2r[g.index] = BONE_REGION[n]
+        elif n.startswith(FINGER_PREFIX):
+            g2r[g.index] = "hand"
+    reg = {k: set() for k in ("head", "neck", "torso", "arm", "hand", "leg", "foot")}
     for p in me.polygons:
-        c = p.center
-        hh = h(c.z)
-        ax = abs(c.x)
-        if hh >= 0.874:
-            reg["head"].add(p.index)
-        elif hh >= 0.836:
-            reg["neck"].add(p.index)
-        elif ax > xmax * 0.74 and hh < 0.66:
-            reg["hand"].add(p.index)          # A ポーズなので手は外側の低い位置
-        elif hh >= 0.455:
-            reg["torso"].add(p.index)
-        elif hh >= 0.045:
-            reg["leg"].add(p.index)
+        score = {}
+        for vi in p.vertices:
+            for g in me.vertices[vi].groups:
+                r = g2r.get(g.group)
+                if r:
+                    score[r] = score.get(r, 0.0) + g.weight
+        if score:
+            reg[max(score, key=score.get)].add(p.index)
         else:
-            reg["foot"].add(p.index)
-    return reg, (z0, z1, xmax)
+            reg["torso"].add(p.index)
+    zs = [v.co.z for v in me.vertices]
+    xs = [abs(v.co.x) for v in me.vertices]
+    return reg, (min(zs), max(zs), max(xs))
 
 
 def inflate(obj, poly_idx, amount):
@@ -310,6 +431,134 @@ def add_hair(name, obj, reg, bounds, hair_mat, spec):
     return ob
 
 
+# ---------------------------------------------------------------- 服
+
+def torso_ids(body):
+    """胴(腕を含まない)の頂点。断面を測るのに使う。"""
+    names = ("pelvis", "spine_01", "spine_02", "spine_03")
+    gi = {g.index for g in body.vertex_groups if g.name in names}
+    return [v.index for v in body.data.vertices
+            if any(g.group in gi and g.weight > 0.4 for g in v.groups)]
+
+
+def group_ids(body, names, w=0.4):
+    gi = {g.index for g in body.vertex_groups if g.name in names}
+    return [v.index for v in body.data.vertices
+            if any(g.group in gi and g.weight > w for g in v.groups)]
+
+
+def section(body, ids, z, tol):
+    """その高さでの胴の半幅・半奥行・中心 y。"""
+    pts = [body.data.vertices[i].co for i in ids
+           if abs(body.data.vertices[i].co.z - z) < tol]
+    if len(pts) < 4:
+        return 0.16, 0.11, 0.0
+    rx = max(abs(p.x) for p in pts)
+    ys = [p.y for p in pts]
+    return max(rx, 0.05), max((max(ys) - min(ys)) * 0.5, 0.04), (max(ys) + min(ys)) * 0.5
+
+
+def add_garment(name, body, arm, reg, mats, spec):
+    """胴に着せる上着。骨の位置から着丈を決め、素体の断面を測って一回り
+    大きい筒を作る。素体を膨らませるだけだと「黒いボディスーツ」に見えるので、
+    裾・襟・ネクタイを形として足す。"""
+    style = spec.get("garment")
+    if not style:
+        return []
+    # 着丈の基準はメッシュから測る。
+    # `add_builtin_rig` の骨は素体のスケールに完全には追従せず(頭の骨は
+    # 身長を変えても同じ位置に来る)、骨基準だと背の低い人物で服が浮く。
+    me = body.data
+    nz = [me.vertices[vi].co.z for i in reg["neck"] for vi in me.polygons[i].vertices]
+    lz = [me.vertices[vi].co.z for i in reg["leg"] for vi in me.polygons[i].vertices]
+    fz = [me.vertices[vi].co.z for i in reg["foot"] for vi in me.polygons[i].vertices]
+    if not nz or not lz:
+        return []
+    z_neck = min(nz)                             # 首の付け根 = 肩のライン
+    z_hip = max(lz)                              # 腰(腿の付け根)
+    z_foot = min(fz) if fz else min(lz)
+    z_knee = z_foot + (z_hip - z_foot) * 0.52    # 膝
+    span = max(z_neck - z_hip, 0.05)
+    ids = torso_ids(body)
+    if not ids:
+        return []
+    tol = span * 0.07
+
+    def at(t, grow):
+        """t=1 が首の付け根、t=0 が腰。"""
+        z = z_hip + span * t
+        rx, ry, cy = section(body, ids, z, tol)
+        return (0.0, cy, z, rx * grow, ry * grow, t)
+
+    b = Builder("Garment_" + name)
+    if style == "dress":
+        hem_z = z_knee + (z_hip - z_knee) * 0.10        # 膝丈
+        # 一番上は首の穴。すぐ下を肩幅にして肩の傾斜を作る
+        # (首の高さを肩幅のままにすると、頭が樽から出ているように見える)
+        nr = section(body, group_ids(body, ("neck_01",), 0.5) or ids,
+                     z_neck + span * 0.03, tol * 0.6)
+        rows = [(0.0, nr[2], z_neck + span * 0.02, nr[0] * 1.25, nr[1] * 1.30, 1.06),
+                at(0.94, 1.02), at(0.78, 1.06), at(0.52, 1.07), at(0.22, 1.09)]
+        rx, ry, cy = section(body, ids, z_hip + span * 0.05, tol)
+        rows.append((0.0, cy, z_hip, rx * 1.14, ry * 1.16, 0.0))
+        rows.append((0.0, cy, hem_z, rx * 1.42, ry * 1.46, -0.6))
+        b.add(tube(rows, n=14, cap_start=False), mats["cloth"], uvscale=2.6, smooth=True)
+    else:
+        nr = section(body, group_ids(body, ("neck_01",), 0.5) or ids,
+                     z_neck + span * 0.03, tol * 0.6)
+        rows = [(0.0, nr[2], z_neck + span * 0.02, nr[0] * 1.25, nr[1] * 1.30, 1.06),
+                at(0.94, 1.03), at(0.76, 1.08), at(0.50, 1.10), at(0.22, 1.12)]
+        rx, ry, cy = section(body, ids, z_hip + span * 0.05, tol)
+        drop = span * (0.26 if style == "jacket" else 0.10)
+        hem_z = z_hip - drop
+        rows.append((0.0, cy, z_hip, rx * 1.14, ry * 1.16, 0.0))
+        rows.append((0.0, cy, hem_z, rx * 1.16, ry * 1.18, -0.3))
+        b.add(tube(rows, n=14, cap_start=False), mats["cloth"], uvscale=2.6, smooth=True)
+        if style == "jumper":                            # 裾のリブ
+            b.add(tube([(0.0, cy, hem_z + span * 0.06, rx * 1.15, ry * 1.17, 1.0),
+                        (0.0, cy, hem_z - span * 0.01, rx * 1.08, ry * 1.10, 0.0)],
+                       n=14, cap_start=False, cap_end=False),
+                  mats["cloth"], uvscale=5.0, smooth=True)
+
+    # 襟。肩幅ではなく **首の太さ** から測る(胴の断面だと襟が肩まで広がる)
+    nids = group_ids(body, ("neck_01",), w=0.5)
+    nrx, nry, ncy = section(body, nids or ids, z_neck + span * 0.04, tol * 0.6)
+    b.add(tube([(0.0, ncy, z_neck + span * 0.09, nrx * 1.10, nry * 1.12, 1.0),
+                (0.0, ncy, z_neck - span * 0.01, nrx * 1.34, nry * 1.40, 0.0)],
+               n=12, cap_start=False, cap_end=False),
+          mats["collar"], uvscale=7.0, smooth=True)
+
+    if style == "jacket":
+        srx, sry, scy = section(body, ids, z_neck - span * 0.10, tol)
+        for sx in (-1, 1):
+            v, f = box_taper(srx * 0.34, sry * 0.14, srx * 0.20, sry * 0.11,
+                             span * 0.34,
+                             (sx * srx * 0.32, scy - sry * 1.04, z_neck - span * 0.22))
+            v = tr(v, rot=(0, sx * 0.18, 0),
+                   pivot=(sx * srx * 0.32, scy - sry * 1.04, z_neck - span * 0.05))
+            b.add((v, f), mats["cloth"], uvscale=4.0)
+        # ネクタイ(結び目 + 剣先)
+        b.add(box_taper(srx * 0.22, sry * 0.10, srx * 0.16, sry * 0.10, span * 0.08,
+                        (0.0, scy - sry * 1.06, z_neck - span * 0.08)),
+              mats["tie"], uvscale=9.0)
+        b.add(box_taper(srx * 0.16, sry * 0.09, srx * 0.22, sry * 0.09, span * 0.40,
+                        (0.0, scy - sry * 1.06, z_neck - span * 0.32)),
+              mats["tie"], uvscale=6.0)
+
+    ob = b.build()
+    ob.parent = arm
+    ob.matrix_parent_inverse = Matrix.Identity(4)
+    g = {}
+    chain = [("pelvis", z_hip - span * 0.10), ("spine_01", z_hip + span * 0.30),
+             ("spine_03", z_hip + span * 0.72), ("neck_01", z_neck + span * 0.04)]
+    add_chain_weights(g, ob, range(len(ob.data.vertices)), chain, lambda c: c.z)
+    bind_weights(ob, arm, g)
+    # bind_weights は matrix_parent_inverse を arm.matrix_world の逆で上書きする。
+    # 素体と同じ「アーマチュアのローカル空間」に置きたいので戻す。
+    ob.matrix_parent_inverse = Matrix.Identity(4)
+    return [ob]
+
+
 # ---------------------------------------------------------------- アニメ
 
 class RemapAnim(Anim):
@@ -367,7 +616,7 @@ def build_anims(ao):
     try:
         for fn in (BC.anim_human_idle, BC.anim_human_walk, BC.anim_human_sit,
                    BC.anim_human_sit_floor, BC.anim_human_sleep):
-            with_arm_down(fn)(ao)
+            fn(ao)
     finally:
         BC.Anim = orig
 
@@ -376,26 +625,30 @@ def build_anims(ao):
 
 SPECS = {
     "npc_boss": dict(
-        height=1.68, verts=3000,
+        height=1.68, verts=2200,
         macro={"gender": 0.94, "age": 0.80, "muscle": 0.38, "weight": 0.74,
                "height": 0.40, "proportions": 0.45},
-        jacket=0.016, trouser=0.011, hair_back=0.006, long_hair=False,
+        jacket=0.006, trouser=0.008, hair_back=0.006, long_hair=False,
+        garment="jacket",
         tex=dict(face="face_boss", skin="skin_boss", torso="torso_suit",
                  leg="suit_black", shoe="shoe_leather", hair="hair_thin"),
     ),
     "npc_son": dict(
-        height=1.72, verts=3000,
+        height=1.72, verts=2200,
         macro={"gender": 0.90, "age": 0.76, "muscle": 0.46, "weight": 0.60,
                "height": 0.50, "proportions": 0.50},
-        jacket=0.019, trouser=0.013, hair_back=0.002, long_hair=False,
+        jacket=0.008, trouser=0.010, hair_back=0.002, long_hair=False,
+        garment="jumper",
         tex=dict(face="face_son", skin="skin_son", torso="torso_jumper",
                  leg="jumper", shoe="shoe_leather", hair="hair_salt"),
     ),
     "npc_granddaughter": dict(
-        height=1.60, verts=3000,
-        macro={"gender": 0.06, "age": 0.32, "muscle": 0.38, "weight": 0.42,
-               "height": 0.42, "proportions": 0.58, "cupsize": 0.45},
-        jacket=0.012, trouser=0.0, hair_back=0.004, long_hair=True,
+        height=1.60, verts=2200,
+        macro={"gender": 0.02, "age": 0.26, "muscle": 0.30, "weight": 0.34,
+               "height": 0.40, "proportions": 0.62, "cupsize": 0.45,
+               "firmness": 0.6},
+        jacket=0.005, trouser=0.0, hair_back=0.004, long_hair=True,
+        garment="dress",
         tex=dict(face="face_granddaughter", skin="skin_gd", torso="torso_dress",
                  leg="skin_gd", shoe="shoe_leather", hair="hair_long"),
     ),
@@ -413,12 +666,15 @@ def build_one(name):
     m_leg = material(name + "_Leg", t["leg"], rough=0.9)
     m_shoe = material(name + "_Shoe", t["shoe"], rough=0.45)
     m_hair = material(name + "_Hair", t["hair"], rough=0.9)
+    m_collar = material(name + "_Collar", t.get("collar", t["torso"]), rough=0.9)
+    m_tie = material(name + "_Tie", t.get("tie", t["torso"]), rough=0.8)
 
     body, arm = make_body(spec["macro"], spec["height"])
     body.name = name
     arm.name = name + "_rig"
 
-    bake_shape(body)
+    straighten_rest(body, arm)
+    feet_to_floor(body, arm)
     decimate(body, spec["verts"])
     reg, bounds = body_regions(body)
     face, face_rect = find_face(body, reg, bounds)
@@ -427,7 +683,7 @@ def build_one(name):
 
     # 服の厚み(素体は裸なので、着ている部分を法線方向へ膨らませる)
     if spec["jacket"] > 0:
-        inflate(body, reg["torso"], spec["jacket"])
+        inflate(body, reg["torso"] | reg["arm"], spec["jacket"])
     if spec["trouser"] > 0:
         inflate(body, reg["leg"], spec["trouser"])
     inflate(body, reg["foot"], 0.007)
@@ -440,18 +696,19 @@ def build_one(name):
     for m in order:
         me.materials.append(m)
     slot = {"head": 0, "neck": 0, "hand": 0, "face": 1,
-            "torso": 2, "leg": 3, "foot": 4}
+            "torso": 2, "arm": 2, "leg": 3, "foot": 4}
     for key, idx in slot.items():
         for pi in reg.get(key, ()):
             me.polygons[pi].material_index = idx
     for p in me.polygons:
         p.use_smooth = True
 
+    garments = add_garment(name, body, arm, reg, {
+        "cloth": m_torso, "collar": m_collar, "tie": m_tie}, spec)
     hair = add_hair(name, body, reg, bounds, m_hair, spec)
     if hair is not None:
         hair.parent = arm
-        bpy.context.view_layer.update()
-        hair.matrix_parent_inverse = arm.matrix_world.inverted()
+        hair.matrix_parent_inverse = Matrix.Identity(4)
         vg = hair.vertex_groups.new(name=GE["Head"])
         vg.add(list(range(len(hair.data.vertices))), 1.0, 'REPLACE')
         mod = hair.modifiers.new("Armature", 'ARMATURE')
@@ -460,7 +717,7 @@ def build_one(name):
     set_scene_frames(180)
     build_anims(arm)
     BC.face_godot_forward(arm)
-    objs = [arm, body] + ([hair] if hair is not None else [])
+    objs = [arm, body] + garments + ([hair] if hair is not None else [])
     emit(name, objs, animations=True)
 
 

@@ -29,7 +29,19 @@ run build_props.py
 run build_arch.py
 run build_chars.py
 
+# 人物 3 体は MPFB2 が要る(tools/blender/README.md)。入っていなければ飛ばす。
+if "$BLENDER" --background --python-expr \
+   'import addon_utils,sys; sys.exit(0 if addon_utils.enable("bl_ext.user_default.mpfb") else 1)' \
+   >/dev/null 2>&1; then
+  run build_humans_mpfb.py
+else
+  echo "=== build_humans_mpfb.py: MPFB2 未導入のため飛ばす(README.md 参照) ==="
+fi
+
 if [ "$RENDER" = "1" ]; then
+  echo "=== render_faces.py ==="
+  "$BLENDER" --background --python tools/blender/render_faces.py 2>&1 \
+    | grep -E "^  face|npc_faces" || true
   echo "=== decal_sheet.py ==="
   "$BLENDER" --background --python tools/blender/decal_sheet.py 2>&1 | grep -E "decals sheet" || true
   echo "=== coffin_window_test.py ==="

@@ -954,6 +954,12 @@ def bind_weights(mesh_obj, arm_obj, groups):
     mesh_obj.matrix_parent_inverse = arm_obj.matrix_world.inverted()
 
 
+def world_quat_from(arm_obj, bone_name, quat):
+    """ワールド回転(クォータニオン)を、そのボーンのローカル回転に変換する。"""
+    M = arm_obj.data.bones[bone_name].matrix_local.to_3x3()
+    return (M.inverted() @ quat.to_matrix() @ M).to_quaternion()
+
+
 class Anim:
     """アクションを作ってポーズにキーを打つ。"""
 
