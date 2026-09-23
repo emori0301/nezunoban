@@ -20,7 +20,7 @@ extends NpcBase
 ##     c.sit_at(Vector3(-19.0, 0, -5.0), Game.player)   # 駐車場でこちらを見ている
 ##     c.flee()                                  # 演出で外へ逃がす
 
-enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFFIN, SHOOED, HIDING, POSED }
+enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFFIN, SHOOED, HIDING, POSED, WAIT_DOOR }
 
 @export_group("猫")
 @export var run_speed: float = 3.0
@@ -32,10 +32,14 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 ## 指示された開口部までのナビ経路がこれより長く、かつ半分以下で着ける開口部があるなら
 ## そちらへ回る。建物の裏の猫が 37m かけて反対側の勝手口へ向かうのを防ぐ。
 @export var max_approach_path: float = 30.0
+## 閉まった戸の前で待つ秒数。これを過ぎたらうろつきに戻る。
+@export var wait_door_seconds: float = 90.0
 
 var state: State = State.OUTSIDE_IDLE
 var is_inside: bool = false
 var target_entry: StringName = &"Door_Backyard"
+## WAIT_DOOR で開くのを待っている戸。
+var waiting_door: StringName = &""
 
 var _gen: int = 0
 var _free_anim: bool = false      ## true の間は idle/walk の自動切り替えをしない
@@ -136,12 +140,16 @@ func go_inside_now(opening: StringName = &"") -> void:
 
 ## 外へ逃げる(プレイヤーに追い払われたわけではない演出用)。
 func flee() -> void:
+	if state == State.SHOOED:
+		return
 	_shoo_hiss = false
 	_set_state(State.SHOOED)
 
 
-## プレイヤーに追い払われた。
+## プレイヤーに追い払われた。逃げている最中に何度押されても無視する。
 func shoo() -> void:
+	if state == State.SHOOED:
+		return
 	_shoo_hiss = true
 	_set_state(State.SHOOED)
 
@@ -222,6 +230,8 @@ func _run_state(s: State, g: int) -> void:
 			await _state_shooed(g)
 		State.HIDING:
 			await _state_hiding(g)
+		State.WAIT_DOOR:
+			await _state_wait_door(g)
 		State.POSED:
 			pass
 
@@ -332,7 +342,11 @@ func _state_entering(g: int) -> void:
 	is_inside = true
 	set_talkable(true)
 	Events.emit_event(&"cat_entered", {"entry": target_entry})
-	_set_state(State.INSIDE_WANDER)
+	# 式場の窓から入ったらもう式場の中なので、廊下をうろつかずそのまま棺へ向かう
+	if StringName(o.get("room", &"")) == &"Room_Shikijo":
+		_set_state(State.TO_COFFIN)
+	else:
+		_set_state(State.INSIDE_WANDER)
 
 
 func _state_inside_wander(g: int) -> void:
@@ -359,19 +373,29 @@ func _state_inside_wander(g: int) -> void:
 
 func _state_to_coffin(g: int) -> void:
 	set_talkable(true)
-	for p in NpcUtil.COFFIN_ROUTE:
+	set_speed_override(-1.0)
+	var base := coffin_position()
+	# ナビメッシュは家具をくり抜いて焼き直してある(level の rebake_navmesh)ので、
+	# 椅子を避ける経路はナビに任せる。棺の南 0.9m を足場にする。
+	var spot := Vector3(base.x, 0.0, base.z - 0.9)
+	for attempt in 2:
 		if not _alive(g):
 			return
-		await go_to(p)
+		await go_to(spot)
 		if not _alive(g):
 			return
-		# 式場の戸が閉まっていると猫は開けられない。引っ掻いて、うろつきに戻る。
-		if last_move_blocked:
-			await _scratch_at_blocked_door(g)
-			if not _alive(g):
-				return
-			_set_state(State.INSIDE_WANDER)
+		# 式場の戸が閉まっていると猫は開けられない。開くまで戸の前で待つ。
+		if last_move_blocked and blocked_door_name != &"":
+			waiting_door = blocked_door_name
+			_set_state(State.WAIT_DOOR)
 			return
+		if not last_move_failed:
+			break
+	if not _alive(g):
+		return
+	if _flat_distance(global_position, spot) > 1.8:
+		_set_state(State.INSIDE_WANDER)
+		return
 	_set_state(State.ON_COFFIN)
 
 
@@ -403,6 +427,42 @@ func _pick_wander_point() -> Vector3:
 		if NpcUtil.can_reach(get_world_3d(), global_position, p, 1.0):
 			return p
 	return Vector3.INF
+
+
+## 閉まった戸の前で、開くまで引っ掻きながら待つ。
+## director が脅かしで戸を独りでに開けたら、その瞬間に棺へ向かい直す。
+func _state_wait_door(g: int) -> void:
+	set_talkable(true)
+	set_speed_override(-1.0)
+	stop()
+	var b := NpcUtil.building()
+	var d: Door = b.get_door(waiting_door) if b else null
+	if d == null:
+		_set_state(State.INSIDE_WANDER)
+		return
+	face(d)
+	_free_anim = true
+	play_anim(anim_idle)
+	var at := d.global_position + Vector3(0, 0.35, 0)
+	var t := 0.0
+	var next_scratch := 0.0
+	while _alive(g):
+		if d.is_open:
+			if Game.debug:
+				print("[cat] %s: %s が開いたので棺へ向かう" % [name, waiting_door])
+			_set_state(State.TO_COFFIN)
+			return
+		if t >= next_scratch:
+			Audio.play_at(StringName("cat_scratch_%d" % _rng.randi_range(1, 3)), at, 0.0,
+				_rng.randf_range(0.95, 1.05), 22.0)
+			next_scratch = t + _rng.randf_range(4.0, 8.0)
+		await get_tree().create_timer(0.4, false).timeout
+		t += 0.4
+		if t > wait_door_seconds:
+			if not _alive(g):
+				return
+			_set_state(State.INSIDE_WANDER)
+			return
 
 
 ## 閉まっていて開けられなかった扉を引っ掻く。

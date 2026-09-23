@@ -77,6 +77,7 @@ func _ready() -> void:
 		"api": await _api()
 		"facing": await _facing()
 		"cat_all": await _cat_all()
+		"cat_wait_door": await _cat_wait_door()
 		"dir_repro": await _dir_repro()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -362,6 +363,49 @@ func _dir_repro() -> void:
 	await get_tree().create_timer(1.0, false).timeout
 	await _shot("m4_03_son_zabuton", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
 	print("息子 posture=%s pos=%v" % [son.posture, son.global_position])
+
+
+## 式場の戸を閉めたまま猫を入れ、戸の前で待つこと・開けたら棺に乗ることを見る(review_2 N4)。
+func _cat_wait_door() -> void:
+	var cats := NpcInstaller.find_all(&"cat")
+	print("猫の数=%d" % cats.size())
+	for n in cats:
+		print("   %s script=%s is Cat=%s" % [n.name,
+			n.get_script().resource_path if n.get_script() else "none", n is Cat])
+	var cat := NpcInstaller.find(&"cat", 2) as Cat      # Spawn_Cat3 = 勝手口のそば
+	if cat == null and not cats.is_empty():
+		push_warning("find(cat,2) が null。先頭を使う")
+		cat = cats[0] as Cat
+	var back := building.get_door(&"Door_Backyard")
+	var shikijo := building.get_door(&"Door_Shikijo")
+	back.open()
+	if shikijo.is_open:
+		shikijo.close()
+	print("勝手口=%s 式場の戸=%s" % [back.is_open, shikijo.is_open])
+	cat.activate()
+	cat.set_target_entry(&"Door_Backyard")
+	await _wait_state(cat, Cat.State.INSIDE_WANDER, 30.0)
+	if not _alive_cat(cat):
+		return
+	cat._set_state(Cat.State.TO_COFFIN)
+	await _wait_state(cat, Cat.State.WAIT_DOOR, 40.0)
+	print("戸の前で待機 state=%s pos=%v 待っている戸=%s" % [cat.state_name(),
+		cat.global_position, cat.waiting_door])
+	await _shot("wait_01_at_door", Vector3(4.4, 1.2, 0.0), cat.global_position + Vector3(0, 0.2, 0))
+	await get_tree().create_timer(3.0, false).timeout
+	print("3 秒後もまだ待っている: %s" % (cat.state == Cat.State.WAIT_DOOR))
+
+	print("--- 式場の戸を開ける ---")
+	shikijo.open()
+	await _wait_state(cat, Cat.State.ON_COFFIN, 45.0)
+	await get_tree().create_timer(1.6, false).timeout
+	print("state=%s pos=%v 棺の上面 y=%.3f" % [cat.state_name(), cat.global_position, cat.coffin_top_y()])
+	await _shot("wait_02_on_coffin", Vector3(14.4, 1.35, -2.4), cat.global_position)
+	print("cat_crossed_coffin が出たか: %s" % events_seen.has("cat_crossed_coffin"))
+
+
+func _alive_cat(cat: Cat) -> bool:
+	return is_instance_valid(cat) and cat.is_inside_tree()
 
 
 ## 猫 5 匹を同時に勝手口へ向かわせ、どの個体が詰まるかを測る。

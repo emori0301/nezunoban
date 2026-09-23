@@ -240,6 +240,7 @@ func walk_to(pos: Vector3, tolerance: float = -1.0) -> Signal:
 	_nudge_angle = NUDGE_ANGLES[0]
 	_best_progress = INF
 	_unstuck_count = 0
+	_reset_steer_cache()
 	return arrived
 
 
@@ -251,6 +252,7 @@ func retarget(pos: Vector3) -> void:
 	_nav_target = NpcUtil.snap(get_world_3d(), pos)
 	agent.target_position = _nav_target
 	_best_progress = _flat_distance(global_position, _nav_target)
+	_reset_steer_cache()
 	if not is_moving:
 		is_moving = true
 		_move_t = 0.0
@@ -685,6 +687,13 @@ func _check_stuck(delta: float) -> void:
 ## いまの位置から経路を引き直してその 1 点目を返す。
 ## (funnel 経路は角に吸い付くので、経路から外れた位置から次の経由点へ直進すると
 ##  戸口の脇の壁を突っ切ってしまう)
+## 目標が変わったら、次に向かう点のキャッシュを捨てる。
+## 残したままだと 0.25 秒のあいだ古い目標へ向かって歩く。
+func _reset_steer_cache() -> void:
+	_steer_cache = Vector3.INF
+	_repath_t2 = 0.0
+
+
 func _steer_point(delta: float) -> Vector3:
 	var next := agent.get_next_path_position()
 	_repath_t2 -= delta
