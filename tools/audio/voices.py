@@ -193,10 +193,17 @@ def amb_room():
     hvac *= 0.78 + 0.22 * (0.5 + 0.5 * loop_smooth(n, 0.4, 1006))
     hvac = peaking(hvac, 180.0, 1.3, 4.0, circular=True)
     air = highpass(loop_noise(n, 0.6, 1007), 2600.0, order=2, circular=True) * 0.05
-    out = 0.46 * hum + 0.85 * rumble + 1.35 * hvac + air
+    out = 0.30 * hum + 0.85 * rumble + 1.35 * hvac + air
     # 冷蔵庫のリレーが一度だけカチと鳴る
     rel = norm_peak(soft_click(1008, 1900.0, 4.0, 0.7), -14.0)
     place_wrap(out, rel, 13.4, 0.5)
+    # 壁掛け時計の秒針。別の部屋で鳴っている想定で、薄く、こもらせる。
+    # 環境音の床より 14dB 下に置く (ここでピークを取らせない)
+    bed_peak = float(np.max(np.abs(out)))
+    for i in range(20):
+        tk = tick_wood(1350 + i, 1.0 if i % 2 == 0 else 0.94, 1.0)
+        tk = lowpass(tk, 2400.0, order=2)
+        place_wrap(out, tk / max(1e-9, float(np.max(np.abs(tk)))) * bed_peak * db2lin(-14.0), 0.5 + i)
     return dc_kill(out, circular=True)
 
 
@@ -388,20 +395,25 @@ def amb_static():
 # 足音
 # ==========================================================================
 def _step_lino(seed, pitch, length, level):
-    n = N(0.26 * length)
-    r = rng(seed)
-    exc = white(n, seed) * env_ar(n, 0.00015, 0.0035, 7.0)
-    heel = resonators(
-        exc,
-        [1550 * pitch, 2450 * pitch, 3650 * pitch, 5400 * pitch],
-        [11, 9, 8, 6],
-        [1.0, 0.72, 0.42, 0.22],
-    )
-    floorb = resonators(exc, [95 * pitch, 168 * pitch, 260 * pitch], [16, 13, 10], [1.0, 0.5, 0.25])
-    rub = band(white(n, seed + 1), 900.0, 6000.0, order=2) * env_ar(n, 0.004, 0.018, 5.0) * 0.35
-    x = 0.9 * heel + 1.1 * floorb + rub
-    x = room(x, ROOM_LINO, wet=0.26)
-    return norm_peak(trim_tail(x, -70.0), -0.5) * level
+    """スリッパで廊下を歩く「ペタ」。平たいゴム底が当たって、少しこもる。
+    底が足裏から剥がれて遅れてもう一度当たるので、小さな 2 打目が付く。"""
+    n = N(0.22 * length)
+    exc = white(n, seed) * env_ar(n, 0.0003, 0.0035, 7.0)
+    slap = resonators(exc, [252 * pitch, 455 * pitch, 780 * pitch], [7, 6, 5], [1.0, 0.55, 0.26])
+    body = resonators(exc, [92 * pitch, 155 * pitch], [7, 6], [1.0, 0.38]) * 0.85
+    top = lowpass(white(n, seed + 3) * env_ar(n, 0.0004, 0.0055, 6.0), 2400.0, order=2) * 0.8
+    main = norm_peak(slap + body + top, -0.5)
+    nf = N(0.09)
+    fexc = white(nf, seed + 1) * env_ar(nf, 0.0006, 0.0030, 7.0)
+    flap = resonators(fexc, [330 * pitch, 640 * pitch], [6, 5], [1.0, 0.40])
+    flap += lowpass(white(nf, seed + 2) * env_ar(nf, 0.0008, 0.008, 5.0), 800.0, order=2) * 0.7
+    place(main, norm_peak(flap, -12.0), 0.019)
+    nsc = N(0.035)
+    scuff = band(white(nsc, seed + 4), 700.0, 3400.0, order=2) * env_ar(nsc, 0.001, 0.008, 5.0)
+    place(main, norm_peak(scuff, -17.0), 0.0)
+    x = lowpass(main, 2800.0, order=2)      # ゴム底なのでこもる
+    x = room(x, dict(dur=0.40, decay=0.10, damp_hz=2400.0, predelay=0.005, seed=117), wet=0.20)
+    return norm_peak(trim_tail(x, -60.0), -0.5) * level
 
 
 def _step_tatami(seed, pitch, length, level):
@@ -477,9 +489,9 @@ def _ceiling_step(seed, pitch, length):
 # ==========================================================================
 # 扉・窓
 # ==========================================================================
-@reg("door_open")
-def door_open():
-    """木戸: ラッチが外れる -> 蝶番の軋み (ピッチが上がる) -> 木の落ち着き。"""
+@reg("door_swing_open")
+def door_swing_open():
+    """開き戸: ラッチが外れる -> 蝶番の軋み (ピッチが上がる) -> 木の落ち着き。"""
     total = N(1.65)
     out = zeros(total)
     nl = N(0.12)
@@ -501,9 +513,9 @@ def door_open():
     return norm_peak(trim_tail(out, -68.0), -0.5)
 
 
-@reg("door_close")
-def door_close():
-    """重い衝突 + ラッチ + 短い残響。"""
+@reg("door_swing_close")
+def door_swing_close():
+    """開き戸を閉める: 重い衝突 + ラッチ + 短い残響。"""
     total = N(1.1)
     out = zeros(total)
     ns = N(0.20)
@@ -518,6 +530,79 @@ def door_close():
     place(out, norm_peak(latch, -11.0), 0.245)
     out = room(out, ROOM_LINO, wet=0.30)
     return norm_peak(trim_tail(out, -68.0), -0.5)
+
+
+# ---- 引き戸 (敷居を滑る「ゴロゴロ」+ 戸当たりの「トン」) ----
+def _flatten(x, cutoff=14.0, floor=0.10):
+    """信号の遅い振幅ムラを均す。擦る音の「ゴロゴロ」を一定の粒立ちにするため。"""
+    env = lowpass(np.abs(x), cutoff, order=2)
+    m = float(np.max(env))
+    if m <= 0.0:
+        return x
+    env = np.maximum(env, floor * m)
+    return x / env * float(np.mean(env))
+
+
+def _slide_rumble(n, seed, vel, bright, panel_pitch):
+    """敷居の上を木の戸が滑る音。速度 vel(0..1 の配列)に合わせて粒が詰まる。"""
+    rate = 16.0 + 54.0 * vel
+    bump = stick_slip(n, rate, seed, jitter=0.75, sharp=55.0)
+    grit = grain_env(n, max(20, int(n / SR * 150)), seed + 1, dur_sec=0.005, jitter=0.9)
+    drive = 0.45 * bump + 0.55 * grit
+    src = band(white(n, seed + 2), 110.0, 2600.0 * bright, order=2) * (0.2 + 0.8 * drive)
+    panel = resonators(
+        src,
+        [92.0 * panel_pitch, 158.0 * panel_pitch, 254.0 * panel_pitch, 407.0 * panel_pitch],
+        [9, 8, 7, 6],
+        [1.0, 0.62, 0.34, 0.18],
+    )
+    rattle = bandpass(white(n, seed + 3), 2300.0, 3.0, 1) * grain_env(n, 14, seed + 4, dur_sec=0.003) * 0.12 * bright
+    return _flatten(0.75 * src + 0.95 * panel + rattle)
+
+
+def _slide_door(seed, dur_slide, vel_pts, stop_pitch, stop_force, bright, panel_pitch, tail):
+    total = N(dur_slide + tail)
+    out = zeros(total)
+    ns = N(dur_slide)
+    vel = segments(vel_pts, ns)
+    # 引き手を掴んで動き出すときの「ガタッ」
+    nb = N(0.12)
+    brk = wood_knock(nb, seed + 9, pitch=1.15 * panel_pitch, decay=0.30, bright=0.7, thump=0.8)
+    place(out, norm_peak(brk, -11.0), 0.0)
+    rum = _slide_rumble(ns, seed, vel, bright, panel_pitch)
+    rum *= np.clip(vel, 0.0, 1.0) ** 0.8
+    place(out, norm_peak(rum, -6.5), 0.015)
+    # 戸当たりの「トン」+ 板の残鳴
+    nk = N(0.55)
+    stop = wood_knock(nk, seed + 5, pitch=stop_pitch, decay=1.2, bright=0.55, thump=1.7)
+    stop += resonators(
+        white(nk, seed + 6) * env_ar(nk, 0.0003, 0.004, 7.0),
+        [92.0 * panel_pitch, 158.0 * panel_pitch, 254.0 * panel_pitch],
+        [16, 13, 10], [1.0, 0.5, 0.22],
+    ) * 0.9
+    place(out, norm_peak(stop, -0.5), dur_slide - 0.012, stop_force)
+    out = room(out, ROOM_LINO, wet=0.26)
+    return norm_peak(dc_kill(trim_tail(out, -64.0)), -0.5)
+
+
+@reg("door_open")
+def door_open():
+    """木の引き戸を開ける: 敷居を滑るゴロゴロ -> 戸当たりのトン。"""
+    return _slide_door(
+        3201, 0.92,
+        [(0.0, 0.15), (0.12, 1.0), (0.62, 0.92), (0.88, 0.55), (1.0, 0.2)],
+        stop_pitch=0.72, stop_force=1.0, bright=1.0, panel_pitch=1.0, tail=0.6,
+    )
+
+
+@reg("door_close")
+def door_close():
+    """木の引き戸を閉める: 少し速く滑って、戸当たりで強く止まる。"""
+    return _slide_door(
+        3251, 0.78,
+        [(0.0, 0.25), (0.10, 1.0), (0.55, 1.0), (0.85, 0.8), (1.0, 0.45)],
+        stop_pitch=0.64, stop_force=1.0, bright=0.92, panel_pitch=0.97, tail=0.75,
+    )
 
 
 @reg("door_locked")
@@ -779,25 +864,26 @@ def candle_blow():
 # ==========================================================================
 @reg("phone_ring", loop=True)
 def phone_ring():
-    """日本のビジネスフォン。2 秒鳴って 1 秒休む 3 秒ループ。"""
+    """日本のビジネスフォン: 2 音が速く入れ替わる電子ベル「プルルル」。
+    鳴り 1 秒 / 休み 2 秒 の 3 秒ループ。"""
     dur = 3.0
     n = N(dur)
     out = zeros(n)
-    nr = N(2.0)
-    # 「プルルル」: 電子ベルの倍音 + 細かいトレモロ
-    base = harm(1030.0, nr, [1.0, 0.55, 0.30, 0.18, 0.10, 0.06])
-    base += 0.7 * harm(1287.0, nr, [1.0, 0.42, 0.22, 0.12, 0.07])
-    base = softclip(base * 0.5, 2.6)
-    trill = 0.5 + 0.5 * lfo(nr, 21.0, 1.0, 0.0, 0.0, "sine")
-    trill = trill ** 1.6
-    base = base * (0.12 + 0.88 * trill)
-    # 小さなスピーカで鳴っている感じ
-    base = bandpass(base, 1500.0, 0.85, 1) + 0.35 * bandpass(base, 3000.0, 1.6, 1)
-    base = highpass(base, 420.0, order=2)
-    # 筐体のビリつき
-    buzz = bandpass(white(nr, 4501), 2300.0, 2.5, 1) * (trill ** 3) * 0.10
-    ring = (base + buzz) * segments([(0.0, 0.0), (0.004, 1.0), (0.97, 1.0), (1.0, 0.0)], nr)
-    ring = room(ring, ROOM_TIGHT, wet=0.20)[:nr]
+    nr = N(1.0)
+    alt = 18.0                                   # 2 音の入れ替わり
+    sw = 0.5 + 0.5 * lfo(nr, alt, 1.0, 0.0, 0.0, "square")
+    sw = np.clip(lowpass(sw, 1100.0, order=1), 0.0, 1.0)   # 切り替わりを少し丸める
+    a = harm(1100.0, nr, [1.0, 0.50, 0.28, 0.15, 0.08, 0.05])
+    b = harm(1400.0, nr, [1.0, 0.42, 0.22, 0.12, 0.06])
+    tone = a * sw + b * (1.0 - sw)
+    # 入れ替わりの瞬間にわずかに凹ませて「ル」の粒を作る
+    tone *= 0.80 + 0.20 * np.abs(2.0 * sw - 1.0)
+    tone = softclip(tone * 0.55, 2.4)
+    tone = bandpass(tone, 1600.0, 0.85, 1) + 0.35 * bandpass(tone, 3250.0, 1.5, 1)
+    tone = highpass(tone, 450.0, order=2)
+    buzz = bandpass(white(nr, 4501), 2400.0, 2.5, 1) * (0.55 + 0.45 * np.abs(2.0 * sw - 1.0)) * 0.09
+    ring = (tone + buzz) * segments([(0.0, 0.0), (0.005, 1.0), (0.985, 1.0), (1.0, 0.0)], nr)
+    ring = room(ring, ROOM_TIGHT, wet=0.18)[:nr]
     place(out, norm_peak(ring, -0.5), 0.0)
     return fade(dc_kill(out), 0.002, 0.03)
 
@@ -873,51 +959,63 @@ def phone_voice_wet():
 # ==========================================================================
 # 猫
 # ==========================================================================
-def _meow(seed, dur, f0_pts, f1_pts, f2_pts, rough, breath, nasal_end=1.0):
+def _meow(seed, dur, f0_pts, f1_pts, f2_pts, amp_pts, open_pts,
+          breath=0.08, rough=0.0, growl=0.0, jitter=0.010):
+    """猫の鳴き声。嗄れ(jitter/rough)は控えめにして、口の開閉で「ニャ」の形を作る。"""
     n = N(dur)
     f0 = segments(f0_pts, n)
-    src = voice_src(n, f0, seed, jitter=0.022, width=0.10, breath=breath, rough=rough)
-    f1 = segments(f1_pts, n)
-    f2 = segments(f2_pts, n)
-    v = 1.00 * svf_tv(src, f1, 4.5, "bp")
-    v += 0.55 * svf_tv(src, f2, 5.5, "bp")
-    v += 0.22 * bandpass(src, 3100.0, 5.0, 1)
-    v += 0.10 * bandpass(src, 4600.0, 6.0, 1)
-    # 口の開閉 (最初と最後はこもる)
-    open_env = segments([(0.0, 0.25), (0.18, 1.0), (0.62, 1.0), (1.0, 0.25 * nasal_end)], n)
-    v = svf_tv(v, 700.0 + 5200.0 * open_env, 0.8, "lp")
-    amp = segments([(0.0, 0.0), (0.06, 0.85), (0.3, 1.0), (0.72, 0.8), (1.0, 0.0)], n)
+    src = voice_src(n, f0, seed, jitter=jitter, width=0.10, breath=breath, rough=rough)
+    v = 1.00 * svf_tv(src, segments(f1_pts, n), 4.5, "bp")
+    v += 0.55 * svf_tv(src, segments(f2_pts, n), 5.5, "bp")
+    v += 0.20 * bandpass(src, 3100.0, 5.0, 1)
+    v += 0.08 * bandpass(src, 4600.0, 6.0, 1)
+    open_env = segments(open_pts, n)
+    v = svf_tv(v, 620.0 + 5400.0 * open_env, 0.8, "lp")
+    if growl > 0.0:
+        g = voice_src(n, f0 * 0.26, seed + 31, jitter=0.06, width=0.17, breath=0.12, rough=0.45)
+        g = formant(g, [(215.0, 4.0, 0.0), (545.0, 5.0, -7.0), (1150.0, 6.0, -16.0)])
+        v = v + growl * g
+    amp = segments(amp_pts, n)
     v *= amp
-    v += 0.10 * band(white(n, seed + 7), 2500.0, 7000.0, order=2) * amp
-    v = room(v, ROOM_LINO, wet=0.22)
-    return norm_peak(dc_kill(trim_tail(v, -66.0)), -0.5)
+    v += 0.07 * band(white(n, seed + 7), 2500.0, 7000.0, order=2) * amp
+    v = room(v, dict(dur=0.7, decay=0.16, damp_hz=3600.0, predelay=0.007, seed=118), wet=0.20)
+    return norm_peak(dc_kill(trim_tail(v, -58.0)), -0.5)
 
 
+# 短い「ニャ」
 reg("cat_meow_1")(
     lambda: _meow(
-        5001, 0.85,
-        [(0, 470), (0.14, 690), (0.45, 760), (0.8, 600), (1, 470)],
-        [(0, 420), (0.25, 880), (0.7, 700), (1, 430)],
-        [(0, 1150), (0.25, 2000), (0.7, 1600), (1, 1180)],
-        rough=0.10, breath=0.10,
+        5001, 0.45,
+        [(0, 520), (0.18, 715), (0.55, 690), (1, 545)],
+        [(0, 430), (0.25, 900), (1, 620)],
+        [(0, 1180), (0.25, 2050), (1, 1500)],
+        [(0.0, 0.0), (0.08, 1.0), (0.55, 0.9), (1.0, 0.0)],
+        [(0.0, 0.25), (0.20, 1.0), (0.70, 0.85), (1.0, 0.30)],
+        breath=0.07,
     )
 )
+# 長い「ニャーオ」
 reg("cat_meow_2")(
     lambda: _meow(
-        5011, 1.25,
-        [(0, 560), (0.1, 800), (0.35, 840), (0.7, 700), (1, 520)],
-        [(0, 380), (0.2, 950), (0.55, 820), (1, 400)],
-        [(0, 1050), (0.2, 2250), (0.6, 1750), (1, 1100)],
-        rough=0.20, breath=0.14, nasal_end=1.3,
+        5011, 1.35,
+        [(0, 470), (0.10, 760), (0.38, 790), (0.70, 690), (1, 505)],
+        [(0, 400), (0.18, 960), (0.55, 880), (0.85, 560), (1, 420)],
+        [(0, 1080), (0.18, 2280), (0.55, 1900), (1, 1050)],
+        [(0.0, 0.0), (0.06, 0.9), (0.30, 1.0), (0.72, 0.85), (1.0, 0.0)],
+        [(0.0, 0.20), (0.15, 1.0), (0.58, 1.0), (0.86, 0.45), (1.0, 0.12)],
+        breath=0.09,
     )
 )
+# 低い、唸り混じり
 reg("cat_meow_3")(
     lambda: _meow(
-        5021, 0.62,
-        [(0, 640), (0.2, 790), (0.6, 720), (1, 560)],
-        [(0, 500), (0.3, 1050), (1, 520)],
-        [(0, 1300), (0.3, 2500), (1, 1350)],
-        rough=0.30, breath=0.20,
+        5021, 0.95,
+        [(0, 380), (0.22, 505), (0.6, 470), (1, 355)],
+        [(0, 340), (0.3, 680), (1, 380)],
+        [(0, 900), (0.3, 1500), (1, 950)],
+        [(0.0, 0.0), (0.10, 0.85), (0.45, 1.0), (0.78, 0.8), (1.0, 0.0)],
+        [(0.0, 0.18), (0.25, 0.75), (0.65, 0.6), (1.0, 0.15)],
+        breath=0.12, rough=0.10, growl=0.55, jitter=0.016,
     )
 )
 
@@ -1488,6 +1586,18 @@ def heartbeat():
     return fade(dc_kill(out), 0.001, 0.02)
 
 
+def _snap_attack(x, seed, level=1.0, top=9000.0):
+    """先頭 2ms に鋭いトランジェントを足して、ピークが必ず立ち上がり側に来るようにする。
+    (倍音の和は位相が揃うまでに数十 ms かかるので、そのままだとショックが鈍る)"""
+    n = len(x)
+    na = min(n, N(0.006))
+    a = band(white(na, seed), 900.0, top, order=2) * env_ar(na, 0.00004, 0.0013, 9.0)
+    a += lowpass(white(na, seed + 1) * env_ar(na, 0.00006, 0.0022, 8.0), 900.0, order=2) * 0.8
+    y = np.array(x, dtype=np.float64, copy=True)
+    y[:na] += norm_peak(a, -0.5)[:na] * float(np.max(np.abs(x))) * 1.18 * level
+    return y
+
+
 def _stinger_metal(n, seed, base, count, decay, bright):
     r = rng(seed)
     ratios = [1.0, 1.06, 1.49, 2.11, 2.67, 3.41, 4.09, 5.33, 6.71, 8.12][:count]
@@ -1500,14 +1610,15 @@ def _stinger_metal(n, seed, base, count, decay, bright):
 @reg("stinger_1")
 def stinger_1():
     """金属の不協和クラスタ + ノイズの急な立ち上がり。鋭く、乾いている。"""
-    n = N(1.0)
-    hit = _stinger_metal(n, 8301, 620.0, 9, 0.22, 1.0)
-    hit += _stinger_metal(n, 8302, 1870.0, 7, 0.10, 0.6)
-    slam = highpass(white(n, 8303), 500.0, order=2) * env_ar(n, 0.0005, 0.025, 5.0) * 1.4
-    sub = sine(glide(150.0, 42.0, n, 2.2), n) * env_ar(n, 0.002, 0.10, 4.0) * 1.1
+    n = N(0.9)
+    hit = _stinger_metal(n, 8301, 620.0, 9, 0.20, 1.0)
+    hit += _stinger_metal(n, 8302, 1870.0, 7, 0.09, 0.6)
+    slam = highpass(white(n, 8303), 500.0, order=2) * env_ar(n, 0.0004, 0.022, 5.0) * 1.4
+    sub = sine(glide(150.0, 42.0, n, 2.2), n) * env_ar(n, 0.0015, 0.09, 4.0) * 1.1
     x = hit * 1.0 + slam + sub
     x = softclip(x * 1.4, 2.0)
-    x = room(x, dict(dur=0.5, decay=0.18, damp_hz=3200.0, predelay=0.014, seed=110), wet=0.30)
+    x = _snap_attack(x, 8309, 1.0, 9000.0)
+    x = room(x, dict(dur=0.28, decay=0.075, damp_hz=3600.0, predelay=0.008, seed=110), wet=0.22)
     return norm_peak(dc_kill(trim_tail(x, -54.0)), -0.5)
 
 
@@ -1528,8 +1639,9 @@ def stinger_2():
     drop = sine(glide(90.0, 34.0, nh, 2.4), nh) * env_ar(nh, 0.003, 0.16, 3.5) * 1.5
     scr = scrape(nh, 8404, 1800.0, 7000.0, segments([(0, 200.0), (1, 60.0)], nh), rough=0.9)
     scr *= env_ar(nh, 0.002, 0.12, 4.0) * 0.5
-    place(out, norm_peak(softclip((hit + drop + scr) * 1.3, 2.2), -0.5), 0.32)
-    out = room(out, dict(dur=0.45, decay=0.15, damp_hz=3600.0, predelay=0.012, seed=111), wet=0.28)
+    hitmix = _snap_attack(softclip((hit + drop + scr) * 1.3, 2.2), 8409, 1.0, 9000.0)
+    place(out, norm_peak(hitmix, -0.5), 0.32)
+    out = room(out, dict(dur=0.26, decay=0.070, damp_hz=3600.0, predelay=0.008, seed=111), wet=0.22)
     return norm_peak(dc_kill(trim_tail(out, -54.0)), -0.5)
 
 
@@ -1543,7 +1655,8 @@ def stinger_3():
     body = sine(glide(220.0, 70.0, n, 2.6), n) * env_ar(n, 0.001, 0.07, 5.0) * 1.0
     x = softclip((scream + nz + body) * 2.0, 3.2)
     x = peaking(x, 3200.0, 1.2, 5.0)
-    x = room(x, ROOM_TIGHT, wet=0.20)
+    x = _snap_attack(x, 8509, 1.0, 11000.0)
+    x = room(x, dict(dur=0.22, decay=0.055, damp_hz=4200.0, predelay=0.006, seed=119), wet=0.18)
     return norm_peak(dc_kill(trim_tail(x, -54.0)), -0.5)
 
 
