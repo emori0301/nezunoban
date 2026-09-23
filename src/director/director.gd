@@ -98,6 +98,10 @@ func _boot() -> void:
 	# 二重に外しても落ちないことを確かめるため。
 	if args.has("reload-test"):
 		_reload_loop(float(args.get("reload-test", "5")))
+	# QA 用: --credits でクレジットだけ流す
+	if args.has("credits"):
+		_show_credits_only()
+		return
 	# QA 用: --scare=<関数名> で脅かしを1つだけ発火させる(チェックリストの撮影用)
 	if args.has("scare"):
 		_fire_scare(String(args["scare"]))
@@ -133,6 +137,17 @@ func _boot() -> void:
 	else:
 		await play_intro()
 		Clock.start()
+
+
+func _show_credits_only() -> void:
+	var h := hud()
+	if h and h.has_method(&"set_fade"):
+		h.set_fade(0.0)
+	var c := Credits.new()
+	c.name = "Credits"
+	ui_parent().add_child(c)
+	await c.play()
+	c.queue_free()
 
 
 func _reload_loop(sec: float) -> void:
@@ -874,6 +889,7 @@ func finish(ending: StringName) -> void:
 
 
 func _on_night_ended(id: StringName) -> void:
+	endings.save_progress(id)
 	endings.run(id)
 
 

@@ -7,6 +7,11 @@ extends Node
 ## Game.end_night(id) → Game.night_ended → Director が run(id) を呼ぶ、という流れ。
 
 const ENDING_SCENE := "res://src/ui/ending.tscn"
+## 到達したエンディングの記録。タイトル画面が読む。
+##   [endings]
+##   morning=true
+##   kasha=true
+const PROGRESS_PATH := "user://progress.cfg"
 
 signal ending_started(id: StringName)
 
@@ -128,6 +133,31 @@ func _portrait_prologue() -> void:
 	await Events.wait(3.4)
 
 
+## 到達したエンディングを user://progress.cfg に書き足す。
+## 既存の内容は読んでから上書きするので、周回しても消えない。
+func save_progress(id: StringName) -> void:
+	if id == &"":
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(PROGRESS_PATH)          # 無ければ空のまま
+	cfg.set_value("endings", String(id), true)
+	cfg.set_value("endings", "last", String(id))
+	var err := cfg.save(PROGRESS_PATH)
+	if err != OK:
+		push_warning("Endings: progress.cfg を書けない (%d)" % err)
+
+
+## エンディング文のあとにクレジットを流す。
+func _roll_credits(vp: Node) -> void:
+	if vp == null:
+		return
+	var c := Credits.new()
+	c.name = "Credits"
+	vp.add_child(c)
+	await c.play()
+	c.queue_free()
+
+
 func _show_screen(id: StringName) -> void:
 	var info := text_for(id)
 	var vp: Node = dir.ui_parent()
@@ -145,4 +175,5 @@ func _show_screen(id: StringName) -> void:
 		hud.set_fade(0.0)
 		hud.set_rec(false)
 	await e.play(id, String(info[0]), info[1])
+	await _roll_credits(vp)
 	get_tree().reload_current_scene()

@@ -95,6 +95,7 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--cctv-feed=<0\|1>` | `--cctv-shot` と併用。撮る前にチャンネルを式場(0)/玄関(1)に切り替える |
 | `--scare=<関数名>` | `scares.gd` の脅かしを 1 つだけ発火させる。`--screenshot` / `--cctv-shot` と組み合わせて使う |
 | `--scare=body_rises` | 火車エンド直前の起き上がりカットだけ出す |
+| `--credits` | クレジットだけ流す |
 | `--reload-test=<sec>` | 数秒ごとに `reload_current_scene()` を繰り返す。`Game.reset()` のシグナル一括解除との二重解除を確かめる用 |
 
 夜を通しで目で見るとき:
@@ -247,6 +248,44 @@ systems 側を動かすものは `Director._fire_scare` の `match` に別名を
 | 26 | `_body_rises`(director) | 火車エンド直前(灯し直し失敗 / 火車に捕まった瞬間) | `body_rises.png` | 見える。棺が開いて故人が上体を起こす 2 秒のカット |
 
 音のみのものは画面に出ないのが仕様なので、直す対象からは外してある。
+
+## クレジットと到達エンディングの記録
+
+### クレジット
+
+エンディング文の「タイトルへ」を押したあと、`src/director/credits.gd`(`Credits`)が
+黒地に明朝で 30 秒かけて下から上へ流す。`advance` で飛ばせる(押しっぱなしで即スキップに
+ならないよう、開始 0.8 秒は入力を受けない)。流し終わると `reload_current_scene()`。
+
+文面は `ScriptText.CREDITS`。`docs/script.md`「クレジット(エンディング後)」のままで、
+`(あなたの名前)` も指示どおりそのまま置いてある。`[文字列, 文字サイズ]` の配列で、
+空文字は余白(サイズが高さ)。
+
+QA は `--credits` でクレジットだけ流せる。
+
+```bash
+godot --path . -- --skip-title --credits --screenshot=out/director/credits.png --wait=13
+```
+
+### user://progress.cfg(タイトル画面が読む)
+
+`Game.night_ended` で `Endings.save_progress(id)` が書く(`Director._on_night_ended`)。
+実体は `~/Library/Application Support/Godot/app_userdata/寝ずの番 - The Wake/progress.cfg`。
+
+```ini
+[endings]
+
+portrait=true
+kasha=true
+morning=true
+last="morning"
+```
+
+- キーはエンディング ID(`morning` / `kasha` / `substitute` / `portrait`)、値は `true`。
+- `last` は最後に到達した ID(文字列)。
+- 書く前に `ConfigFile.load()` で既存を読むので、周回しても前の記録は消えない。
+- まだ 1 度も到達していないエンディングはキーごと存在しない。
+  タイトル側は `cfg.get_value("endings", "morning", false)` のように既定値つきで読むこと。
 
 ## 夜明け(04:45〜05:00)
 
