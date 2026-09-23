@@ -31,9 +31,39 @@ func at_minute(total: int, callable: Callable, id: String = "") -> String:
 		call_deferred("_fire", id, callable)
 	return id
 
+## 実秒後に発火。ポーズ中は進まない(process_always=false)。
 func after(seconds: float, callable: Callable) -> void:
-	var t := get_tree().create_timer(seconds)
+	var t := get_tree().create_timer(seconds, false)
 	t.timeout.connect(callable)
+
+## ポーズを尊重する SceneTreeTimer。`await Events.wait(2.0)` の形で使う。
+func wait(seconds: float) -> Signal:
+	return get_tree().create_timer(seconds, false).timeout
+
+## 1回だけ受ける購読。発火したら自分で外す。
+func once(name: StringName, callable: Callable) -> void:
+	var holder: Array = [Callable()]
+	holder[0] = func(n: StringName, d: Dictionary) -> void:
+		if n == name:
+			if event.is_connected(holder[0]):
+				event.disconnect(holder[0])
+			callable.call(d)
+	event.connect(holder[0])
+
+## name のイベントが来るまで待つ(timeout 秒で諦める)。接続は必ず外す。
+func wait_event(name: StringName, timeout: float = 120.0) -> void:
+	var done := [false]
+	var cb := func(n: StringName, _d: Dictionary) -> void:
+		if n == name:
+			done[0] = true
+	event.connect(cb)
+	var elapsed := 0.0
+	while not done[0] and elapsed < timeout:
+		await get_tree().process_frame
+		if not get_tree().paused:
+			elapsed += get_process_delta_time()
+	if event.is_connected(cb):
+		event.disconnect(cb)
 
 func cancel(id: String) -> void:
 	_cancelled[id] = true

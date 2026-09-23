@@ -45,7 +45,8 @@ func can_interact(player: Node3D) -> bool:
 func interact(player: Node3D) -> void:
 	if not can_interact(player):
 		return
-	_used = true
+	if one_shot:
+		_used = true
 	_interact(player)
 	interacted.emit(player)
 

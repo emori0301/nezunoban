@@ -21,8 +21,18 @@ func register_ui(node: Node) -> void:
 func is_ready() -> bool:
 	return ui != null
 
-func say(speaker: String, text: String) -> void:
+## busy の間は順番待ち(独白が2つ同時に走っても片方が消えない)
+func _acquire() -> void:
+	while busy:
+		await finished
 	busy = true
+
+func _release() -> void:
+	busy = false
+	finished.emit()
+
+func say(speaker: String, text: String) -> void:
+	await _acquire()
 	line_shown.emit(speaker, text)
 	if auto_advance:
 		if Game.debug:
@@ -33,8 +43,7 @@ func say(speaker: String, text: String) -> void:
 	else:
 		print("[say] %s: %s" % [speaker, text])
 		await get_tree().create_timer(0.1).timeout
-	busy = false
-	finished.emit()
+	_release()
 
 ## 連続で複数行。lines = [[speaker, text], ...]
 func say_lines(lines: Array) -> void:
@@ -42,7 +51,7 @@ func say_lines(lines: Array) -> void:
 		await say(l[0], l[1])
 
 func choose(prompt: String, options: Array) -> int:
-	busy = true
+	await _acquire()
 	var result := 0
 	if auto_advance:
 		if auto_chooser.is_valid():
@@ -53,12 +62,12 @@ func choose(prompt: String, options: Array) -> int:
 	else:
 		print("[choose] %s %s -> 0" % [prompt, options])
 		await get_tree().create_timer(0.1).timeout
-	busy = false
+	_release()
 	return result
 
 ## 手紙・日記などの全文表示。閉じるまで待つ。
 func note(title: String, body: String) -> void:
-	busy = true
+	await _acquire()
 	if auto_advance:
 		await get_tree().create_timer(auto_line_seconds).timeout
 	elif ui and ui.has_method("show_note"):
@@ -66,7 +75,7 @@ func note(title: String, body: String) -> void:
 	else:
 		print("[note] %s\n%s" % [title, body])
 		await get_tree().create_timer(0.1).timeout
-	busy = false
+	_release()
 
 ## 画面中央に短く出る独白(モノローグ)。話者なし。
 func monologue(text: String) -> void:

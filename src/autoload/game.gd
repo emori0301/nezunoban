@@ -50,10 +50,12 @@ func end_night(ending: StringName) -> void:
 		return
 	state = State.ENDING
 	ending_reached = ending
+	get_tree().paused = false   # ポーズ中にエンディングへ入っても止まったままにしない
 	night_ended.emit(ending)
 	# 実際の画面遷移は director (src/director) が night_ended を受けて行う
 
 func reset() -> void:
+	get_tree().paused = false
 	flags.clear()
 	state = State.TITLE
 	ending_reached = &""
