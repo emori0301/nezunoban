@@ -103,10 +103,36 @@ static func paper_style() -> StyleBoxFlat:
 	sb.content_margin_bottom = 12
 	return sb
 
-## 入力アクションに割り当てられたキー名("E" / "Space")。
+## ゲームパッドのボタン名。Godot に表示名を返す API が無いので自前で持つ。
+const JOY_BUTTON_NAMES := {
+	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
+	JOY_BUTTON_BACK: "Back", JOY_BUTTON_START: "Start",
+	JOY_BUTTON_LEFT_SHOULDER: "LB", JOY_BUTTON_RIGHT_SHOULDER: "RB",
+	JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",
+}
+
+## 直前に使われた入力がゲームパッドかどうか。HUD / タイトルが note_input() で更新する。
+static var using_joypad: bool = false
+
+## 入力の種別を覚える。キーボード・マウスとパッドを行き来しても表記が追従するようにする。
+static func note_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		using_joypad = true
+	elif event is InputEventJoypadMotion:
+		# スティックの揺り戻しで切り替わらないよう、しっかり倒したときだけ
+		if absf((event as InputEventJoypadMotion).axis_value) > 0.5:
+			using_joypad = true
+	elif event is InputEventKey or event is InputEventMouseButton or event is InputEventMouseMotion:
+		using_joypad = false
+
+## 入力アクションに割り当てられたキー名("E" / "Space" / パッドなら "A")。
 ## headless では DisplayServer.keyboard_get_keycode_from_physical() が
 ## 「Not supported by this display server」を出すので、物理キーコードのまま文字列にする。
 static func key_name(action: StringName, fallback: String = "E") -> String:
+	if using_joypad:
+		var pad := joy_name(action)
+		if pad != "":
+			return pad
 	var physical_ok := DisplayServer.get_name() != "headless"
 	for e in InputMap.action_get_events(action):
 		if e is InputEventKey:
@@ -119,6 +145,15 @@ static func key_name(action: StringName, fallback: String = "E") -> String:
 			if kc != 0:
 				return OS.get_keycode_string(kc)
 	return fallback
+
+## アクションに割り当たっているパッドボタンの名前。無ければ空文字。
+static func joy_name(action: StringName) -> String:
+	for e in InputMap.action_get_events(action):
+		if e is InputEventJoypadButton:
+			var idx: int = (e as InputEventJoypadButton).button_index
+			if JOY_BUTTON_NAMES.has(idx):
+				return String(JOY_BUTTON_NAMES[idx])
+	return ""
 
 static func full_rect(c: Control) -> Control:
 	c.set_anchors_preset(Control.PRESET_FULL_RECT)

@@ -30,15 +30,22 @@ signal quit_requested
 @export var clipboard_tasks_header: String = "今夜のこと"
 @export var note_close_hint: String = "閉じる"
 @export var pause_items: PackedStringArray = ["再開", "設定", "タイトルへ", "終了"]
-## 設定画面の行。並びは固定(感度/マスター/効果音/環境音/VHS/画面揺れ/操作ヒント/戻る)
+## 設定画面の行。SETTING_KEYS と同じ並びであること(差し替えるときは順番を崩さない)
 @export var settings_items: PackedStringArray = [
-	"マウス感度", "全体の音量", "効果音の音量", "環境音の音量",
+	"マウス感度", "パッド視点の感度", "全体の音量", "効果音の音量", "環境音の音量",
 	"VHS の強さ", "画面の揺れ", "操作ヒント", "戻る",
+]
+
+## settings_items の各行が何を指すか。表示名は差し替えられるが、こちらは固定。
+const SETTING_KEYS: Array[StringName] = [
+	&"mouse", &"pad", &"vol_master", &"vol_sfx", &"vol_ambient",
+	&"vhs", &"shake", &"hints", &"back",
 ]
 @export var settings_on_text: String = "入"
 @export var settings_off_text: String = "切"
 ## 初回だけ画面下に出る操作説明
 @export var controls_hint_text: String = "WASD 移動 / マウス 視点 / E 調べる / Tab 心得 / Esc ポーズ"
+@export var controls_hint_text_pad: String = "左スティック 移動 / 右スティック 視点 / A 調べる / Y 心得 / Start ポーズ"
 @export var controls_hint_seconds: float = 6.0
 @export var typewriter_cps: float = 34.0
 
@@ -122,6 +129,7 @@ var _pause_latch: bool = true
 
 var _all_tasks: Array = []
 var _interact_key: String = "E"
+var _was_joypad: bool = false
 var _latch: Dictionary = {}
 
 func _ready() -> void:
@@ -610,7 +618,17 @@ func _build_pause() -> void:
 
 # ================================================================ 毎フレーム
 
+func _input(event: InputEvent) -> void:
+	UiTheme.note_input(event)
+
 func _process(delta: float) -> void:
+	# キーボードとパッドを行き来したらプロンプトの表記を差し替える([E] ⇔ [A])
+	if UiTheme.using_joypad != _was_joypad:
+		_was_joypad = UiTheme.using_joypad
+		_interact_key = _key_for(&"interact")
+		# 表示中の操作ヒントも入力に合わせて差し替える
+		if _hint.modulate.a > 0.01:
+			_hint.text = controls_hint_text_pad if UiTheme.using_joypad else controls_hint_text
 	_rec_t += delta
 	_rec_dot.modulate.a = 1.0 if fmod(_rec_t, 1.0) < 0.55 else 0.0
 	_time_label.text = Clock.time_string()
@@ -804,8 +822,7 @@ func show_choice(prompt: String, options: Array) -> int:
 	return maxi(_choice_result, 0)
 
 func _build_choice_rows(options: Array) -> void:
-	for c in _choice_rows.get_children():
-		c.queue_free()
+	_clear_children(_choice_rows)
 	for i in options.size():
 		var idx := i
 		var row := PanelContainer.new()
@@ -944,8 +961,7 @@ func _close_clipboard() -> void:
 	_clip.visible = false
 
 func _refresh_clip_tasks() -> void:
-	for c in _clip_tasks.get_children():
-		c.queue_free()
+	_clear_children(_clip_tasks)
 	if _all_tasks.is_empty():
 		_clip_tasks.add_child(UiTheme.gothic_label("　―", 15, UiTheme.INK_DIM, false))
 		return
@@ -959,16 +975,21 @@ func set_rules(list: PackedStringArray) -> void:
 	rules = list
 	if _clip_rules == null:
 		return
-	for c in _clip_rules.get_children():
-		c.queue_free()
+	_clear_children(_clip_rules)
 	for r in rules:
 		_clip_rules.add_child(UiTheme.gothic_label(r, 16, UiTheme.INK, false))
 
 # ================================================================ ポーズ
 
-func _build_pause_rows() -> void:
-	for c in _pause_rows.get_children():
+## 子を全部外して捨てる。queue_free() だけだとフレーム終わりまで子として残り、
+## 直後の更新処理が古い行のほうを触ってしまう(2回目に開くと値が空になる)。
+func _clear_children(parent: Node) -> void:
+	for c in parent.get_children():
+		parent.remove_child(c)
 		c.queue_free()
+
+func _build_pause_rows() -> void:
+	_clear_children(_pause_rows)
 	for i in pause_items.size():
 		var l := UiTheme.gothic_label(String(pause_items[i]), 19, UiTheme.TEXT_DIM)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -1053,8 +1074,7 @@ func _open_settings() -> void:
 
 ## 行 = [マーカー][項目名][値]。マーカーぶんの溝を空けて左揃えにする。
 func _build_settings_rows() -> void:
-	for c in _settings_rows.get_children():
-		c.queue_free()
+	_clear_children(_settings_rows)
 	for i in settings_items.size():
 		var idx := i
 		var row := HBoxContainer.new()
@@ -1099,35 +1119,41 @@ func _update_settings_rows() -> void:
 		val_l.label_settings.font_color = UiTheme.SELECT if on else UiTheme.TEXT_DIM
 		val_l.text = _setting_value_text(i)
 
+func _setting_key(i: int) -> StringName:
+	return SETTING_KEYS[i] if i >= 0 and i < SETTING_KEYS.size() else &"back"
+
 func _setting_value_text(i: int) -> String:
-	match i:
-		0: return "%.1f" % Settings.mouse_sensitivity
-		1: return "%d%%" % roundi(Settings.volume_master * 100.0)
-		2: return "%d%%" % roundi(Settings.volume_sfx * 100.0)
-		3: return "%d%%" % roundi(Settings.volume_ambient * 100.0)
-		4: return "%d%%" % roundi(Settings.vhs_intensity * 100.0)
-		5: return settings_on_text if Settings.screen_shake else settings_off_text
-		6: return settings_on_text if Settings.show_hints else settings_off_text
+	match _setting_key(i):
+		&"mouse": return "%.1f" % Settings.mouse_sensitivity
+		&"pad": return "%.1f" % Settings.pad_sensitivity
+		&"vol_master": return "%d%%" % roundi(Settings.volume_master * 100.0)
+		&"vol_sfx": return "%d%%" % roundi(Settings.volume_sfx * 100.0)
+		&"vol_ambient": return "%d%%" % roundi(Settings.volume_ambient * 100.0)
+		&"vhs": return "%d%%" % roundi(Settings.vhs_intensity * 100.0)
+		&"shake": return settings_on_text if Settings.screen_shake else settings_off_text
+		&"hints": return settings_on_text if Settings.show_hints else settings_off_text
 	return ""
 
 ## dir = +1 / -1。つまみを1段動かす。端で止まる(トグルは反転)。
 func _nudge_setting(dir: int) -> void:
-	match _settings_index:
-		0:
+	match _setting_key(_settings_index):
+		&"mouse":
 			Settings.mouse_sensitivity = clampf(snappedf(Settings.mouse_sensitivity + dir * Settings.SENS_STEP, Settings.SENS_STEP), Settings.SENS_MIN, Settings.SENS_MAX)
-		1:
+		&"pad":
+			Settings.pad_sensitivity = clampf(snappedf(Settings.pad_sensitivity + dir * Settings.SENS_STEP, Settings.SENS_STEP), Settings.SENS_MIN, Settings.SENS_MAX)
+		&"vol_master":
 			Settings.volume_master = clampf(snappedf(Settings.volume_master + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
-		2:
+		&"vol_sfx":
 			Settings.volume_sfx = clampf(snappedf(Settings.volume_sfx + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
-		3:
+		&"vol_ambient":
 			Settings.volume_ambient = clampf(snappedf(Settings.volume_ambient + dir * Settings.VOL_STEP, Settings.VOL_STEP), 0.0, 1.0)
-		4:
+		&"vhs":
 			Settings.vhs_intensity = clampf(snappedf(Settings.vhs_intensity + dir * Settings.VHS_STEP, Settings.VHS_STEP), 0.0, 1.0)
-		5:
+		&"shake":
 			Settings.screen_shake = not Settings.screen_shake
-		6:
+		&"hints":
 			_set_show_hints(not Settings.show_hints)
-		7:
+		_:
 			return
 	Settings.apply()
 	Settings.save()
@@ -1136,12 +1162,13 @@ func _nudge_setting(dir: int) -> void:
 
 ## 決定キー: トグルは反転、つまみは1段上げる(端まで行ったら最小に戻る)、最後の行は戻る。
 func _activate_setting() -> void:
-	if _settings_index == settings_items.size() - 1:
+	var key := _setting_key(_settings_index)
+	if key == &"back":
 		Audio.play(&"ui_back", -8.0)
 		_show_pause_page(0)
 		_update_pause_rows()
 		return
-	if _settings_index == 5 or _settings_index == 6:
+	if key == &"shake" or key == &"hints":
 		_nudge_setting(1)
 		return
 	if _setting_at_max():
@@ -1154,21 +1181,23 @@ func _activate_setting() -> void:
 	_nudge_setting(1)
 
 func _setting_at_max() -> bool:
-	match _settings_index:
-		0: return Settings.mouse_sensitivity >= Settings.SENS_MAX - 0.001
-		1: return Settings.volume_master >= 0.999
-		2: return Settings.volume_sfx >= 0.999
-		3: return Settings.volume_ambient >= 0.999
-		4: return Settings.vhs_intensity >= 0.999
+	match _setting_key(_settings_index):
+		&"mouse": return Settings.mouse_sensitivity >= Settings.SENS_MAX - 0.001
+		&"pad": return Settings.pad_sensitivity >= Settings.SENS_MAX - 0.001
+		&"vol_master": return Settings.volume_master >= 0.999
+		&"vol_sfx": return Settings.volume_sfx >= 0.999
+		&"vol_ambient": return Settings.volume_ambient >= 0.999
+		&"vhs": return Settings.vhs_intensity >= 0.999
 	return false
 
 func _set_setting_to_min() -> void:
-	match _settings_index:
-		0: Settings.mouse_sensitivity = Settings.SENS_MIN
-		1: Settings.volume_master = 0.0
-		2: Settings.volume_sfx = 0.0
-		3: Settings.volume_ambient = 0.0
-		4: Settings.vhs_intensity = 0.0
+	match _setting_key(_settings_index):
+		&"mouse": Settings.mouse_sensitivity = Settings.SENS_MIN
+		&"pad": Settings.pad_sensitivity = Settings.SENS_MIN
+		&"vol_master": Settings.volume_master = 0.0
+		&"vol_sfx": Settings.volume_sfx = 0.0
+		&"vol_ambient": Settings.volume_ambient = 0.0
+		&"vhs": Settings.vhs_intensity = 0.0
 
 func _set_show_hints(v: bool) -> void:
 	Settings.show_hints = v
@@ -1188,7 +1217,7 @@ func _maybe_show_controls_hint() -> void:
 ## 設定に関係なく操作説明を出す(デバッグや「もう一度見る」用)
 func show_controls_hint(duration: float = -1.0) -> void:
 	var dur := controls_hint_seconds if duration < 0.0 else duration
-	_hint.text = controls_hint_text
+	_hint.text = controls_hint_text_pad if UiTheme.using_joypad else controls_hint_text
 	if _hint_tween and _hint_tween.is_valid():
 		_hint_tween.kill()
 	_hint.modulate.a = 0.0

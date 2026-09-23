@@ -23,6 +23,12 @@ const SURFACE_GROUPS := {
 
 @export_group("操作")
 @export var mouse_sensitivity: float = 0.0026
+## 右スティックの視点速度(ラジアン/秒、倍率 1.0 のとき)
+@export var pad_look_speed: float = 2.6
+## スティックの遊び。これ以下は完全に無視する
+@export var pad_deadzone: float = 0.2
+## 倒し量のカーブ。大きいほど中央付近がゆっくりになる
+@export var pad_look_curve: float = 2.2
 @export var invert_y: bool = false
 @export var pitch_limit_deg: float = 85.0
 @export var capture_mouse: bool = true
@@ -88,7 +94,8 @@ var _mouse_captured: bool = false
 var _rng := RandomNumberGenerator.new()
 var _head_base_y: float = 1.6
 var _moving: bool = false
-var _sens_scale: float = 1.0   ## 設定のマウス感度倍率(0.5〜2.0)
+var _sens_scale: float = 1.0       ## 設定のマウス感度倍率(0.5〜2.0)
+var _pad_sens_scale: float = 1.0   ## 設定のパッド視点感度倍率(0.5〜2.0)
 
 func _ready() -> void:
 	add_to_group(&"player")
@@ -118,6 +125,7 @@ func get_camera() -> Camera3D:
 # ---------------------------------------------------------------- 入力
 
 func _input(event: InputEvent) -> void:
+	UiTheme.note_input(event)
 	if event is InputEventMouseMotion and _mouse_captured and not _blocked():
 		var rel: Vector2 = event.relative
 		if "screen_relative" in event:
@@ -136,6 +144,27 @@ func _apply_look(rel: Vector2) -> void:
 	_pitch = clampf(_pitch, -lim, lim)
 	# 運搬中の持ち物が視点移動に遅れて付いてくる
 	_carry_sway_vel += Vector2(-rel.x, -rel.y) * 0.0016
+
+## 右スティック(look_* アクション = 軸 2/3)で視点を回す。
+## デッドゾーンを抜いてから非線形カーブを掛けるので、中央付近は細かく、端は速く動く。
+func _apply_pad_look(delta: float) -> void:
+	var raw := Vector2(
+		Input.get_action_strength(&"look_right") - Input.get_action_strength(&"look_left"),
+		Input.get_action_strength(&"look_down") - Input.get_action_strength(&"look_up"))
+	var mag := raw.length()
+	if mag <= pad_deadzone:
+		return
+	# デッドゾーンぶんを差し引いて 0..1 に引き伸ばし、カーブを掛ける
+	var t: float = clampf((mag - pad_deadzone) / maxf(1.0 - pad_deadzone, 0.001), 0.0, 1.0)
+	var curved: float = pow(t, pad_look_curve)
+	var dir := raw / mag
+	var step := dir * curved * pad_look_speed * _pad_sens_scale * delta
+	_yaw -= step.x
+	var dy := step.y
+	_pitch += dy if invert_y else -dy
+	var lim := deg_to_rad(pitch_limit_deg)
+	_pitch = clampf(_pitch, -lim, lim)
+	_carry_sway_vel += Vector2(-step.x, -step.y) * 0.35
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"pause"):
@@ -248,6 +277,8 @@ func _advance_walk(moved: float) -> void:
 
 ## 見た目(視点・ヘッドボブ・揺れ・運搬物)は描画フレームで更新する
 func _process(delta: float) -> void:
+	if not _blocked():
+		_apply_pad_look(delta)
 	var phase := _walk_dist / step_length * PI
 	var active: float = 1.0 if _moving else 0.0
 	var want := Vector3.ZERO
@@ -628,6 +659,13 @@ func set_sensitivity_scale(f: float) -> void:
 
 func get_sensitivity_scale() -> float:
 	return _sens_scale
+
+## 設定画面から渡されるパッド視点の倍率(0.5〜2.0)
+func set_pad_sensitivity_scale(f: float) -> void:
+	_pad_sens_scale = clampf(f, 0.1, 5.0)
+
+func get_pad_sensitivity_scale() -> float:
+	return _pad_sens_scale
 
 func set_speed_multiplier(f: float) -> void:
 	speed_multiplier = clampf(f, 0.0, 4.0)

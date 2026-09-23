@@ -222,6 +222,26 @@ func _check(ok: bool, label: String, detail: String = "") -> void:
 		_fails += 1
 		print("  FAIL %s %s" % [label, detail])
 
+## ゲームパッドの軸を倒す/戻す。Input.parse_input_event で実機の無い環境でも試せる。
+func _pad_axis(axis: int, value: float) -> void:
+	var ev := InputEventJoypadMotion.new()
+	ev.device = 0
+	ev.axis = axis
+	ev.axis_value = value
+	Input.parse_input_event(ev)
+
+func _pad_button(index: int, pressed: bool) -> void:
+	var ev := InputEventJoypadButton.new()
+	ev.device = 0
+	ev.button_index = index
+	ev.pressed = pressed
+	Input.parse_input_event(ev)
+
+## 倒していた軸をすべて中立に戻す
+func _pad_center() -> void:
+	for a in [0, 1, 2, 3]:
+		_pad_axis(a, 0.0)
+
 ## E を1回押して離す(押しっぱなしのゲートに引っかからないように)
 func _press_interact() -> void:
 	Input.action_press(&"interact")
@@ -489,7 +509,7 @@ func _run_selftest() -> void:
 	await get_tree().create_timer(0.3, false).timeout
 	# 元の設定を控えておき、最後に書き戻す
 	var backup := {
-		"sens": Settings.mouse_sensitivity, "m": Settings.volume_master,
+		"sens": Settings.mouse_sensitivity, "pad": Settings.pad_sensitivity, "m": Settings.volume_master,
 		"s": Settings.volume_sfx, "a": Settings.volume_ambient,
 		"v": Settings.vhs_intensity, "shake": Settings.screen_shake,
 		"hints": Settings.show_hints, "seen": Settings.seen_hint,
@@ -549,7 +569,14 @@ func _run_selftest() -> void:
 	var before_sens: float = Settings.mouse_sensitivity
 	hud._nudge_setting(1)
 	_check(Settings.mouse_sensitivity > before_sens, "右で感度が上がる", "%.1f -> %.1f" % [before_sens, Settings.mouse_sensitivity])
-	hud._settings_index = 5
+	# 2回目に開いても行が作り直されて値が出る(queue_free の取り残し回帰)
+	hud._show_pause_page(0)
+	hud._activate_pause(1)
+	await get_tree().create_timer(0.2, true).timeout
+	var row1 := hud._settings_rows.get_child(1) as HBoxContainer
+	_check(hud._settings_rows.get_child_count() == hud.settings_items.size(), "2回目でも行数が増えない", "= %d" % hud._settings_rows.get_child_count())
+	_check((row1.get_child(2) as Label).text != "", "2回目でも値が出る", "= 「%s」" % (row1.get_child(2) as Label).text)
+	hud._settings_index = hud.SETTING_KEYS.find(&"shake")
 	var before_shake: bool = Settings.screen_shake
 	hud._activate_setting()
 	_check(Settings.screen_shake != before_shake, "決定でトグルが反転する")
@@ -561,6 +588,7 @@ func _run_selftest() -> void:
 
 	# 後片付け: 元の設定に戻して保存
 	Settings.mouse_sensitivity = backup["sens"]
+	Settings.pad_sensitivity = backup["pad"]
 	Settings.volume_master = backup["m"]
 	Settings.volume_sfx = backup["s"]
 	Settings.volume_ambient = backup["a"]
@@ -581,6 +609,115 @@ func _run_selftest() -> void:
 	_check(Settings.reached_count() == 2, "到達数 = 2", "= %d" % Settings.reached_count())
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.PROGRESS_PATH))
 	_check(Settings.reached_count() == 0, "progress.cfg が無ければ 0/4")
+
+	# 18) ゲームパッド
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 18a) 左スティックで歩く(軸 1 = 前後)
+	player.teleport(Vector3(0, 0.05, 4.0), 0.0, 0.0)
+	await get_tree().create_timer(0.3, false).timeout
+	_pad_axis(1, -1.0)                                  # 上に倒す = 前進
+	await get_tree().create_timer(0.8, false).timeout
+	var pa: Vector3 = player.global_position
+	await get_tree().create_timer(1.0, false).timeout
+	var pb: Vector3 = player.global_position
+	_pad_center()
+	var pad_speed: float = Vector2(pb.x - pa.x, pb.z - pa.z).length()
+	_check(absf(pad_speed - 2.5) < 0.2, "左スティックで歩く", "= %.2f m/s" % pad_speed)
+	_check(pb.z < pa.z, "倒した向きに進む", "z %.2f -> %.2f" % [pa.z, pb.z])
+
+	# 18b) 左スティックを戻すと止まる
+	await get_tree().create_timer(0.6, false).timeout
+	var ps: Vector3 = player.global_position
+	await get_tree().create_timer(0.5, false).timeout
+	_check(ps.distance_to(player.global_position) < 0.05, "中立に戻すと止まる")
+
+	# 18c) 右スティックで視点が回る(軸 2 = 左右)
+	player.teleport(Vector3(0, 0.05, 0.0), 0.0, 0.0)
+	await get_tree().create_timer(0.3, false).timeout
+	var yaw0: float = player.rotation.y
+	_pad_axis(2, 1.0)                                   # 右に倒す
+	await get_tree().create_timer(0.8, false).timeout
+	_pad_center()
+	await get_tree().create_timer(0.2, false).timeout
+	var dyaw: float = angle_difference(yaw0, player.rotation.y)
+	_check(dyaw < -0.3, "右スティックで右を向く", "Δyaw = %.2f rad" % dyaw)
+
+	# 18d) デッドゾーン内は無視する
+	player.teleport(Vector3(0, 0.05, 0.0), 0.0, 0.0)
+	await get_tree().create_timer(0.3, false).timeout
+	yaw0 = player.rotation.y
+	_pad_axis(2, 0.15)                                  # pad_deadzone 0.2 より小さい
+	await get_tree().create_timer(0.6, false).timeout
+	_pad_center()
+	_check(absf(angle_difference(yaw0, player.rotation.y)) < 0.02, "デッドゾーン内は動かない")
+
+	# 18e) 上下の視点(軸 3)とピッチの上限
+	yaw0 = player.rotation.y
+	var pitch0: float = player.get_camera().global_rotation.x
+	_pad_axis(3, -1.0)                                  # 上に倒す = 上を向く
+	await get_tree().create_timer(0.6, false).timeout
+	_pad_center()
+	await get_tree().create_timer(0.2, false).timeout
+	_check(player.get_camera().global_rotation.x > pitch0 + 0.2, "右スティックで上を向く")
+	_pad_axis(3, -1.0)
+	await get_tree().create_timer(2.5, false).timeout   # 上限まで倒し続ける
+	_pad_center()
+	_check(player.get_camera().global_rotation.x <= deg_to_rad(player.pitch_limit_deg) + 0.01, "ピッチが上限で止まる", "= %.1f 度" % rad_to_deg(player.get_camera().global_rotation.x))
+
+	# 18f) パッド感度の倍率が効く
+	player.teleport(Vector3(0, 0.05, 0.0), 0.0, 0.0)
+	player.set_pad_sensitivity_scale(0.5)
+	await get_tree().create_timer(0.3, false).timeout
+	yaw0 = player.rotation.y
+	_pad_axis(2, 1.0)
+	await get_tree().create_timer(0.4, false).timeout   # 感度 2.0 でも PI を超えない長さ
+	_pad_center()
+	await get_tree().create_timer(0.2, false).timeout
+	var slow: float = absf(angle_difference(yaw0, player.rotation.y))
+	player.set_pad_sensitivity_scale(2.0)
+	player.teleport(Vector3(0, 0.05, 0.0), 0.0, 0.0)
+	await get_tree().create_timer(0.3, false).timeout
+	yaw0 = player.rotation.y
+	_pad_axis(2, 1.0)
+	await get_tree().create_timer(0.4, false).timeout
+	_pad_center()
+	await get_tree().create_timer(0.2, false).timeout
+	var fast: float = absf(angle_difference(yaw0, player.rotation.y))
+	_check(fast > slow * 3.0, "感度 2.0 は 0.5 より大きく回る", "%.2f -> %.2f rad" % [slow, fast])
+	player.set_pad_sensitivity_scale(1.0)
+
+	# 18g) A ボタンで調べる
+	player.teleport(Vector3(0, 0.05, -3.8), 0.0, -7.0)
+	await get_tree().create_timer(0.5, false).timeout
+	var pad_fired := {"n": 0}
+	if player.focus:
+		player.focus.interacted.connect(func(_p: Node3D) -> void: pad_fired["n"] += 1)
+	_pad_button(JOY_BUTTON_A, true)
+	await get_tree().create_timer(0.2, false).timeout
+	_pad_button(JOY_BUTTON_A, false)
+	await get_tree().create_timer(0.2, false).timeout
+	_check(pad_fired["n"] == 1, "A ボタンで調べる", "= %d 回" % pad_fired["n"])
+	hud._dlg_active = false
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 18h) プロンプト表記が [E] ⇔ [A] で切り替わる
+	_check(UiTheme.using_joypad, "直前の入力がパッドだと覚えている")
+	_check(UiTheme.key_name(&"interact") == "A", "パッド中は A", "= %s" % UiTheme.key_name(&"interact"))
+	await get_tree().create_timer(0.3, false).timeout
+	_check(hud._interact_key == "A", "HUD のプロンプトも A", "= %s" % hud._interact_key)
+	var kev := InputEventKey.new()
+	kev.physical_keycode = KEY_W
+	kev.pressed = true
+	Input.parse_input_event(kev)
+	await get_tree().create_timer(0.3, false).timeout
+	kev.pressed = false
+	Input.parse_input_event(kev)
+	_check(not UiTheme.using_joypad, "キーを叩くとキーボードに戻る")
+	_check(UiTheme.key_name(&"interact") == "E", "キーボード中は E", "= %s" % UiTheme.key_name(&"interact"))
+	await get_tree().create_timer(0.3, false).timeout
+	_check(hud._interact_key == "E", "HUD のプロンプトも E に戻る", "= %s" % hud._interact_key)
+	_pad_center()
 
 	print("== %s (fail %d) ==" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	get_tree().quit(0 if _fails == 0 else 1)
@@ -773,6 +910,26 @@ func _run_shots(dir: String) -> void:
 	await _shot(dir, "28_title_endings")
 	title2.queue_free()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.PROGRESS_PATH))
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 25) パッド: プロンプト表記が [A] になる
+	_pad_button(JOY_BUTTON_A, true)
+	await get_tree().create_timer(0.1, false).timeout
+	_pad_button(JOY_BUTTON_A, false)
+	player.teleport(Vector3(0, 0.05, -3.8), 0.0, -7.0)
+	await get_tree().create_timer(0.7, false).timeout
+	await _shot(dir, "29_prompt_pad")
+	hud._dlg_active = false
+	await get_tree().create_timer(0.3, false).timeout
+
+	# 26) パッド視点の感度が並んだ設定画面
+	hud._open_pause()
+	hud._activate_pause(1)
+	hud._settings_index = hud.SETTING_KEYS.find(&"pad")
+	hud._update_settings_rows()
+	await get_tree().create_timer(0.4, true).timeout   # ポーズ中なので process_always
+	await _shot(dir, "30_settings_pad")
+	hud._close_pause()
 	await get_tree().create_timer(0.3, false).timeout
 
 	print("shots done: %s" % dir)

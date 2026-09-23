@@ -245,6 +245,9 @@ func _refresh_menu() -> void:
 		l.label_settings.font_color = UiTheme.SELECT if on else UiTheme.TEXT_DIM
 		l.text = ("＞ " if on else "　 ") + String(l.text).lstrip("＞　 ")
 
+func _input(event: InputEvent) -> void:
+	UiTheme.note_input(event)
+
 func _just(action: StringName) -> bool:
 	var p := Input.is_action_pressed(action)
 	var was: bool = bool(_latch.get(action, true))

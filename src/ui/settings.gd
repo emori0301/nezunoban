@@ -23,6 +23,7 @@ const VHS_STEP := 0.05
 const ENDING_IDS: Array[StringName] = [&"morning", &"kasha", &"substitute", &"portrait"]
 
 static var mouse_sensitivity: float = 1.0     ## 0.5〜2.0 の倍率
+static var pad_sensitivity: float = 1.0       ## 右スティックの視点感度 0.5〜2.0
 static var volume_master: float = 0.9         ## 0..1(linear)
 static var volume_sfx: float = 1.0
 static var volume_ambient: float = 0.9
@@ -41,6 +42,7 @@ static func load_all(force: bool = false) -> void:
 	if cf.load(PATH) != OK:
 		return
 	mouse_sensitivity = clampf(float(cf.get_value("input", "mouse_sensitivity", mouse_sensitivity)), SENS_MIN, SENS_MAX)
+	pad_sensitivity = clampf(float(cf.get_value("input", "pad_sensitivity", pad_sensitivity)), SENS_MIN, SENS_MAX)
 	volume_master = clampf(float(cf.get_value("audio", "master", volume_master)), 0.0, 1.0)
 	volume_sfx = clampf(float(cf.get_value("audio", "sfx", volume_sfx)), 0.0, 1.0)
 	volume_ambient = clampf(float(cf.get_value("audio", "ambient", volume_ambient)), 0.0, 1.0)
@@ -52,6 +54,7 @@ static func load_all(force: bool = false) -> void:
 static func save() -> void:
 	var cf := ConfigFile.new()
 	cf.set_value("input", "mouse_sensitivity", mouse_sensitivity)
+	cf.set_value("input", "pad_sensitivity", pad_sensitivity)
 	cf.set_value("audio", "master", volume_master)
 	cf.set_value("audio", "sfx", volume_sfx)
 	cf.set_value("audio", "ambient", volume_ambient)
@@ -64,6 +67,7 @@ static func save() -> void:
 ## 既定値に戻す(保存はしない)
 static func reset_to_defaults() -> void:
 	mouse_sensitivity = 1.0
+	pad_sensitivity = 1.0
 	volume_master = 0.9
 	volume_sfx = 1.0
 	volume_ambient = 0.9
@@ -80,6 +84,8 @@ static func apply() -> void:
 	var p := _player()
 	if p and p.has_method("set_sensitivity_scale"):
 		p.set_sensitivity_scale(mouse_sensitivity)
+	if p and p.has_method("set_pad_sensitivity_scale"):
+		p.set_pad_sensitivity_scale(pad_sensitivity)
 
 	var v := _vhs()
 	if v and v.has_method("set_intensity"):
