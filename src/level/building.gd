@@ -78,6 +78,7 @@ var _aux_mats: Dictionary = {}       # StringName -> Array[Dictionary]  glb 内�
 var _emg_lights: Array[Light3D] = []
 var _emg_energy: Array[float] = []
 var _emg_mats: Array[StandardMaterial3D] = []
+var _emg_mat_on: Array[Dictionary] = []
 var _emg_on: bool = true
 var _inside_stack: Array[StringName] = []
 var _flickering: Dictionary = {}
@@ -372,6 +373,11 @@ func add_emergency_light(light: Light3D, mat: StandardMaterial3D = null) -> void
 	_emg_lights.append(light)
 	_emg_energy.append(light.light_energy)
 	_emg_mats.append(mat)
+	_emg_mat_on.append({
+		"energy": mat.emission_energy_multiplier if mat else 0.0,
+		"on": mat.albedo_color if mat else Color.WHITE,
+		"off": (mat.albedo_color.darkened(0.78) if mat else Color.WHITE),
+	})
 
 
 ## 非常口サインを1つ置く(緑の発光板 + 弱い緑の光)。
@@ -469,8 +475,9 @@ func _apply_emergency(on: bool) -> void:
 		l.visible = on
 		var m: StandardMaterial3D = _emg_mats[i]
 		if m:
-			m.emission_energy_multiplier = 1.7 if on else 0.0
-			m.albedo_color = Color(0.13, 0.78, 0.30) if on else Color(0.07, 0.16, 0.09)
+			var st: Dictionary = _emg_mat_on[i]
+			m.emission_energy_multiplier = float(st["energy"]) if on else 0.0
+			m.albedo_color = st["on"] if on else st["off"]
 
 
 func _apply_aux(room: StringName, on: bool) -> void:

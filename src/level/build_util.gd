@@ -154,16 +154,30 @@ static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
 	holder.position = pos
 	holder.rotation_degrees.y = yaw_deg
 	parent.add_child(holder)
-	var emat := LevelMaterials.emissive(Color(0.13, 0.78, 0.30), 1.7)
 	var tex_path := "res://assets/textures/exit_sign.png"
+	var emat := LevelMaterials.emissive(Color(0.13, 0.78, 0.30), 1.05)
+	# テクスチャ付きは albedo と emission が二重に乗って白飛びするので、両方とも抑える
 	if ResourceLoader.exists(tex_path):
-		# models の絵柄(緑地に走る人と矢印)。発光させて板そのものを光らせる。
+		# 128x64 の絵柄。BoxMesh は面ごとに UV が割れるので、表面だけ 2:1 のクアッドにする。
 		emat.albedo_texture = load(tex_path)
 		emat.emission_texture = emat.albedo_texture
-		emat.albedo_color = Color.WHITE
-		emat.emission = Color.WHITE
+		emat.albedo_color = Color(0.20, 0.20, 0.20)
+		emat.emission = Color(0.72, 1.0, 0.82)
+		emat.emission_energy_multiplier = 0.42
 		emat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
-		box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
+		emat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		# 灯体(黒い縁)
+		box(holder, Vector3(0, 0, -0.012), Vector3(0.36, 0.19, 0.03),
+			LevelMaterials.plain(Color(0.10, 0.11, 0.10)), false, "", false)
+		var face := MeshInstance3D.new()
+		face.name = "SignFace"
+		var q := QuadMesh.new()
+		q.size = Vector2(0.34, 0.17)
+		face.mesh = q
+		face.material_override = emat
+		face.position = Vector3(0, 0, 0.005)
+		face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(face)
 	else:
 		box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
 		# 絵柄ができるまでの代用(白い板に見えないよう淡い緑)
