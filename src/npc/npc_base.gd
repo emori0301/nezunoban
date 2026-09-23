@@ -731,7 +731,8 @@ func _touching_wall_normal() -> Vector3:
 func _try_unstick() -> void:
 	if agent == null:
 		return
-	var np := agent.get_next_path_position()
+	# 経由点は戸口では壁の中心面に乗ることがあるので、ナビメッシュ上へ寄せてから使う
+	var np := NpcUtil.snap(get_world_3d(), agent.get_next_path_position())
 	np.y = global_position.y
 	var d := _flat_distance(np, global_position)
 	if d < 0.05 or d > 2.5:

@@ -352,7 +352,7 @@ godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
 
 ## 本編で NPC が動かなかった件(review_1.md M4 / H7)
 
-原因は 3 つで、いずれも `src/npc` 側で直しました。
+原因は 4 つで、いずれも `src/npc` 側で直しました。
 
 1. **`main.gd` が `Building.rebake_navmesh()` を呼ぶ**ので、本編のナビメッシュは家具と
    systems のプロップをくり抜いたものになります。`_test_npc.tscn` はこれを呼んでおらず、
@@ -377,9 +377,14 @@ godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
 
 `teleport_to()` が既定でナビへスナップするのも同じ対策です(M4 の直接原因)。
 
+なお `_try_unstick()` の押し出し先は **ナビメッシュへスナップしてから**使います。
+戸口では経由点が壁の中心面(厚み 0.15m)に乗ることがあり、そのまま押し出すと壁の中へ入ります。
+
 検証: `godot --path . -- --skip-title --autoplay=kasha --speed=8 --debug` で
-`到達できないので打ち切り` **0 件**、`npc_left` が granddaughter(21:00)と boss(21:57)の
-両方で出ることを確認済み。
+`到達できないので打ち切り` **0 件**、SCRIPT ERROR 0 件、`npc_left` が
+granddaughter(21:00)と boss(21:57)の両方で出ることを確認済み。
+`_test_npc.tscn` の 9 シナリオでは合計 1 件だけ残りますが、これは猫 5 匹を同時に
+歩かせる `cat_all`(本編では起きない負荷)のうろつき経由点で、次の経由点へ移るだけです。
 
 ### 猫が本編で一度も侵入しないこと
 
