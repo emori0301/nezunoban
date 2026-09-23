@@ -1,8 +1,13 @@
 # review_1 — 統合後レビュー(実プレイで起きる不具合)
 
-レビュー担当。実装はしていない。対象は `src/` 全体(autoload / main / player / ui / fx / level / systems / npc / director)。
-スナップショットは 2026-09-23、`work/v1` の `3659be4` + `src/npc/` の未コミット変更。
-レビュー中に npc の 5 ファイルが更新されたので、npc の行番号だけは作業ツリーの現物を見ている。
+レビュー担当。実装はしていない(新規ファイルはこの 1 本だけ)。
+対象は `src/` 全体(autoload / main / player / ui / fx / level / systems / npc / director)。
+行番号は `work/v1` の `3b7c4c6` 時点のもの。`src/director/` は現在も修正が入っているので、
+古い行番号に当たったら関数名で探してほしい(所見には必ず関数名を書いてある)。
+
+レビュー中に npc 担当が `src/npc/` を更新したので、**自動プレイは更新前と更新後で 2 回**回してある。
+行番号はすべて更新後の作業ツリーの現物で確認し直した。
+npc 側で直ったものは「レビュー中に npc 担当が直したもの」の表にまとめてある。
 
 再現に使ったコマンドはすべて所見の中に書いた。検証結果と実際に観測したログは末尾にまとめてある。
 
@@ -20,7 +25,7 @@
 
 - `timeline.gd:668` — 終盤の灯し直しの猶予 18 秒。ポーズ中に経過して灯明が消え、火車が `resume()` する。
 - `timeline.gd:541-562` — 丑三つ時の 4 回の消火がポーズ中に全部進む。
-- `director.gd:793` — `kasha_catches()` の 1.6 秒後に `finish(ENDING_KASHA)`。**ポーズメニューの上にエンディングが始まる**(→ H2 に続く)。
+- `director.gd:792-808` — `kasha_catches()` の 1.6 秒後に `finish(ENDING_KASHA)`。**ポーズメニューの上にエンディングが始まる**(→ H2 に続く)。
 - `timeline.gd:351-355` — 息子のノックと入場。
 - `door.gd:98` — `auto_close_after` の自動閉扉。
 
@@ -64,7 +69,7 @@ H1 のせいでポーズ中にエンディングが始まりうる。`ending.tsc
 
 **再現手順**
 1. 04:00 の終盤に入り、火車に捕まる(`caught` が出る)。
-2. `director.gd:793` の `await get_tree().create_timer(1.6).timeout` のあいだに Esc を押す。
+2. `director.gd:808` の 1.6 秒の待ちのあいだに Esc を押す。
 3. ポーズメニューの上でエンディングが再生され、タイトルへ戻る。
 4. 「はじめる」を選ぶ。操作を受け付けない。
 
@@ -78,7 +83,7 @@ H1 のせいでポーズ中にエンディングが始まりうる。`ending.tsc
 
 ### H3. 独白が2つ同時に走ると、片方が画面に出ないまま消える(04:00 で必ず起きる)
 
-**ファイル**: `src/autoload/dialogue.gd:24-37`、`src/ui/hud.gd:663-684`、`src/director/timeline.gd:622` / `:649`、`src/director/director.gd:511-515`
+**ファイル**: `src/autoload/dialogue.gd:24-37`、`src/ui/hud.gd:663-684`、`src/director/timeline.gd:622` / `:649`、`src/director/director.gd:526-530`
 
 **何が起きるか**
 `Dialogue` にはキューが無い。`say()` は `busy` を立てるだけで、既に表示中かどうかを見ない。
@@ -150,7 +155,7 @@ H3 のとおり 2 つの `Dialogue` 呼び出しが重なると、先に終わ�
 
 1. 宿直日誌(`Note`)を読む → `show_note` が `_note_open = true`、`Dialogue.busy = true`。
 2. 読んでいる最中に `Director._process` のランダム脅かしが発火する。
-   `_can_scare()`(`director.gd:722-730`)は `Dialogue.busy` を**見ていない**ので、
+   `_can_scare()`(`director.gd:737-745`)は `Dialogue.busy` を**見ていない**ので、
    `ceiling_steps`(`scares.gd:405`)や `clock_reverse`(`scares.gd:475`)が `Dialogue.monologue()` を撃つ。
    `ceiling` は `random_scare()` の「どこでも出るもの」プール(`scares.gd:732`)に常に入っている。
    宿直日誌は事務所(`POS_OFFICE_NOTE`)にあり 01:30 から読める。`clock` は 02:00 から事務所プールに入る(`scares.gd:746`)ので、
@@ -172,7 +177,7 @@ H3 のとおり 2 つの `Dialogue` 呼び出しが重なると、先に終わ�
 
 ### H5. `--time=23:20` 以降で起動すると NavigationServer のエラーが必ず出る
 
-**ファイル**: `src/director/timeline.gd:76-80`(`apply_past` の `_activate_cats()`)、`src/director/director.gd:453`、`src/npc/npc_util.gd:170`
+**ファイル**: `src/director/timeline.gd:76-80`(`apply_past` の `_activate_cats()`)、`src/director/director.gd:94`(`_boot` → `apply_state_for_time`)、`src/npc/npc_util.gd:170`
 
 **何が起きるか**
 `apply_past(m)` は `m > 140`(= 23:20)で `_activate_cats()` を呼ぶ。
@@ -246,7 +251,7 @@ func decide() -> StringName:
 
 04:00 の終盤でマッチを取りに行かず、火車から逃げ回るだけで 05:00 を迎えると、
 `ev_dawn` → `decide()` → **朝エンド**になる。
-04:00→05:00 は 60 ゲーム分 = 実 3 分。`_on_hour`(`director.gd:543-550`)は
+04:00→05:00 は 60 ゲーム分 = 実 3 分。`_on_hour`(`director.gd:558-565`)は
 `finale_running()` のあいだ異変度を足さないので、異変度も上がらない。
 山場2を丸ごと飛ばして最良エンドに入れてしまう。
 
@@ -413,7 +418,7 @@ godot --path . -- --skip-title --pos=0.2,1.6,3.2 --yaw=0 --screenshot=out/review
 
 ### M4. 導入で孫娘が式場から一歩も動かずに消える
 
-`src/npc/npc_base.gd:459-480`(`leave_via`)、`src/director/director.gd:976-984`(`face_off` の `teleport_to`)、
+`src/npc/npc_base.gd:459-480`(`leave_via`)、`src/director/director.gd`(`face_off` の `teleport_to`)、
 `src/npc/npc_base.gd:382-390`(`teleport_to`)
 
 **何が起きるか**
@@ -436,14 +441,14 @@ godot --path . -- --skip-title --pos=0.2,1.6,3.2 --yaw=0 --screenshot=out/review
 `Spawn_Granddaughter` は `(10.35, 0, 1.1)`(`furnish_b.gd:163`)で、玄関内側までは約 19.98m。
 打ち切り時の残りが 21.77m なので、**目標から遠ざかった位置から歩き出して 1m ほどで詰まっている**。
 台詞の直前に `Director.face_off()` が走り、プレイヤー(このとき棺の前に居る)から 1.8m の点へ
-`teleport_to` する(`director.gd:984`)。`NpcBase.teleport_to()` は
+`teleport_to` する(`Director.face_off()` の末尾)。`NpcBase.teleport_to()` は
 
 ```gdscript
 func teleport_to(pos: Vector3, yaw_deg: float = NAN) -> void:
 	global_position = pos      # ← ナビメッシュに寄せていない
 ```
 と**スナップせずに座標を入れる**だけなので、祭壇まわりのナビメッシュの外に降りると
-以後 `walk_to()` が経路を作れない。`Director._walk()`(`director.gd:1015`)の保険も同じ `teleport_to` を使う。
+以後 `walk_to()` が経路を作れない。`Director._walk()`(`director.gd:1032`)の保険も同じ `teleport_to` を使う。
 
 **直し方の案**
 `NpcBase.teleport_to()` の中で `NpcUtil.snap(get_world_3d(), pos)` を通してから代入する。
@@ -568,11 +573,8 @@ ERROR: Not supported by this display server.
 ### L5. 終了時のリーク
 
 ```
-WARNING: 28 ObjectDB instances were leaked at exit   (kasha)
-WARNING: 25 ObjectDB instances were leaked at exit   (substitute)
-WARNING: 22 ObjectDB instances were leaked at exit   (morning)
-WARNING: 12 ObjectDB instances were leaked at exit   (portrait)
-ERROR: 6〜8 resources still in use at exit
+1 回目: kasha 28 / substitute 25 / morning 22 / portrait 12 ObjectDB、resources 6〜8
+2 回目: substitute 25 / morning 22 / portrait 12 ObjectDB、resources 6〜8
 ```
 `godot --headless --path . --quit`(何も遊ばない)の時点で `ObjectDB 2 / resources 1` が出ているので、
 下地は systems / npc より前からある(models 申し送り 2 番、systems 申し送り 4 番)。
@@ -603,8 +605,9 @@ ERROR: 6〜8 resources still in use at exit
   `Interactable` は `_ready` で layer 2 / mask 0 を強制(`interactable.gd:24-27`)。
   プレイヤーのレイキャストは mask 2 + `collide_with_areas`(`player.gd:317-319`)で、
   そのあと mask 1 で遮蔽を確かめている(`player.gd:335-342`)ので壁越しには掴めない。
-- **猫が棺をまたぐ判定**は `Coffin._on_cat_zone_entered`(`coffin.gd:210-231`)が group `cat` でフィルタしており、
-  `cat_crossed_coffin` フラグも立つ。`Endings.decide()` の火車条件(`endings.gd:23`)はここで担保されている。
+- **猫が棺をまたぐ判定の配線**は正しい。`Coffin._on_cat_zone_entered`(`coffin.gd:210-231`)が
+  group `cat` でフィルタし、`cat_crossed_coffin` フラグを立てて `Endings.decide()` の火車条件
+  (`endings.gd:23`)につながっている。**ただし猫が建物に入れないので、この経路は一度も通っていない**(→ H7)。
 - **線香の在庫切れ**で詰むことは無い。`Director.enable_stock_box()`(`director.gd`)は
   `is_instance_valid` を見て毎回置き直すので、10本使い切るたびに裏の棚へ補充が出る。
 - **`Coffin.allow_open_window` は既定 false**。00:30 に息子へ開けさせたときだけ true にして、
@@ -741,25 +744,51 @@ systems 申し送りが書いている `hide_anchor_prop` の件とは出る条�
 
 ### 5. ナビ到達失敗(自動プレイ)
 
+1 回目(`src/npc/` 更新前):
 ```
-[npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 20.16m)
-[npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 21.05m)
+[npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 20.16m)  ×3
+[npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 21.05m)  ×3
 [npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 22.42m)
 [npc] Cat2 が (0.700000, 0.100000, 5.000000) へ到達できないので打ち切り(残り 16.33m)
-[npc] Cat2 が (13.000000, 0.100000, 4.900000) へ到達できないので打ち切り(残り 31.78m)
-[npc] Cat2 が (13.000000, 0.100000, 4.900000) へ到達できないので打ち切り(残り 37.34m)
-[npc] Granddaughter が (-9.600000, 0.200000, 0.000000) へ到達できないので打ち切り(残り 21.77m)
+[npc] Cat2 が (13.000000, 0.100000, 4.900000) へ到達できないので打ち切り(残り 31.78m)  ×2
+[npc] Granddaughter が (-9.600000, 0.200000, 0.000000) へ到達できないので打ち切り(残り 21.77m)  ×4
+[npc] Son が (0.898081, 0.200000, -6.957912) へ到達できないので打ち切り(残り 6.23m)
+```
+
+2 回目(`src/npc/` 更新後。代替開口部への切り替えが入ったぶん行が増えている):
+```
+[cat] Cat1: Door_Backyard へ行けないので Window_Shikijo に切り替え   ×5
+[cat] Cat1: Door_Backyard へ行けないので Window_Toilet に切り替え
+[cat] Cat2: Window_Shikijo へ行けないので Door_Genkan に切り替え
+[cat] Cat2: Window_Toilet へ行けないので Door_Genkan に切り替え
+[cat] Cat3: Window_Toilet へ行けないので Door_Backyard に切り替え
+[cat] Cat5: Door_Backyard へ行けないので Window_Shikijo に切り替え
+[npc] Cat1 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 17.10 / 20.16×2 / 21.33 / 21.35 / 23.24m)
+[npc] Cat2 が (0.700000, 0.100000, 5.000000) へ到達できないので打ち切り(残り 24.61m)
+[npc] Cat2 が (13.000000, 0.100000, 4.900000) へ到達できないので打ち切り(残り 36.04m)
+[npc] Cat3 が (0.700000, 0.100000, 5.000000) へ到達できないので打ち切り(残り 16.66m)
+[npc] Cat5 が (0.000000, 0.100000, -9.000000) へ到達できないので打ち切り(残り 22.70m)
+[npc] Granddaughter が (-9.600000, 0.200000, 0.000000) へ到達できないので打ち切り(残り 21.77m)  ×4
 [npc] Son が (0.898081, 0.200000, -6.957912) へ到達できないので打ち切り(残り 6.23m)
 ```
 
 ### 6. 終了時のリーク(自動プレイ)
 
+1 回目:
 ```
 kasha:      WARNING: 28 ObjectDB instances were leaked at exit / ERROR: 8 resources still in use at exit
 substitute: WARNING: 25 ObjectDB instances were leaked at exit / ERROR: 8 resources still in use at exit
 morning:    WARNING: 22 ObjectDB instances were leaked at exit / ERROR: 7 resources still in use at exit
 portrait:   WARNING: 12 ObjectDB instances were leaked at exit / ERROR: 6 resources still in use at exit
 ```
+2 回目:
+```
+substitute: WARNING: 25 ObjectDB instances were leaked at exit / ERROR: 8 resources still in use at exit
+morning:    WARNING: 22 ObjectDB instances were leaked at exit / ERROR: 7 resources still in use at exit
+portrait:   WARNING: 12 ObjectDB instances were leaked at exit / ERROR: 6 resources still in use at exit
+kasha:      (この回はプロセス終了前にログが切れていて未取得)
+```
+1 回目と 2 回目で同じ値なので、夜の長さと出したノードの数で決まっているように見える。
 
 ---
 
