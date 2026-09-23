@@ -600,7 +600,7 @@ func monitor_ghost_genkan() -> bool:
 	var mon := sys(&"monitor")
 	if mon == null:
 		return false
-	var fig := spawn_figure("npc_son", Vector3(-12.3, 0.0, -0.2), 18.0, true, &"idle", 0.42)
+	var fig := spawn_figure("npc_son", Vector3(-12.3, 0.0, -0.2), 18.0, true, &"idle", 0.2)
 	mon.set(&"auto_switch", false)
 	mon.call(&"switch_feed", 1)
 	mon.call(&"glitch", 0.7)

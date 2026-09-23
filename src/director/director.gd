@@ -151,6 +151,9 @@ const SCARE_ARGS := {
 func _fire_scare(n: String) -> void:
 	await get_tree().create_timer(0.7).timeout
 	match n:
+		"body_rises":                 # QA: 火車エンド直前の起き上がり
+			_body_rises()
+			return
 		"coffin_peek":                # QA: 小窓を覗いた画(手形と顔)
 			var cp := sys(&"coffin")
 			if cp:
@@ -200,6 +203,11 @@ func _grab_cctv(path: String, wait: float) -> void:
 		printerr("CCTV: モニターが見つからない")
 		get_tree().quit(1)
 		return
+	# --cctv-feed=0(式場) / 1(玄関) で撮る前にチャンネルを切り替える
+	if args.has("cctv-feed"):
+		mon.set(&"auto_switch", false)
+		mon.call(&"switch_feed", int(String(args["cctv-feed"])))
+		await get_tree().create_timer(0.6).timeout
 	var vp: SubViewport = mon.call(&"get_viewport_node")
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
@@ -739,6 +747,32 @@ func set_fallback_chase(on: bool) -> void:
 		_fallback_t = 1.0
 
 
+const BODY_RISEN_SCENE := "res://src/npc/body_risen.tscn"
+
+## 火車エンド直前のカット。棺の蓋が開き、故人が起き上がる(2 秒)。
+## body_risen は棺と同じ yaw だと祭壇を向くので、部屋側(-90)に向ける。
+func _body_rises() -> void:
+	var coffin := sys(&"coffin")
+	if coffin == null or not ResourceLoader.exists(BODY_RISEN_SCENE):
+		return
+	var c3 := coffin as Node3D
+	coffin.call(&"set_open", true)
+	var br: Node3D = (load(BODY_RISEN_SCENE) as PackedScene).instantiate()
+	var root := building()
+	if root == null:
+		return
+	root.add_child(br)
+	br.global_position = c3.global_position
+	br.rotation.y = deg_to_rad(-90.0)
+	scares.glitch(0.8)
+	var p := Game.player
+	if p and p.has_method(&"look_at_point"):
+		p.look_at_point(c3.global_position + Vector3(0, 0.9, 0), 0.6)
+	if br.has_method(&"rise"):
+		br.call(&"rise")
+	await get_tree().create_timer(2.0).timeout
+
+
 ## 火車に追いつかれた
 func kasha_catches() -> void:
 	if Game.state == Game.State.ENDING:
@@ -748,6 +782,7 @@ func kasha_catches() -> void:
 	var p := Game.player
 	if p and p.has_method(&"set_locked"):
 		p.set_locked(true)
+	await _body_rises()
 	Audio.play(&"kasha_screech", 2.0)
 	Audio.set_muffled(true)
 	scares.glitch(1.0)
