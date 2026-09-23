@@ -159,6 +159,8 @@ const GUEST_BOOK := [
 const M_INCENSE_OUT := "線香が消えた。"
 const M_INCENSE_NONE := "線香が無い。裏の在庫棚か。"
 const M_WINDOW := "窓が開いている。閉めたはずだ。"
+## docs/script.md に無い追加行(監督の指示)。式場の戸が独りでに開く脅かし用。
+const ADDED_M_DOOR := "戸が開いている。閉めたはずだ。"
 const M_CHAIR := "椅子が一つ、引き出されている。"
 const M_ZABUTON := "座布団が棺の前に並べてある。誰が。"
 const M_IEI := "遺影が伏せてある。"

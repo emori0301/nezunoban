@@ -225,6 +225,9 @@ func on_shikijo_reveal() -> void:
 
 func ev_cats_begin() -> void:
 	dir.log_event("ev_cats_begin")
+	# 式場の戸を開けておく。閉まっていると猫が棺まで来られない(review N4)。
+	# プレイヤーが閉めても、以降のランダム脅かしと丑三つ時でまた開く。
+	scares.shikijo_door_opens()
 	dir.cats_enabled = true
 	_cat_visits_left = scares.rng.randi_range(3, 5)
 	_activate_cats()
@@ -563,6 +566,8 @@ func ev_ushimitsu() -> void:
 			b.flicker(&"Room_Shikijo", 1.4)
 		Audio.play_at(&"coffin_scratch", coffin.global_position if coffin else Vector3.ZERO, 0.0)
 		scares.glitch(0.5)
+		if i == 1:
+			scares.shikijo_door_opens()   # 猫が棺まで来られるように戸を開ける
 		if i == 3:
 			var cnd: Node = dir.sys(&"candle")
 			if cnd:
@@ -646,6 +651,9 @@ func ev_finale(quiet: bool = false) -> void:
 	if m:
 		m.set(&"enabled", true)
 		m.set(&"visible", true)
+	# 終盤の用事はマッチだけにする。前の時間帯の線香・灯明のタスクは畳む(review N1)
+	for old_id in [&"incense", &"incense_stock", &"candle", &"dry_ice", &"last_incense"]:
+		Tasks.complete(old_id)
 	Tasks.set_task(&"relight", ScriptText.TASK_RELIGHT)
 	# 控室の戸を「開けるか」に差し替える(息子が寝ているとき)
 	_install_hikaeshitsu_choice()

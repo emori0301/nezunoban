@@ -537,6 +537,10 @@ func _on_incense_out() -> void:
 	if Game.state == Game.State.ENDING:
 		return
 	monologue(ScriptText.M_INCENSE_OUT)
+	# 終盤は「マッチを取って灯明を灯す」が唯一の用事。線香のタスクを出すと
+	# HUD の先頭がそれに取られて、やるべきことが分からなくなる(review N1)。
+	if timeline.finale_running():
+		return
 	Tasks.set_task(&"incense", ScriptText.TASK_INCENSE)
 
 

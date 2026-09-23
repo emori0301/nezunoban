@@ -179,6 +179,9 @@ func _shoo_cat() -> bool:
 		var inside: Variant = c.get(&"is_inside")
 		if inside == null or not bool(inside):
 			continue
+		# すでに追い出し中の猫に flee() をかけ直すと退出がリセットされ続ける(review N5)
+		if c.has_method(&"state_name") and String(c.call(&"state_name")) == "SHOOED":
+			continue
 		var target: Node = c
 		for ch in c.find_children("*", "Interactable", true, false):
 			target = ch

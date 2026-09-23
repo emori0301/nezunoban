@@ -326,6 +326,22 @@ func door_behind() -> bool:
 	return true
 
 
+## 式場の戸が独りでに開く。猫が棺まで来られる経路を作る役目も兼ねる(review N4)。
+func shikijo_door_opens() -> bool:
+	var b := building()
+	if b == null:
+		return false
+	var d: Door = b.get_door(&"Door_Shikijo")
+	if d == null or d.is_open:
+		return false
+	d.open(true)
+	Audio.play_at(&"door_open", d.global_position + Vector3(0, 1.0, 0), 2.0, 0.92, 26.0)
+	glitch(0.3)
+	if current_room() == &"Room_Shikijo" or current_room() == &"Room_Hall":
+		dir.monologue(ScriptText.ADDED_M_DOOR)
+	return true
+
+
 ## 控室の座布団が1枚、廊下に落ちている
 func zabuton_in_hall() -> bool:
 	if Game.get_flag(&"scare_zabuton_hall", false):
@@ -712,7 +728,7 @@ func _process(delta: float) -> void:
 # ============================================================ ランダムな脅かし
 
 ## 音だけで済む系統。夜の前半(〜00:00)はここからしか撃たない。
-const QUIET_SCARES := [&"whisper", &"ceiling", &"attic_meow", &"door_behind"]
+const QUIET_SCARES := [&"whisper", &"ceiling", &"attic_meow", &"door_behind", &"shikijo_door"]
 
 ## 異変度と時刻と居場所を見て、条件に合う脅かしを1つ撃つ。
 ## quiet = true なら音だけの系統に絞る(前半は物を動かさない)。
@@ -736,12 +752,14 @@ func random_scare(quiet: bool = false) -> void:
 	match room:
 		&"Room_Shikijo":
 			add.call(&"chairs", 2 + lvl)
+			add.call(&"shikijo_door", 2 if minutes >= 120 else 0)
 			add.call(&"smoke", 2)
 			add.call(&"handprint", lvl if minutes >= 180 else 0)
 			add.call(&"zabuton_coffin", 3 if lvl >= 1 and minutes >= 120 else 0)
 		&"Room_Hall":
 			add.call(&"hall_flicker", 1 + lvl if minutes >= 120 else 0)
 			add.call(&"zabuton_hall", 2 if minutes >= 90 else 0)
+			add.call(&"shikijo_door", 2 if minutes >= 120 else 0)
 		&"Room_Office":
 			add.call(&"clock", 2 if minutes >= 300 else 0)
 			add.call(&"monitor_genkan", 2 if minutes >= 120 else 0)
@@ -771,6 +789,7 @@ func random_scare(quiet: bool = false) -> void:
 		&"zabuton_coffin": zabuton_before_coffin()
 		&"hall_flicker": hall_flicker_shadow()
 		&"zabuton_hall": zabuton_in_hall()
+		&"shikijo_door": shikijo_door_opens()
 		&"clock": clock_reverse()
 		&"monitor_genkan": monitor_ghost_genkan()
 		&"tv_back": tv_player_back()
