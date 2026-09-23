@@ -424,6 +424,32 @@ def t_skin_pale():
     return finish(base, 273)
 
 
+def _skin(base, seed, sallow=0.0, sallow_col=None, ruddy=0.0):
+    """顔テクスチャと色を合わせた肌。首・耳・手に使う。
+    顔だけ暗くすると、頭の側面や首との境に段が出る。"""
+    img = rgb(S, base)
+    img = mul_gray(img, 0.93 + norm(fbm(S, 40, 3, seed)) * 0.14)
+    img = mix(img, rgb(S, tuple(c * 0.84 for c in base)), norm(fbm(S, 6, 3, seed + 1)) * 0.24)
+    if sallow > 0:
+        img = mix(img, rgb(S, sallow_col or (0.66, 0.60, 0.42)), sallow * 0.16)
+    if ruddy > 0:
+        img = mix(img, rgb(S, (0.74, 0.34, 0.28)),
+                  np.clip((norm(fbm(S, 26, 3, seed + 2)) - 0.66) * 4.0, 0, 1) * ruddy * 0.26)
+    return finish(img, seed + 5)
+
+
+def t_skin_boss():
+    return _skin((0.585, 0.470, 0.375), 801, sallow=0.70, sallow_col=(0.50, 0.43, 0.26))
+
+
+def t_skin_son():
+    return _skin((0.74, 0.52, 0.42), 811, ruddy=0.85)
+
+
+def t_skin_gd():
+    return _skin((0.755, 0.615, 0.545), 821)
+
+
 def t_paper_yellow():
     base = rgb(S, (0.84, 0.80, 0.67))
     base = mul_gray(base, 0.94 + norm(fbm(S, 48, 2, 281)) * 0.12)
@@ -735,7 +761,7 @@ def t_iei_photo_player():
 
 # ---------------------------------------------------------------- 顔(NPC)
 
-def _degrade(img, seed, out=128, fade=0.18, grain=0.085, block=0.13):
+def _degrade(img, seed, out=128, fade=0.18, grain=0.085, block=0.13, contrast=1.0):
     """写真を劣化させたような仕上げ。256 で描いて out へ落とす。
     ぼかし → 縮小 → 粒子 → 色ノイズ → ブロックノイズ → 退色 → 減色。"""
     R = img.shape[0]
@@ -751,19 +777,22 @@ def _degrade(img, seed, out=128, fade=0.18, grain=0.085, block=0.13):
     small = mix(small, blk, block)
     lum = small.mean(axis=2, keepdims=True)
     small = mix(small, np.repeat(lum, 3, axis=2), fade)
-    small = np.clip((small - 0.5) * 0.94 + 0.5, 0, 1)
+    small = np.clip((small - 0.5) * (0.94 * contrast) + 0.5, 0, 1)
     return posterize(small, 28)
 
 
 def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
-                female=False, lips=None, sallow=0.0, jowl=0.0, brow_w=1.0,
-                eye=1.0, lip_full=1.0, blush=0.0, eye_red=0.0, nose_big=0.0):
+                female=False, lips=None, sallow=0.0, sallow_col=None, jowl=0.0,
+                brow_w=1.0, eye=1.0, lip_full=1.0, blush=0.0, eye_red=0.0,
+                nose_big=0.0, shade=0.70, feat=1.0, contrast=1.0):
+    """shade: 影の濃さ(小さいほど濃い)。feat: 目鼻口の陰影の強さ。
+    contrast: 仕上げのコントラスト。640x360 + VHS で顔が潰れるときに上げる。"""
     """人物の顔。1 枚で頭の正面だけに貼る(128x128)。
     アニメ絵にならないよう、輪郭線を引かず、面の明暗と皺で作る。"""
     R = 256
     rng = np.random.default_rng(seed)
-    sh = tuple(c * 0.70 for c in skin)
-    dk = tuple(c * 0.44 for c in skin)
+    sh = tuple(c * shade for c in skin)
+    dk = tuple(c * (shade * 0.63) for c in skin)
     hl = tuple(min(1.0, c * 1.14) for c in skin)
     lips = lips or (min(1.0, skin[0] * 1.02), skin[1] * 0.70, skin[2] * 0.70)
 
@@ -779,14 +808,14 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         ellipse(img, 118, 128 + sgn * 96, 46, 26, sh, 0.30, soft=36)     # こめかみ
         ellipse(img, 134, 128 + sgn * 62, 30, 34, hl, 0.26, soft=42)     # 頬骨
     ellipse(img, 60, 128, 40, 72, hl, 0.32, soft=48)                     # 額
-    ellipse(img, 88, 128, 15, 88, sh, 0.20, soft=32)                     # 眉の張り出し
+    ellipse(img, 88, 128, 15, 88, sh, 0.20 * feat, soft=32)                     # 眉の張り出し
     ellipse(img, 130, 128, 50, 13, hl, 0.30, soft=22)                    # 鼻筋
     for sgn in (-1, 1):
-        ellipse(img, 146, 128 + sgn * 27, 36, 12, sh, 0.34, soft=20)     # 鼻の脇
-        ellipse(img, 158, 128 + sgn * 22, 12, 13, sh, 0.42, soft=8)      # 小鼻
-        ellipse(img, 161, 128 + sgn * 20, 6, 7, dk, 0.50, soft=5)        # 鼻孔
+        ellipse(img, 146, 128 + sgn * 27, 36, 12, sh, 0.34 * feat, soft=20)     # 鼻の脇
+        ellipse(img, 158, 128 + sgn * 22, 12, 13, sh, 0.42 * feat, soft=8)      # 小鼻
+        ellipse(img, 161, 128 + sgn * 20, 6, 7, dk, min(1.0, 0.50 * feat), soft=5)        # 鼻孔
     ellipse(img, 152, 128, 12, 16, hl, 0.22, soft=10)                    # 鼻頭
-    ellipse(img, 170, 128, 9, 20, sh, 0.28, soft=11)                     # 鼻の下
+    ellipse(img, 170, 128, 9, 20, sh, 0.28 * feat, soft=11)                     # 鼻の下
     ellipse(img, 236, 128, 28, 62, sh, 0.34, soft=32)                    # 顎の下
     ellipse(img, 214, 128, 18, 34, hl, 0.20, soft=22)                    # 顎の先
 
@@ -794,13 +823,13 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
     for sgn in (-1, 1):
         bx = 128 + sgn * 46
         ellipse(img, 86, bx, 7 * brow_w, 29 * (0.85 + 0.15 * brow_w), brow,
-                0.32 + 0.16 * brow_w, soft=8)
+                min(1.0, (0.32 + 0.16 * brow_w) * feat), soft=8)
         for _ in range(int(30 * brow_w) + 8):
             t = rng.random()
             r0 = 86 + rng.normal(0, 3.0 * brow_w)
             c0 = bx - 27 + t * 54
             stroke(img, (r0, c0), (r0 - 2 - rng.random() * 4 * brow_w, c0 + sgn * 5),
-                   1.4 * brow_w + 0.4, brow, 0.36, soft=1.6)
+                   1.4 * brow_w + 0.4, brow, min(1.0, 0.36 * feat), soft=1.6)
 
     # --- 目 ---
     for i, sgn in enumerate((-1, 1)):
@@ -808,17 +837,18 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         ey = 112 + (1 if i else 0)
         eh = 10.5 * eye
         ew = 21.0 * eye
-        ellipse(img, ey, ex, 21, 33, sh, 0.28, soft=17)                  # 眼窩
+        ellipse(img, ey, ex, 21, 33, sh, min(1.0, 0.28 * feat), soft=17)                  # 眼窩
         ellipse(img, ey, ex, eh, ew, (0.78, 0.76, 0.72), 0.88, soft=3.5)  # 白目(白くしすぎない)
         if eye_red > 0:
             ellipse(img, ey + 4, ex, eh * 0.7, ew, (0.70, 0.40, 0.38),
                     eye_red * 0.45, soft=6)
-        ellipse(img, ey - eh * 1.15, ex, eh * 0.80, ew * 1.08, sh, 0.55, soft=6)
+        ellipse(img, ey - eh * 1.15, ex, eh * 0.80, ew * 1.08, sh, min(1.0, 0.55 * feat), soft=6)
         ellipse(img, ey + 1, ex, eh * 0.88, eh * 0.88, (0.26, 0.18, 0.12), 0.88, soft=3.0)
         ellipse(img, ey + 1, ex, eh * 0.46, eh * 0.46, (0.09, 0.06, 0.05), 0.90, soft=2.2)
         ellipse(img, ey - 3, ex - 4, 2.4, 2.4, (0.90, 0.89, 0.86), 0.62, soft=1.6)
         stroke(img, (ey - eh, ex - ew * 0.9), (ey - eh - 1, ex + ew * 0.9),
-               2.6 + 1.2 * female, (0.22, 0.17, 0.14), 0.50 + 0.22 * female, soft=3.0)
+               2.6 + 1.2 * female, (0.22, 0.17, 0.14),
+               min(1.0, (0.50 + 0.22 * female) * feat), soft=3.0)
         stroke(img, (ey + eh, ex - ew * 0.78), (ey + eh + 1, ex + ew * 0.78),
                2.2, sh, 0.38, soft=3.2)
         ellipse(img, ey + 21, ex, 13, 25, (0.44, 0.33, 0.37), bags * 0.42, soft=15)
@@ -831,8 +861,8 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
     mw = 36 * (0.88 + 0.22 * lip_full)
     ellipse(img, my + 5, 128, 9 * lip_full, mw * 0.94, lips, 0.46 + 0.16 * lip_full, soft=8)
     ellipse(img, my - 6, 128, 7 * lip_full, mw * 0.86, lips, 0.34, soft=7)
-    stroke(img, (my, 128 - mw * 0.88), (my, 128 + mw * 0.88), 2.8,
-           (0.30, 0.18, 0.16), 0.60, soft=2.8)
+    stroke(img, (my, 128 - mw * 0.88), (my, 128 + mw * 0.88), 2.8 + 0.6 * (feat - 1.0),
+           (0.28, 0.16, 0.15), min(1.0, 0.60 * feat), soft=2.8)
     ellipse(img, my + 9, 128, 5, mw * 0.55, hl, 0.16 + 0.12 * lip_full, soft=9)
     for sgn in (-1, 1):
         ellipse(img, my + 2, 128 + sgn * mw * 0.92, 5, 7, sh, 0.42, soft=5)
@@ -843,7 +873,7 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         stroke(img, (y, 128 - 60), (y + 2, 128 + 60), 2.4, sh, 0.16 * age, soft=4.5)
     for sgn in (-1, 1):
         stroke(img, (152, 128 + sgn * 33), (190, 128 + sgn * 48), 5.0, sh,
-               0.26 * age + 0.10, soft=7)                                # 法令線
+               min(1.0, (0.26 * age + 0.10) * feat), soft=7)                                # 法令線
         for k in range(3):
             stroke(img, (104 + k * 8, 128 + sgn * 70), (98 + k * 10, 128 + sgn * 86),
                    1.8, sh, 0.22 * age, soft=2.6)                        # 目尻
@@ -863,7 +893,7 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
             ellipse(img, 150, 128 + sgn * 58, 22, 26, (0.84, 0.52, 0.50),
                     blush * 0.26, soft=26)
     if sallow > 0:                                      # 血の気の薄い黄ばんだ肌
-        img = mix(img, rgb(R, (0.66, 0.60, 0.42)), sallow * 0.16)
+        img = mix(img, rgb(R, sallow_col or (0.66, 0.60, 0.42)), sallow * 0.16)
 
     # --- 赤ら顔・毛細血管 ---
     if ruddy > 0:
@@ -894,31 +924,38 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
     d = np.clip(1.0 - ((gy - 128) / 150.0) ** 2, 0, 1)
     img = mul_gray(img, 0.93 + d * 0.08)
     img = mul_gray(img, stains(R, seed + 13, 3, 0.07, 30))
-    return _degrade(img, seed, out=128)
+    return _degrade(img, seed, out=128, contrast=contrast)
 
 
 def t_face_boss():
     """社長(60 代)。血の気が薄く疲れている。眉は薄い白髪混じり、顎がたるむ。"""
-    return _photo_face((0.71, 0.58, 0.49), (0.34, 0.31, 0.28), 470,
-                       age=1.00, ruddy=0.18, stubble=0.16, bags=0.95,
-                       sallow=0.55, jowl=0.85, brow_w=0.75, eye=0.86,
-                       lip_full=0.7, lips=(0.62, 0.42, 0.38))
+    # 蛍光灯の下 + 640x360 + VHS では白い楕円に潰れたので、
+    # 肌をもう 1 段暗く黄ばませ、目の窪み・眉・口・鼻の陰影を息子と同程度まで上げた。
+    return _photo_face((0.585, 0.470, 0.375), (0.17, 0.145, 0.125), 470,
+                       age=1.00, ruddy=0.20, stubble=0.28, bags=0.95,
+                       sallow=0.70, sallow_col=(0.50, 0.43, 0.26),
+                       jowl=0.85, brow_w=1.00, eye=0.88,
+                       lip_full=0.75, lips=(0.50, 0.32, 0.29),
+                       shade=0.52, feat=1.45, contrast=1.22)
 
 
 def t_face_son():
     """息子(60 代)。酒焼けで赤黒い、無精髭が濃い、団子鼻、瞼が腫れぼったい。"""
-    return _photo_face((0.77, 0.54, 0.44), (0.20, 0.17, 0.15), 480,
+    return _photo_face((0.74, 0.52, 0.42), (0.18, 0.15, 0.13), 480,
                        age=0.85, ruddy=1.0, stubble=1.0, bags=1.0,
                        jowl=0.55, brow_w=1.35, eye=0.72, nose_big=0.9,
-                       lip_full=0.85, lips=(0.70, 0.40, 0.36))
+                       lip_full=0.85, lips=(0.68, 0.38, 0.34),
+                       shade=0.56, feat=1.25, contrast=1.12)
 
 
 def t_face_granddaughter():
     """孫娘(20 代)。肌は滑らか、眉は細い、泣き腫らして目のふちが赤い。"""
-    return _photo_face((0.83, 0.68, 0.60), (0.14, 0.11, 0.10), 490,
+    # 若い肌は滑らかなままに、目・眉・唇だけ濃くして小さくても読めるようにする
+    return _photo_face((0.755, 0.615, 0.545), (0.11, 0.085, 0.080), 490,
                        age=0.10, ruddy=0.0, stubble=0.0, bags=0.55,
-                       female=True, brow_w=0.50, eye=1.18, lip_full=1.35,
-                       blush=0.55, eye_red=0.75, lips=(0.76, 0.44, 0.44))
+                       female=True, brow_w=0.62, eye=1.18, lip_full=1.35,
+                       blush=0.55, eye_red=0.75, lips=(0.68, 0.36, 0.36),
+                       shade=0.58, feat=1.35, contrast=1.16)
 
 
 # ---------------------------------------------------------------- 胴の柄
@@ -1384,6 +1421,9 @@ ALL = {
     "dress_black": t_dress_black,
     "jumper": t_jumper,
     "skin_pale": t_skin_pale,
+    "skin_boss": t_skin_boss,
+    "skin_son": t_skin_son,
+    "skin_gd": t_skin_gd,
     "paper_yellow": t_paper_yellow,
     "cardboard": t_cardboard,
     "styrofoam": t_styrofoam,
