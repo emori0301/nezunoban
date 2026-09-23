@@ -399,7 +399,7 @@ func _apply_lights(room: StringName, on: bool) -> void:
 		l.visible = on
 		var m: StandardMaterial3D = mats[i]
 		if m:
-			m.emission_energy_multiplier = 1.25 if on else 0.0
+			m.emission_energy_multiplier = 0.85 if on else 0.0
 			m.albedo_color = Color(0.92, 0.94, 0.95) if on else Color(0.24, 0.25, 0.26)
 
 

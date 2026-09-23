@@ -169,9 +169,11 @@ static func _office(b: Building) -> void:
 	b.add_light(R, desk_lamp)
 
 	b.add_door(R, "Door_Office", Vector3(-8.0, 0.0, 4.0), 0.0, {
-		"kind": Door.Kind.SWING, "door_width": 0.92, "door_height": 2.0,
-		"hinge_side": 1.0, "swing_degrees": 92.0,
+		"kind": Door.Kind.SLIDE, "door_width": 0.92, "door_height": 2.0,
+		"door_thickness": 0.045, "hinge_side": 1.0,
+		"panel_color": Color(1.75, 1.95, 2.15), "upper_glass": true,
 	})
+	LevelBuild.name_plate(node, "事務所", Vector3(-8.72, 1.62, 3.90), 180.0)
 
 
 # ------------------------------------------------------------------------ 廊下
@@ -209,7 +211,7 @@ static func _hall(b: Building) -> void:
 		LevelMaterials.plain(Color(0.78, 0.76, 0.70)), false, "", false)
 
 	# 蛍光灯(等間隔)。突き当たり(z <= -6.5)には灯りを置かない → 暗い。
-	for x in [-2.2, 0.8, 3.8, 6.4]:
+	for x in [-2.4, 0.6, 3.4, 5.5]:
 		b.add_fluorescent(R, Vector3(x, 2.42, 0.0), 1.15, COOL, 0.8, 4.8, true)
 	for z in [-3.0, -5.4]:
 		b.add_fluorescent(R, Vector3(6.4, 2.42, z), 1.15, COOL, 0.62, 4.2, true)
@@ -217,14 +219,16 @@ static func _hall(b: Building) -> void:
 	# 非常口サイン。廊下の両端と、L 字の突き当たり(湯灌室の扉の上)。
 	# 全消灯でも消えないので、真っ暗な廊下でも進む向きが分かる。
 	b.add_exit_sign(R, Vector3(-3.2, 2.28, 0.0), 90.0)
-	b.add_exit_sign(R, Vector3(6.9, 2.28, 0.0), -90.0)
+	b.add_exit_sign(R, Vector3(7.16, 2.3, 0.0), -90.0)
 	b.add_exit_sign(R, Vector3(6.4, 2.2, -7.3), 0.0)
 
 	# 式場の入口(引き分け戸)
 	b.add_door(R, "Door_Shikijo", Vector3(7.5, 0.0, 0.0), 90.0, {
 		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.68, "door_height": 2.3,
-		"door_thickness": 0.05,
+		"door_thickness": 0.07, "framed": true,
+		"panel_color": Color(1.35, 1.45, 1.55),
 	})
+	LevelBuild.name_plate(node, "式場", Vector3(7.40, 1.65, -1.0), -90.0)
 
 
 # -------------------------------------------------------------------- 控室(和室)
@@ -287,8 +291,10 @@ static func _hikaeshitsu(b: Building) -> void:
 
 	b.add_door(R, "Door_Hikaeshitsu", Vector3(-2.2, 0.0, 1.1), 0.0, {
 		"kind": Door.Kind.SLIDE, "door_width": 0.92, "door_height": 2.0,
-		"door_thickness": 0.04, "hinge_side": -1.0,
+		"door_thickness": 0.04, "hinge_side": -1.0, "lattice": true,
+		"panel_color": Color(1.70, 1.90, 2.10),
 	})
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "控室", Vector3(-2.95, 1.62, 1.00), 180.0)
 
 
 # ------------------------------------------------------------------- トイレ
@@ -311,7 +317,9 @@ static func _toilet(b: Building) -> void:
 
 	b.add_fluorescent(R, Vector3(0.7, 2.2, 2.3), 0.6, Color(0.96, 0.96, 0.92), 0.45, 3.0, false)
 
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "便所", Vector3(1.45, 1.62, 1.00), 180.0)
 	b.add_door(R, "Door_Toilet", Vector3(0.7, 0.0, 1.1), 0.0, {
 		"kind": Door.Kind.SWING, "door_width": 0.9, "door_height": 2.0,
+		"panel_color": Color(1.06, 1.05, 1.03), "panel_tex": "wall_plaster",
 		"hinge_side": -1.0, "swing_degrees": -88.0,
 	})

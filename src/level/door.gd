@@ -28,6 +28,12 @@ const SLAM_TIME := 0.13
 @export var auto_close_after: float = 0.0
 @export var steel: bool = false   ## 鉄扉。音が door_steel_*
 @export var glass: bool = false   ## ガラス戸(玄関)
+## 板の色。wood_dark のままだと廊下の暗さで真っ黒な板に見えるので、明るめの木を既定にする。
+@export var panel_color: Color = Color(1.75, 1.95, 2.15)
+@export var panel_tex: String = "wall_wood"
+@export var framed: bool = false       ## 框(かまち)を回す。式場の重い木扉用
+@export var upper_glass: bool = false  ## 上半分をすりガラスに(事務所の引き戸)
+@export var lattice: bool = false      ## 障子の桟(控室の引き戸)
 @export var start_open: bool = false
 @export var build_frame: bool = true
 
@@ -152,8 +158,8 @@ func _panel_material() -> StandardMaterial3D:
 	if glass:
 		return LevelMaterials.translucent(Color(0.62, 0.70, 0.72), 0.30)
 	if steel:
-		return LevelMaterials.get_mat("steel", 1.0)
-	return LevelMaterials.get_mat("wood_dark", 1.0)
+		return LevelMaterials.get_mat_tinted("steel", 1.0, Color(0.62, 0.64, 0.66))
+	return LevelMaterials.get_mat_tinted(panel_tex, 1.4, panel_color)
 
 
 func _build() -> void:
@@ -224,19 +230,53 @@ func _panel(parent: Node3D, center: Vector3, size: Vector3) -> void:
 	var mat := _panel_material()
 	var mi := LevelBuild.box(parent, center, size, mat, false, "", true)
 	mi.name = "Panel"
+	var metal := LevelMaterials.plain(Color(0.66, 0.62, 0.50), 0.4)
+	var t := size.z
 	if glass:
 		# ガラス戸の框(かまち)
 		var fm := LevelMaterials.plain(Color(0.30, 0.30, 0.31))
 		LevelBuild.box(parent, center + Vector3(0, size.y * 0.5 - 0.05, 0),
-			Vector3(size.x, 0.1, size.z + 0.02), fm, false, "", false)
+			Vector3(size.x, 0.1, t + 0.02), fm, false, "", false)
 		LevelBuild.box(parent, center + Vector3(0, -size.y * 0.5 + 0.05, 0),
-			Vector3(size.x, 0.1, size.z + 0.02), fm, false, "", false)
-	elif not steel:
-		# 取っ手
-		var hm := LevelMaterials.plain(Color(0.45, 0.42, 0.34))
-		var hx: float = center.x - signf(center.x if absf(center.x) > 0.001 else 1.0) * size.x * 0.34
-		LevelBuild.box(parent, Vector3(hx, 1.02, size.z * 0.5 + 0.03),
-			Vector3(0.05, 0.14, 0.06), hm, false, "", false)
+			Vector3(size.x, 0.1, t + 0.02), fm, false, "", false)
+	else:
+		var dark := LevelMaterials.get_mat_tinted(panel_tex, 2.0, panel_color.darkened(0.35))
+		if framed:
+			# 框: 板の周囲を一段濃い木で縁取る
+			for e in [Vector3(0, size.y * 0.5 - 0.07, 0), Vector3(0, -size.y * 0.5 + 0.07, 0)]:
+				LevelBuild.box(parent, center + e, Vector3(size.x, 0.14, t + 0.02), dark, false, "", false)
+			for e2 in [Vector3(size.x * 0.5 - 0.07, 0, 0), Vector3(-size.x * 0.5 + 0.07, 0, 0)]:
+				LevelBuild.box(parent, center + e2, Vector3(0.14, size.y, t + 0.02), dark, false, "", false)
+			LevelBuild.box(parent, center + Vector3(0, -size.y * 0.16, 0),
+				Vector3(size.x, 0.09, t + 0.02), dark, false, "", false)
+		if upper_glass:
+			LevelBuild.box(parent, center + Vector3(0, size.y * 0.23, 0),
+				Vector3(size.x - 0.16, size.y * 0.4, t + 0.03),
+				LevelMaterials.translucent(Color(0.80, 0.82, 0.80), 0.55), false, "", false)
+			LevelBuild.box(parent, center + Vector3(0, size.y * 0.02, 0),
+				Vector3(size.x, 0.07, t + 0.03), dark, false, "", false)
+		if lattice:
+			LevelBuild.box(parent, center, Vector3(size.x - 0.12, size.y - 0.12, t + 0.02),
+				LevelMaterials.translucent(Color(0.88, 0.86, 0.78), 0.8), false, "", false)
+			for gx in [-0.28, 0.0, 0.28]:
+				LevelBuild.box(parent, center + Vector3(gx * size.x, 0, 0),
+					Vector3(0.022, size.y - 0.12, t + 0.03), dark, false, "", false)
+			for gy in [-0.3, -0.1, 0.1, 0.3]:
+				LevelBuild.box(parent, center + Vector3(0, gy * size.y, 0),
+					Vector3(size.x - 0.12, 0.022, t + 0.03), dark, false, "", false)
+		# 金物: 開き戸はノブ、引き戸は引手
+		if kind == Kind.SWING:
+			var hx: float = center.x - hinge_side * size.x * 0.34
+			for zs in [-1.0, 1.0]:
+				LevelBuild.box(parent, Vector3(hx, 1.02, center.z + zs * (t * 0.5 + 0.035)),
+					Vector3(0.07, 0.07, 0.07), metal, false, "", false)
+				LevelBuild.box(parent, Vector3(hx, 1.02, center.z + zs * (t * 0.5 + 0.012)),
+					Vector3(0.045, 0.045, 0.03), metal, false, "", false)
+		else:
+			var px: float = center.x + signf(center.x if absf(center.x) > 0.001 else 1.0) * size.x * 0.36
+			for zs2 in [-1.0, 1.0]:
+				LevelBuild.box(parent, Vector3(px, 1.0, center.z + zs2 * (t * 0.5 + 0.006)),
+					Vector3(0.035, 0.26, 0.012), metal, false, "", false)
 	var sb := StaticBody3D.new()
 	sb.collision_layer = 1
 	sb.collision_mask = 0

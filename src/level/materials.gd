@@ -64,6 +64,18 @@ static func get_mat(kind: String, tiles: float = 1.0) -> StandardMaterial3D:
 	_cache[key] = mat
 	return mat
 
+## テクスチャ付きで色を載せたもの(扉の板など)。色ごとにキャッシュする。
+static func get_mat_tinted(kind: String, tiles: float, color: Color) -> StandardMaterial3D:
+	var key := "%s#%.3f#%s" % [kind, tiles, color.to_html(false)]
+	if _cache.has(key):
+		return _cache[key]
+	var base := get_mat(kind, tiles)
+	var mat: StandardMaterial3D = base.duplicate()
+	mat.albedo_color = color
+	_cache[key] = mat
+	return mat
+
+
 ## 単色のマテリアル(小物や作り込み用)。
 static func plain(color: Color, rough: float = 1.0) -> StandardMaterial3D:
 	var key := "plain#%s#%.2f" % [color.to_html(false), rough]

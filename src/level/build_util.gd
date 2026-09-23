@@ -109,7 +109,7 @@ static func fluorescent(parent: Node, pos: Vector3, length: float, color: Color,
 	# 器具の台座
 	box(holder, Vector3(0, 0.06, 0), Vector3(length + 0.12, 0.08, 0.26),
 		LevelMaterials.plain(Color(0.72, 0.71, 0.68)), false, "", false)
-	var emat := LevelMaterials.emissive(color, 1.25)
+	var emat := LevelMaterials.emissive(color, 0.85)
 	var mi := box(holder, Vector3(0, 0.0, 0), Vector3(length, 0.07, 0.11), emat, false, "", false)
 	mi.name = "Tube"
 	var light := OmniLight3D.new()
@@ -148,7 +148,7 @@ static func bulb(parent: Node, pos: Vector3, color: Color, energy: float,
 
 ## 非常口サイン。緑の発光板と弱い緑の光。ローカル +Z が表。戻り値 [light, mat]
 static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
-		energy: float = 0.32, range_m: float = 5.0) -> Array:
+		energy: float = 0.26, range_m: float = 5.0) -> Array:
 	var holder := Node3D.new()
 	holder.name = "ExitSign"
 	holder.position = pos
@@ -157,10 +157,10 @@ static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
 	var emat := LevelMaterials.emissive(Color(0.13, 0.78, 0.30), 1.7)
 	box(holder, Vector3.ZERO, Vector3(0.34, 0.15, 0.025), emat, false, "", false)
 	# 非常口の白いピクトグラム代わり
-	box(holder, Vector3(-0.04, 0.0, 0.016), Vector3(0.07, 0.10, 0.006),
-		LevelMaterials.plain(Color(0.88, 0.95, 0.88)), false, "", false)
-	box(holder, Vector3(0.08, 0.0, 0.016), Vector3(0.03, 0.10, 0.006),
-		LevelMaterials.plain(Color(0.88, 0.95, 0.88)), false, "", false)
+	box(holder, Vector3(-0.035, 0.0, 0.016), Vector3(0.045, 0.075, 0.006),
+		LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
+	box(holder, Vector3(0.06, 0.0, 0.016), Vector3(0.02, 0.075, 0.006),
+		LevelMaterials.plain(Color(0.62, 0.86, 0.66)), false, "", false)
 	# 天吊りの金具
 	box(holder, Vector3(0, 0.11, 0), Vector3(0.36, 0.06, 0.07),
 		LevelMaterials.plain(Color(0.20, 0.20, 0.21)), false, "", false)
@@ -201,6 +201,26 @@ static func prop(parent: Node, node_name: String, model: String, pos: Vector3,
 	p.rotation_degrees.y = yaw_deg
 	parent.add_child(p)
 	return p
+
+## 扉の脇の室名札。小さな木の板に明朝で部屋の名前。
+static func name_plate(parent: Node, text: String, pos: Vector3, yaw_deg: float) -> void:
+	var holder := Node3D.new()
+	holder.name = "NamePlate"
+	holder.position = pos
+	holder.rotation_degrees.y = yaw_deg
+	parent.add_child(holder)
+	box(holder, Vector3.ZERO, Vector3(0.17, 0.46, 0.02),
+		get_plate_mat(), false, "", false)
+	box(holder, Vector3(0, 0, 0.012), Vector3(0.13, 0.4, 0.004),
+		LevelMaterials.plain(Color(0.88, 0.86, 0.80)), false, "", false)
+	var l := sign_text(holder, text, Vector3(0, 0, 0.02), 0.0, 0.1, Color(0.08, 0.08, 0.09), true, 256)
+	l.width = 0.12 / l.pixel_size
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+
+static func get_plate_mat() -> StandardMaterial3D:
+	return LevelMaterials.get_mat_tinted("wall_wood", 3.0, Color(0.52, 0.40, 0.28))
+
 
 ## 世界に置く文字(看板・貼り紙)。DotGothic16 ではなく明朝(看板向き)。
 ## font_px を大きくするほど文字のテクスチャが高解像度になる。

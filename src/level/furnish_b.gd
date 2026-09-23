@@ -308,7 +308,9 @@ static func _yukan(b: Building) -> void:
 	b.add_door(R, "Door_Yukan", Vector3(6.4, 0.0, -7.5), 0.0, {
 		"kind": Door.Kind.SWING, "door_width": 0.95, "door_height": 2.0,
 		"hinge_side": 1.0, "swing_degrees": -92.0, "locked": true,
+		"panel_color": Color(0.90, 0.94, 0.92), "panel_tex": "wall_plaster",
 	})
+	LevelBuild.name_plate(b.room_of(&"Room_Hall"), "湯灌室", Vector3(5.72, 1.62, -7.41), 0.0)
 
 
 # -------------------------------------------------------------------- 外周
