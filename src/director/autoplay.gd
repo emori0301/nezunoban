@@ -334,12 +334,11 @@ func _try_phone_call() -> bool:
 	var ph: Node = dir.sys(&"phone")
 	if ph == null or bool(ph.get(&"is_ringing")) or bool(ph.get(&"off_hook")):
 		return false
-	if not ph.has_method(&"dial"):
-		_dialed = true          # systems が発信を入れるまでは飛ばす
-		return false
+	# 受話器を取ると Phone が Dialogue.code_input を開くので、先に番号を積んでおく
 	_dialed = true
 	Dialogue.auto_code = ScriptText.PHONE_HIKARI
 	var ok := await _use(ph, 1.0)
+	await Events.wait(2.0 / maxf(speed, 0.1))
 	Dialogue.auto_code = ScriptText.SAFE_CODE
 	return ok
 

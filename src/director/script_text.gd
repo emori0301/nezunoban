@@ -275,8 +275,8 @@ const ENDING_PORTRAIT_LINES := [
 ## 導入の追加(21)
 const ADDED_BOSS_CATS := ["キヨさんは村じゃ猫婆で通ってた。二十匹も飼ってな。"]
 const ADDED_HIKARI_FATHER := ["……父は、おばあちゃんが死んだ日のこと、何も言わないんです。"]
-## 施錠の場所を教える 1 行(監督の許可済み。script.md には監督が追記)
-const ADDED_BOSS_LOCK := ["扉の横の金具だ。"]
+## 施錠の場所を教える 1 行(docs/script.md にあるものをそのまま)
+const BOSS_LOCK := ["閉めるだけじゃ駄目だ。扉の横の金具で鍵をかけろ。猫は器用だからな。"]
 
 ## E-1 金庫
 const SAFE_CODE := "1009"

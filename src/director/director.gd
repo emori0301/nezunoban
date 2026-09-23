@@ -111,6 +111,9 @@ func _boot() -> void:
 	# 二重に外しても落ちないことを確かめるため。
 	if args.has("reload-test"):
 		_reload_loop(float(args.get("reload-test", "5")))
+	# QA 用: --dial=3175 で受話器を取って番号をかける(E-3 の経路確認)
+	if args.has("dial"):
+		_qa_dial(String(args["dial"]))
 	# QA 用: --credits でクレジットだけ流す
 	if args.has("credits"):
 		_show_credits_only()
@@ -150,6 +153,23 @@ func _boot() -> void:
 	else:
 		await play_intro()
 		Clock.start()
+
+
+func _qa_dial(number: String) -> void:
+	await Events.wait(1.5)
+	Dialogue.auto_advance = true
+	Dialogue.auto_line_seconds = 0.15
+	Dialogue.auto_code = number
+	var ph := sys(&"phone")
+	if ph == null:
+		printerr("DIAL: 電話が見つからない")
+		return
+	var p := Game.player
+	if p and p.has_method(&"teleport"):
+		p.teleport(Vector3(-9.85, 0.0, 7.3), 0.0, -14.0)
+	await get_tree().physics_frame
+	print("DIAL: 受話器を取る number=%s" % number)
+	ph.call(&"interact", p)
 
 
 func _show_credits_only() -> void:
@@ -275,7 +295,7 @@ func _parse_args() -> Dictionary:
 ## QA のための起動かどうか。自動プレイや撮影で user://progress.cfg を汚さない(review R2)。
 const QA_ARGS := [
 	"autoplay", "ending", "scare", "credits", "cctv-shot", "cctv-feed",
-	"screenshot", "tour", "shots", "reload-test", "dread", "time", "intro",
+	"screenshot", "tour", "shots", "reload-test", "dread", "time", "intro", "dial",
 ]
 
 func is_qa_run() -> bool:
@@ -844,6 +864,7 @@ func _on_phone_dialed(number: String) -> void:
 	var ph := sys(&"phone")
 	var again := bool(Game.get_flag(StringName("dialed_" + number), false))
 	Game.set_flag(StringName("dialed_" + number), true)
+	log_event("phone_dialed:" + number)
 	match number:
 		ScriptText.PHONE_BOSS:
 			await _phone_boss(ph, again)
@@ -858,15 +879,21 @@ func _on_phone_dialed(number: String) -> void:
 		ph.call(&"hang_up")
 
 
-func _remote(ph: Node, sound: StringName) -> void:
+## 受話器の向こうの音。呼び出し音とラジオ声はループ、それ以外は 1 回。
+func _remote(ph: Node, sound: StringName, loop: bool = false) -> void:
 	if ph and ph.has_method(&"play_remote"):
-		ph.call(&"play_remote", sound)
+		ph.call(&"play_remote", sound, loop)
 	else:
 		Audio.play(sound, -4.0)
 
 
+func _remote_stop(ph: Node) -> void:
+	if ph and ph.has_method(&"stop_remote"):
+		ph.call(&"stop_remote")
+
+
 func _phone_boss(ph: Node, again: bool) -> void:
-	_remote(ph, &"phone_ringback")
+	_remote(ph, &"phone_ringback", true)
 	await Events.wait(1.2 if again else 3.0)
 	_remote(ph, &"phone_voicemail")
 	await Dialogue.say("", ScriptText.PHONE_VOICEMAIL_LINE)
@@ -877,8 +904,9 @@ func _phone_boss(ph: Node, again: bool) -> void:
 
 
 func _phone_hikari(ph: Node, again: bool) -> void:
-	_remote(ph, &"phone_ringback")
+	_remote(ph, &"phone_ringback", true)
 	await Events.wait(1.6)
+	_remote_stop(ph)
 	if int(Clock.game_minutes) >= 300:
 		for l in ScriptText.PHONE_HIKARI_LATE:
 			await Dialogue.say(ScriptText.SPEAKER_HIKARI, String(l))
@@ -893,8 +921,9 @@ func _phone_hikari(ph: Node, again: bool) -> void:
 
 
 func _phone_kiyo(ph: Node, _again: bool) -> void:
-	_remote(ph, &"phone_ringback")
+	_remote(ph, &"phone_ringback", true)
 	await Events.wait(2.0)
+	_remote_stop(ph)
 	Audio.play(&"cat_meow_1", -2.0)
 	Audio.play(&"cat_meow_3", -4.0)
 	await Events.wait(1.4)
@@ -1330,7 +1359,7 @@ func play_intro() -> void:
 	await face_off(boss)
 	# 「勝手口の鍵」→「式場の蛍光灯」→「じゃあな」の順で言わせる
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[0]))
-	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LOCK)
+	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_LOCK)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LIGHTS)
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[1]))
 	var b := building()

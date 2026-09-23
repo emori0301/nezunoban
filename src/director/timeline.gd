@@ -111,10 +111,14 @@ func apply_past(m: int) -> void:
 		if c2:
 			c2.call(&"set_face_state", 3)
 		scares.paw_prints()
+		dir.enable_note(dir.bag_note(), true)
 	if m > 400:
 		var c3: Node = dir.sys(&"coffin")
 		if c3:
 			c3.call(&"set_lid_ajar", true)
+			if c3.has_method(&"set_second_face"):
+				c3.call(&"set_second_face", true)
+		Game.set_flag(&"lid_slid", true)
 	if m > 465:
 		scares.dawn_now()
 	if m > 420:
@@ -696,6 +700,8 @@ func ev_lid_slides() -> void:
 	if coffin == null:
 		return
 	coffin.call(&"set_lid_ajar", true)
+	if coffin.has_method(&"set_second_face"):
+		coffin.call(&"set_second_face", true)   # 小窓の隣にもう一つの顔(E-11)
 	Game.set_flag(&"lid_slid", true)
 	scares.glitch(0.5)
 	scares.stinger(-4.0)
