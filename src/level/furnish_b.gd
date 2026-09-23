@@ -407,12 +407,6 @@ static func _outside(b: Building) -> void:
 			Vector3(t[0], 0.0, t[1]), randf_range(0, 360), Vector3(1.7, 5.2, 1.7),
 			Color(0.05, 0.06, 0.05), true, false)
 
-	# 遠くの国道の街灯
-	for lz in [-18.0, 0.0, 18.0]:
-		LevelBuild.box(node, Vector3(-28.5, 3.5, lz), Vector3(0.16, 7.0, 0.16), steel, true, "", false)
-		LevelBuild.box(node, Vector3(-28.0, 6.95, lz), Vector3(1.2, 0.12, 0.3), steel, false, "", false)
-		b.add_bulb(R, Vector3(-27.5, 6.8, lz), Color(1.0, 0.80, 0.48), 1.5, 14.0, false)
-
 	# 勝手口の外灯と車庫まわりの灯り(裏手が真っ暗で方向が分からなくなるのを防ぐ)
 	LevelBuild.box(node, Vector3(0.0, 2.32, -7.72), Vector3(0.3, 0.14, 0.24),
 		LevelMaterials.plain(Color(0.25, 0.25, 0.24)), false, "", false)
@@ -421,26 +415,53 @@ static func _outside(b: Building) -> void:
 		LevelMaterials.plain(Color(0.25, 0.25, 0.24)), false, "", false)
 	b.add_bulb(R, Vector3(-4.35, 2.42, -6.0), Color(1.0, 0.86, 0.62), 0.9, 6.0, true)
 
-	# 遠景の民家。フェンスの向こう、暗闇に窓明かりだけが浮かぶ。
-	var night_wall := LevelMaterials.plain(Color(0.035, 0.035, 0.045))
-	for hs in [[-54.0, -24.0, 4.4], [-61.0, 7.0, 3.8], [-49.0, 27.0, 5.0], [-66.0, -9.0, 4.0]]:
+	# 遠景の民家。空(地平線 0.04)より少しだけ明るくして、切妻のシルエットが読めるようにする。
+	var night_wall := LevelMaterials.plain(Color(0.048, 0.050, 0.058))
+	var night_roof := LevelMaterials.plain(Color(0.036, 0.038, 0.046))
+	# [x, z, 高さ, 窓の幅, 窓の高さ, 窓の色, 発光量]
+	for hs in [
+			[-49.0, 27.0, 5.0, 1.15, 1.25, Color(1.0, 0.84, 0.54), 1.5],   # 近い: カーテン越しの暖色
+			[-54.0, -24.0, 4.4, 0.85, 0.95, Color(1.0, 0.88, 0.62), 1.1],
+			[-61.0, 7.0, 3.8, 0.7, 0.8, Color(0.64, 0.78, 1.0), 1.25],     # 青白い TV の光
+			[-66.0, -9.0, 4.0, 0.55, 0.62, Color(1.0, 0.86, 0.60), 0.7],   # 遠い: 小さく暗く
+		]:
 		var hx: float = hs[0]
 		var hz: float = hs[1]
 		var hh: float = hs[2]
 		LevelBuild.box(node, Vector3(hx, hh * 0.5, hz), Vector3(9.0, hh, 8.0), night_wall, false, "", false)
-		LevelBuild.box(node, Vector3(hx, hh + 0.5, hz), Vector3(10.0, 1.2, 9.0), night_wall, false, "", false)
-		for wz in [-1.8, 1.8]:
-			LevelBuild.box(node, Vector3(hx + 4.55, hh * 0.55, hz + wz), Vector3(0.06, 1.0, 1.3),
-				LevelMaterials.emissive(Color(1.0, 0.86, 0.58), 1.4), false, "", false)
+		_gable(node, Vector3(hx, hh, hz), 9.6, 8.6, 2.1, night_roof)
+		var wmat := LevelMaterials.emissive(hs[5], float(hs[6]))
+		for wz in [-1.9, 1.9]:
+			LevelBuild.box(node, Vector3(hx + 4.55, hh * 0.55, hz + wz),
+				Vector3(0.06, float(hs[4]), float(hs[3])), wmat, false, "", false)
 
-	# 電柱と電線(国道側)
+	# 電柱と電線(国道側)。3 本にはナトリウム灯を付けて遠くのアスファルトを橙に照らす。
 	var pole_mat := LevelMaterials.get_mat_tinted("concrete", 1.0, Color(0.42, 0.42, 0.42))
 	var wire_mat := LevelMaterials.plain(Color(0.05, 0.05, 0.06))
+	var sodium := LevelMaterials.emissive(Color(1.0, 0.63, 0.24), 2.0)
 	const POLE_Z := [-20.0, -4.0, 12.0, 28.0]
+	const LAMP_Z := [-20.0, -4.0, 12.0]
 	for pz in POLE_Z:
 		LevelBuild.box(node, Vector3(-31.6, 4.2, pz), Vector3(0.22, 8.4, 0.22), pole_mat, true, "", false)
 		LevelBuild.box(node, Vector3(-31.6, 7.9, pz), Vector3(1.5, 0.09, 0.09), pole_mat, false, "", false)
 		LevelBuild.box(node, Vector3(-31.6, 7.35, pz), Vector3(1.1, 0.08, 0.08), pole_mat, false, "", false)
+		if LAMP_Z.has(pz):
+			# 腕金を車道側(+X)へ伸ばし、先に橙の灯具
+			LevelBuild.box(node, Vector3(-30.7, 6.9, pz), Vector3(1.9, 0.08, 0.08), pole_mat, false, "", false)
+			LevelBuild.box(node, Vector3(-29.85, 6.78, pz), Vector3(0.62, 0.1, 0.3),
+				LevelMaterials.plain(Color(0.30, 0.30, 0.31)), false, "", false)
+			LevelBuild.box(node, Vector3(-29.85, 6.70, pz), Vector3(0.5, 0.05, 0.22), sodium, false, "", false)
+			var sl := OmniLight3D.new()
+			sl.name = "Light_Sodium"
+			sl.position = Vector3(-29.85, 6.6, pz)
+			sl.light_color = Color(1.0, 0.64, 0.28)
+			sl.light_energy = 1.7
+			sl.omni_range = 12.0
+			sl.omni_attenuation = 1.5
+			sl.shadow_enabled = false
+			sl.light_specular = 0.0
+			node.add_child(sl)
+			b.add_light(R, sl)
 	for wi in POLE_Z.size() - 1:
 		var z0: float = POLE_Z[wi]
 		var z1: float = POLE_Z[wi + 1]
@@ -468,6 +489,19 @@ static func _outside(b: Building) -> void:
 	b.add_anchor(R, "Spawn_Cat3", Vector3(1.4, 0.0, -9.2), 180.0)
 	b.add_anchor(R, "Spawn_Cat4", Vector3(11.2, 0.0, -10.4), 100.0)
 	b.add_anchor(R, "Spawn_Cat5", Vector3(14.5, 0.0, 6.2), 15.0)
+
+
+## 切妻(きりづま)屋根。2 枚の板を傾けて載せる。
+static func _gable(parent: Node3D, base: Vector3, width: float, depth: float,
+		rise: float, mat: Material) -> void:
+	var slope := atan2(rise, width * 0.5)
+	var slab := sqrt(rise * rise + (width * 0.5) * (width * 0.5))
+	for side in [-1.0, 1.0]:
+		var holder := Node3D.new()
+		holder.position = base + Vector3(side * width * 0.25, rise * 0.5, 0)
+		holder.rotation.z = -side * slope
+		parent.add_child(holder)
+		LevelBuild.box(holder, Vector3.ZERO, Vector3(slab, 0.14, depth), mat, false, "", false)
 
 
 static func _fence(parent: Node3D, x1: float, z1: float, x2: float, z2: float, mat: Material) -> void:
