@@ -12,8 +12,8 @@ func _init() -> void:
 	npc_id = &"granddaughter"
 	move_speed = 1.2
 	body_radius = 0.26
-	body_height = 1.63
-	head_height = 1.50
+	body_height = 1.62
+	head_height = 1.49
 	agent_radius = 0.30
 	talk_prompt = "話す"
 	talkable = false

@@ -259,6 +259,19 @@ func _son_sleep() -> void:
 ## API が一通り生きているかだけ確認する(スクショなし)。
 func _api() -> void:
 	print("NpcInstaller.all() = %d" % NpcInstaller.all().size())
+	print("  --- 人物リグの適応(身長・head ボーン追従・5アニメ) ---")
+	for key in [&"boss", &"son", &"granddaughter"]:
+		var n := NpcInstaller.find(key) as NpcBase
+		if n == null:
+			continue
+		n.set_active(true)
+		var anims: PackedStringArray = n.anim.get_animation_list() if n.anim else PackedStringArray()
+		var skel := n.find_children("*", "Skeleton3D", true, false)
+		var bone_ok := false
+		if not skel.is_empty():
+			bone_ok = (skel[0] as Skeleton3D).find_bone(&"head") >= 0
+		print("    %-14s 身長=%.2f head=%v(ボーン追従=%s) anims=%s" % [key, n.body_height,
+			n.head_position() - n.global_position, bone_ok, anims])
 	print("  --- ナビメッシュからのズレ(0.35m 超ならナビの穴の中) ---")
 	for n in NpcInstaller.all():
 		var n3 := n as Node3D

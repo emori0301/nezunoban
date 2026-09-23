@@ -49,6 +49,10 @@ signal move_cancelled
 @export var body_radius: float = 0.28
 @export var body_height: float = 1.70
 @export var head_height: float = 1.55
+## 人物リグに head ボーンがあるとき、そこに Head を追従させる。
+## 高さはレストポーズを測って head_height に合わせるので、この値は微調整ぶん。
+@export var head_bone: StringName = &"head"
+@export var head_bone_offset: float = 0.0
 @export var gravity: float = 9.8
 
 @export_group("移動")
@@ -108,6 +112,7 @@ var _blocked_t: float = 0.0
 var _nudge_angle: float = 78.0
 var _best_progress: float = INF
 var _unstuck_count: int = 0
+var _head_attach: BoneAttachment3D = null
 var _repath_t2: float = 0.0
 var _steer_cache: Vector3 = Vector3.INF
 var _arrive_dist: float = 0.45
@@ -195,8 +200,31 @@ func _build_agent() -> void:
 func _build_head() -> void:
 	head = Marker3D.new()
 	head.name = "Head"
+	# 人物リグ(MPFB2)には head ボーンがあるので、そこに追従させる。
+	# 座る/寝るアニメでも頭の位置が正しく出るので、director の look_at_point が合う。
+	var skel := _find_skeleton()
+	var bone := skel.find_bone(head_bone) if (skel != null and head_bone != &"") else -1
+	if bone >= 0:
+		_head_attach = BoneAttachment3D.new()
+		_head_attach.name = "HeadBone"
+		_head_attach.bone_name = String(head_bone)
+		skel.add_child(_head_attach)
+		# 素体によって head ボーンの高さが違う(頭頂寄り / 首寄り)ので、
+		# レストポーズを測って「立ったときに head_height に来る」ぶんだけ上下させる。
+		var rest_y: float = (skel.global_transform * skel.get_bone_global_pose(bone)).origin.y \
+			- global_position.y
+		head.position = Vector3(0, head_height - rest_y + head_bone_offset, 0)
+		_head_attach.add_child(head)
+		return
 	head.position = Vector3(0, head_height, 0)
 	add_child(head)
+
+
+func _find_skeleton() -> Skeleton3D:
+	if model == null:
+		return null
+	var list := model.find_children("*", "Skeleton3D", true, false)
+	return list[0] as Skeleton3D if not list.is_empty() else null
 
 
 func _build_talk() -> void:
@@ -439,8 +467,9 @@ func set_body_size(radius: float, height: float) -> void:
 
 
 ## Head マーカーの位置を動かす(director の look_at_point 用)。
+## head ボーンに追従させているときは、アニメが頭を動かすので何もしない。
 func set_head_offset(offset: Vector3) -> void:
-	if head:
+	if head and _head_attach == null:
 		head.position = offset
 
 

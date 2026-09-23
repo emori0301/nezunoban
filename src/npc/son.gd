@@ -48,8 +48,8 @@ func _init() -> void:
 	npc_id = &"son"
 	move_speed = 1.1
 	body_radius = 0.27
-	body_height = 1.75
-	head_height = 1.62
+	body_height = 1.74
+	head_height = 1.61
 	agent_radius = 0.32
 	talk_prompt = "話す"
 	talkable = false

@@ -14,8 +14,8 @@ func _init() -> void:
 	npc_id = &"boss"
 	move_speed = 1.2
 	body_radius = 0.26
-	body_height = 1.71
-	head_height = 1.58
+	body_height = 1.70
+	head_height = 1.57
 	agent_radius = 0.32
 	talk_prompt = "話す"
 	talkable = false
