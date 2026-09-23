@@ -597,8 +597,11 @@ static func _fence(parent: Node3D, x1: float, z1: float, x2: float, z2: float, m
 	seg.position = Vector3(x1, 0.0, z1)
 	seg.rotation.y = atan2(-dz, dx)
 	parent.add_child(seg)
+	# 支柱と横桟をまとめて 1 メッシュにする(1 区間 1 描画)
+	var parts: Array = []
 	var n := int(length / 2.5)
 	for i in n + 1:
-		LevelBuild.box(seg, Vector3(i * 2.5, 0.65, 0), Vector3(0.09, 1.3, 0.09), mat, false, "", false)
+		parts.append([Vector3(i * 2.5, 0.65, 0), Vector3(0.09, 1.3, 0.09)])
 	for y in [0.45, 1.15]:
-		LevelBuild.box(seg, Vector3(length * 0.5, y, 0), Vector3(length, 0.06, 0.05), mat, false, "", false)
+		parts.append([Vector3(length * 0.5, y, 0), Vector3(length, 0.06, 0.05)])
+	LevelBuild.merge_boxes(seg, parts, mat, "FenceMesh")

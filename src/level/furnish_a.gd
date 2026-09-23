@@ -147,8 +147,13 @@ static func _office(b: Building) -> void:
 		Vector3(0.54, 0.64, 0.5), Color(0.26, 0.27, 0.28), true, 180.0)
 
 	# 書類・日誌・ポット・棚
-	LevelBuild.box(node, Vector3(-8.85, 0.76, 6.2), Vector3(0.3, 0.08, 0.22), paper, false, "", false)
-	LevelBuild.box(node, Vector3(-6.95, 0.75, 6.5), Vector3(0.26, 0.06, 0.2), paper, false, "", false)
+	# 紙もの(書類・カレンダー・社長の番号の貼り紙)を 1 メッシュにまとめる
+	LevelBuild.merge_boxes(node, [
+		[Vector3(-8.85, 0.76, 6.2), Vector3(0.3, 0.08, 0.22)],
+		[Vector3(-6.95, 0.75, 6.5), Vector3(0.26, 0.06, 0.2)],
+		[Vector3(-5.4, 1.62, 4.12), Vector3(0.42, 0.56, 0.03)],
+		[Vector3(-10.91, 1.5, 6.2), Vector3(0.02, 0.22, 0.16)],
+	], paper, "OfficePapers")
 	b.add_prop(R, "Shelf_Office", "shelf", Vector3(-10.6, 0.0, 5.2), 90.0,
 		Vector3(1.8, 1.85, 0.42), WOOD)
 	b.add_prop(R, "Cabinet_Office", "cabinet", Vector3(-4.8, 0.0, 9.45), 180.0,
@@ -159,19 +164,19 @@ static func _office(b: Building) -> void:
 		Vector3(0.33, 0.33, 0.07), Color(0.75, 0.73, 0.68), false, false)
 
 	# 社長の番号を貼った紙(電話の上の壁)
-	LevelBuild.box(node, Vector3(-10.91, 1.5, 6.2), Vector3(0.02, 0.22, 0.16), paper, false, "", false)
 	LevelBuild.sign_text(node, "090-2214-0077", Vector3(-10.895, 1.5, 6.2), 90.0,
 		0.035, Color(0.1, 0.1, 0.12), false, 192)
 
 	# ホワイトボード・カレンダー・書類棚
 	LevelBuild.box(node, Vector3(-7.4, 1.55, 4.12), Vector3(1.6, 1.0, 0.05),
 		LevelMaterials.plain(Color(0.80, 0.79, 0.74)), false, "", false)
-	LevelBuild.box(node, Vector3(-5.4, 1.62, 4.12), Vector3(0.42, 0.56, 0.03), paper, false, "", false)
 	b.add_prop(R, "Shelf_Office2", "shelf", Vector3(-7.6, 0.0, 9.5), 180.0,
 		Vector3(1.6, 1.85, 0.42), WOOD)
-	for bx in [[-8.2, 9.3, 0.0], [-8.2, 9.3, 0.36], [-6.9, 9.35, 0.0]]:
-		LevelBuild.box(node, Vector3(bx[0], bx[2] + 0.18, bx[1]), Vector3(0.44, 0.36, 0.34),
-			LevelMaterials.plain(Color(0.42, 0.33, 0.22)), true, "", false)
+	LevelBuild.merge_boxes(node, [
+		[Vector3(-8.2, 0.18, 9.3), Vector3(0.44, 0.36, 0.34)],
+		[Vector3(-8.2, 0.54, 9.3), Vector3(0.44, 0.36, 0.34)],
+		[Vector3(-6.9, 0.18, 9.35), Vector3(0.44, 0.36, 0.34)],
+	], LevelMaterials.plain(Color(0.42, 0.33, 0.22)), "OfficeCartons")
 
 	b.add_window(R, "Window_Office", Vector3(-8.0, 1.53, 10.0), 0.0,
 		{"pane_width": 1.7, "pane_height": 1.15})

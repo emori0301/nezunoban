@@ -177,6 +177,54 @@ static func exit_sign(parent: Node, pos: Vector3, yaw_deg: float,
 	return [light, emat]
 
 
+## 同じマテリアルの箱をまとめて 1 メッシュにする(描画回数を減らす)。
+## boxes = [[中心 Vector3, 大きさ Vector3], ...]。当たり判定は付かないので飾り専用。
+static func merge_boxes(parent: Node, boxes: Array, mat: Material,
+		node_name: String = "Merged", shadow: bool = false) -> MeshInstance3D:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)   # 面ごとに平らな陰影(PSX 風の箱にする)
+	for bx in boxes:
+		add_box_surface(st, bx[0], bx[1])
+	st.generate_normals()
+	st.index()
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.mesh = st.commit()
+	# 統合メッシュは巻き方向の取り違えで面が消えると気づきにくいので、両面描画にしておく。
+	# 小物のクラッタ用途なので負荷は無視できる。
+	var m2: Material = mat.duplicate()
+	if m2 is BaseMaterial3D:
+		(m2 as BaseMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = m2
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow \
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return mi
+
+
+## 箱 1 個ぶんの面を SurfaceTool に足す(反時計回り = 表)。
+static func add_box_surface(st: SurfaceTool, c: Vector3, size: Vector3) -> void:
+	var h := size * 0.5
+	var v := [
+		c + Vector3(-h.x, -h.y, -h.z), c + Vector3(h.x, -h.y, -h.z),
+		c + Vector3(h.x, h.y, -h.z), c + Vector3(-h.x, h.y, -h.z),
+		c + Vector3(-h.x, -h.y, h.z), c + Vector3(h.x, -h.y, h.z),
+		c + Vector3(h.x, h.y, h.z), c + Vector3(-h.x, h.y, h.z),
+	]
+	var faces := [
+		[4, 5, 6, 7], [1, 0, 3, 2], [5, 1, 2, 6],
+		[0, 4, 7, 3], [3, 7, 6, 2], [0, 1, 5, 4],
+	]
+	for f in faces:
+		st.add_vertex(v[f[0]])
+		st.add_vertex(v[f[1]])
+		st.add_vertex(v[f[2]])
+		st.add_vertex(v[f[0]])
+		st.add_vertex(v[f[2]])
+		st.add_vertex(v[f[3]])
+
+
 ## 円盤(八角)を SurfaceTool に足す。花輪の花びらをまとめて 1 メッシュにするため。
 static func add_disc(st: SurfaceTool, center: Vector3, radius: float, segments: int) -> void:
 	for i in segments:
