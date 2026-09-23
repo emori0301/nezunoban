@@ -300,8 +300,9 @@ func add_anchor_prop(room: StringName, anchor_name: String, model: String, pos: 
 
 
 func add_prop(room: StringName, node_name: String, model: String, pos: Vector3,
-		yaw: float, size: Vector3, color: Color, collide: bool = true) -> Prop:
-	return LevelBuild.prop(_room_nodes[room], node_name, model, pos, yaw, size, color, collide)
+		yaw: float, size: Vector3, color: Color, collide: bool = true,
+		shadow: bool = true) -> Prop:
+	return LevelBuild.prop(_room_nodes[room], node_name, model, pos, yaw, size, color, collide, shadow)
 
 
 func add_box(room: StringName, center: Vector3, size: Vector3, mat: Material,
@@ -522,8 +523,8 @@ func _build_walls() -> void:
 	LevelBuild.wall(holder, 1.8, 1.1, 1.8, 3.6, 2.5, plaster)
 	# バックヤード/廊下(北側)
 	LevelBuild.wall(holder, 5.3, -7.5, 5.3, -1.1, 2.7, conc,
-		[{"t": 3.2, "w": 1.3, "sill": 0.0, "head": 2.2}])
-	_threshold(5.3, -4.3, false, 1.3)
+		[{"t": 3.2, "w": 1.5, "sill": 0.0, "head": 2.2}])
+	_threshold(5.3, -4.3, false, 1.5)
 	# 廊下/式場の西面。式場の入口(引き分け戸)
 	LevelBuild.wall(holder, 7.5, -7.5, 7.5, 3.5, 3.4, plaster,
 		[{"t": 7.5, "w": 1.7, "sill": 0.0, "head": 2.35}])
@@ -544,9 +545,9 @@ func _build_walls() -> void:
 	# 廊下の南面(控室の戸・トイレの戸・外壁)
 	LevelBuild.wall(holder, -4.0, 1.1, 7.5, 1.1, 2.9, plaster,
 		[{"t": 1.8, "w": 0.95, "sill": 0.0, "head": 2.05},
-		 {"t": 4.7, "w": 0.85, "sill": 0.0, "head": 2.05}])
+		 {"t": 4.7, "w": 0.95, "sill": 0.0, "head": 2.05}])
 	_threshold(-2.2, 1.1, true, 0.95)
-	_threshold(0.7, 1.1, true, 0.85)
+	_threshold(0.7, 1.1, true, 0.95)
 	# 玄関/事務所
 	LevelBuild.wall(holder, -11.0, 4.0, -4.0, 4.0, 2.9, plaster,
 		[{"t": 3.0, "w": 0.95, "sill": 0.0, "head": 2.05}])
@@ -655,8 +656,8 @@ func _build_nav() -> void:
 	var nm := NavigationMesh.new()
 	nm.cell_size = 0.1
 	nm.cell_height = 0.1
-	nm.agent_radius = 0.2
-	nm.agent_height = 1.6
+	nm.agent_radius = 0.3
+	nm.agent_height = 1.8
 	nm.agent_max_climb = 0.2
 	nm.agent_max_slope = 40.0
 	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
@@ -668,7 +669,8 @@ func _build_nav() -> void:
 	shell.add_to_group(&"navsource")
 	rooms_root.add_to_group(&"navsource")
 	# 壁の上面や屋根に歩ける島ができないよう、ベイクを腰から下の高さに絞る。
-	nm.filter_baking_aabb = AABB(Vector3(-34.0, -1.0, -32.0), Vector3(70.0, 3.0, 60.0))
+	# agent_height 1.8 分の頭上を確保しつつ、壁の上面(2.4m 以上)は拾わない高さで切る。
+	nm.filter_baking_aabb = AABB(Vector3(-34.0, -1.0, -32.0), Vector3(70.0, 3.3, 60.0))
 	nm.filter_low_hanging_obstacles = true
 	nm.filter_ledge_spans = true
 	nav.navigation_mesh = nm

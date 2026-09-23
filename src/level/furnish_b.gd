@@ -376,11 +376,11 @@ static func _outside(b: Building) -> void:
 			[-8.0, 17.0], [4.0, 15.0], [18.0, -15.0], [-26.0, 19.0], [14.0, 12.0]]:
 		b.add_prop(R, "Tree_%d_%d" % [int(t[0]), int(t[1])], "tree",
 			Vector3(t[0], 0.0, t[1]), randf_range(0, 360), Vector3(1.7, 5.2, 1.7),
-			Color(0.05, 0.06, 0.05))
+			Color(0.05, 0.06, 0.05), true, false)
 
 	# 遠くの国道の街灯
 	for lz in [-18.0, 0.0, 18.0]:
-		LevelBuild.box(node, Vector3(-28.5, 3.5, lz), Vector3(0.16, 7.0, 0.16), steel)
+		LevelBuild.box(node, Vector3(-28.5, 3.5, lz), Vector3(0.16, 7.0, 0.16), steel, true, "", false)
 		LevelBuild.box(node, Vector3(-28.0, 6.95, lz), Vector3(1.2, 0.12, 0.3), steel, false, "", false)
 		b.add_bulb(R, Vector3(-27.5, 6.8, lz), Color(1.0, 0.80, 0.48), 1.5, 14.0, false)
 

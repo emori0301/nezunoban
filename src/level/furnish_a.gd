@@ -125,9 +125,9 @@ static func _office(b: Building) -> void:
 	b.add_prop(R, "Cabinet_Office", "cabinet", Vector3(-4.8, 0.0, 9.45), 180.0,
 		Vector3(1.1, 0.85, 0.45), WOOD)
 	b.add_prop(R, "Kettle", "kettle", Vector3(-4.8, 0.85, 9.45), 180.0,
-		Vector3(0.22, 0.3, 0.22), Color(0.6, 0.6, 0.58), false)
+		Vector3(0.22, 0.3, 0.22), Color(0.6, 0.6, 0.58), false, false)
 	b.add_prop(R, "WallClock", "wall_clock", Vector3(-4.12, 1.95, 7.2), -90.0,
-		Vector3(0.33, 0.33, 0.07), Color(0.75, 0.73, 0.68), false)
+		Vector3(0.33, 0.33, 0.07), Color(0.75, 0.73, 0.68), false, false)
 
 	# 社長の番号を貼った紙(電話の上の壁)
 	LevelBuild.box(node, Vector3(-10.91, 1.5, 6.2), Vector3(0.02, 0.22, 0.16), paper, false, "", false)
@@ -142,13 +142,13 @@ static func _office(b: Building) -> void:
 		Vector3(1.6, 1.85, 0.42), WOOD)
 	for bx in [[-8.2, 9.3, 0.0], [-8.2, 9.3, 0.36], [-6.9, 9.35, 0.0]]:
 		LevelBuild.box(node, Vector3(bx[0], bx[2] + 0.18, bx[1]), Vector3(0.44, 0.36, 0.34),
-			LevelMaterials.plain(Color(0.42, 0.33, 0.22)))
+			LevelMaterials.plain(Color(0.42, 0.33, 0.22)), true, "", false)
 
 	b.add_window(R, "Window_Office", Vector3(-8.0, 1.53, 10.0), 0.0,
 		{"pane_width": 1.7, "pane_height": 1.15})
 
 	b.add_fluorescent(R, Vector3(-9.0, 2.44, 5.7), 1.25, COOL, 1.0, 6.0, true)
-	b.add_fluorescent(R, Vector3(-8.2, 2.44, 8.7), 1.25, COOL, 1.15, 7.0, true)
+	b.add_fluorescent(R, Vector3(-8.2, 2.44, 8.7), 1.25, COOL, 1.15, 7.0, false)
 
 	# 社長の机のデスクライト。金庫の隅(-10.4, 9.4)まで薄く届かせる。
 	# 部屋の照明と同じ系統なので、分電盤を落とせば一緒に消える。
@@ -305,6 +305,6 @@ static func _toilet(b: Building) -> void:
 	b.add_fluorescent(R, Vector3(0.7, 2.2, 2.3), 0.6, Color(0.96, 0.96, 0.92), 0.45, 3.0, false)
 
 	b.add_door(R, "Door_Toilet", Vector3(0.7, 0.0, 1.1), 0.0, {
-		"kind": Door.Kind.SWING, "door_width": 0.82, "door_height": 2.0,
+		"kind": Door.Kind.SWING, "door_width": 0.9, "door_height": 2.0,
 		"hinge_side": -1.0, "swing_degrees": -88.0,
 	})

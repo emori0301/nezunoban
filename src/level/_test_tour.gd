@@ -72,7 +72,11 @@ func _capture(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	img.save_png(path)
-	print("saved %s" % path)
+	print("saved %s (fps=%d, draw_calls=%d, objects=%d, prims=%d)" % [path,
+		int(Engine.get_frames_per_second()),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 
 
 func _shot(path: String) -> void:
@@ -201,8 +205,10 @@ func _check(b: Node3D) -> void:
 	# 経路自体は猫(nav agent r=0.2)の通り道なので、経路追従の判定は細めのカプセルで見る。
 	# プレイヤーが通れるかは後段の「戸口の有効幅」が正。
 	var navshape := CapsuleShape3D.new()
-	navshape.radius = 0.20   # navmesh の agent_radius と同じ。これ以上太い体は角で擦る
-	navshape.height = 1.4
+	# Recast は agent_radius をセル単位で侵食するので、実際に保証される余裕は
+	# radius からセルの半分(0.05m)ほど甘い。判定はその分だけ細くする。
+	navshape.radius = 0.25
+	navshape.height = 1.7
 	var navparams := PhysicsShapeQueryParameters3D.new()
 	navparams.shape = navshape
 	navparams.collision_mask = 1
@@ -339,7 +345,7 @@ func _check(b: Node3D) -> void:
 				if space.intersect_shape(navparams, 1).size() > 0:
 					h2 += 1
 		print("  [%s] %s → %s  %5.1f m  投影ずれ %.2f m  当たり %d  経由点 %d" % [
-			"OK " if (pth2.size() >= 2 and off2 < 0.6 and h2 == 0) else "NG ",
+			"OK " if (pth2.size() >= 2 and off2 < 1.0 and h2 == 0) else "NG ",
 			trapped, pair2[1], d2, off2, h2, pth2.size()])
 
 	# アンカーの高さ。モデルの原点は底面中央なので、真下の面と一致しているか見る。

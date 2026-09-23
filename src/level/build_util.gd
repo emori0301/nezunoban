@@ -188,9 +188,11 @@ static func marker(parent: Node, anchor_name: String, pos: Vector3, yaw_deg: flo
 
 ## Prop(models 担当の glb が無い間は箱)。pos は接地面の中心。
 static func prop(parent: Node, node_name: String, model: String, pos: Vector3,
-		yaw_deg: float, size: Vector3, color: Color, collide: bool = true) -> Prop:
+		yaw_deg: float, size: Vector3, color: Color, collide: bool = true,
+		shadow: bool = true) -> Prop:
 	var p := Prop.new()
 	p.name = node_name
+	p.cast_shadow = shadow
 	p.model_name = model
 	p.placeholder_size = size
 	p.placeholder_color = color
