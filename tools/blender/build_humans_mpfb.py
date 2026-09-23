@@ -481,6 +481,13 @@ def add_hair(name, obj, reg, bounds, hair_mat, spec, strand_mat=None):
 
 # ---------------------------------------------------------------- 服
 
+def bone_group_map(body, arm):
+    """頂点グループ番号 -> ボーン名。MakeHuman 独自のグループ(`body` や
+    `scalp` など)は重み 1.0 で入っていて骨の判定を潰すので、除く。"""
+    bones = {b.name for b in arm.data.bones}
+    return {g.index: g.name for g in body.vertex_groups if g.name in bones}
+
+
 GARMENT_GROUPS = {
     "jacket": {"pelvis", "spine_01", "spine_02", "spine_03",
                "clavicle_l", "clavicle_r",
@@ -502,7 +509,7 @@ def dup_shell(body, arm, keep, name, mat, push=0.003, thick=0.012):
     写し取れば、形も動きも必ず体に沿う。ウェイトは複製で引き継がれる。
     """
     me = body.data
-    g2n = {g.index: g.name for g in body.vertex_groups}
+    g2n = bone_group_map(body, arm)
     keep_polys = []
     for p in me.polygons:
         score = {}
@@ -605,19 +612,30 @@ def add_clothing(name, body, arm, spec, mats):
     return out
 
 
-def add_hair_cap(name, body, arm, reg, mat, spec):
-    """頭の頂点を複製して膨らませた髪のキャップ。"""
+def add_hair_cap(name, body, arm, reg, mat, spec, strand_mat=None):
+    """髪。頭の面を複製して膨らませたキャップ + (長髪なら)毛束の帯。
+
+    **Decimate の前に呼ぶこと。** 間引いた後の頭は頂点が足りず、
+    キャップが頭頂の小さな斑になる。
+    """
     me = body.data
-    head_z = [me.vertices[vi].co.z for i in reg["head"] for vi in me.polygons[i].vertices]
-    if not head_z:
+    hv = [me.vertices[vi].co for i in reg["head"] for vi in me.polygons[i].vertices]
+    if not hv:
         return None
-    htop, hbot = max(head_z), min(head_z)
+    htop, hbot = max(c.z for c in hv), min(c.z for c in hv)
     hh = htop - hbot
-    z_line = hbot + hh * (0.66 if spec.get("long_hair") else 0.70)
-    g2n = {g.index: g.name for g in body.vertex_groups}
+    ymin, ymax = min(c.y for c in hv), max(c.y for c in hv)
+    cx = sum(c.x for c in hv) / len(hv)
+
+    # 前は生え際(眉の上)、後ろはうなじまで覆う。水平に切ると後頭部が出る。
+    z_front = hbot + hh * (0.68 if spec.get("long_hair") else 0.74)
+    z_back = hbot + hh * (0.30 if spec.get("long_hair") else 0.46)
+
+    g2n = bone_group_map(body, arm)
     keep = []
     for p in me.polygons:
-        if p.center.z < z_line:
+        t = (p.center.y - ymin) / max(ymax - ymin, 1e-6)
+        if p.center.z < z_front + (z_back - z_front) * t:
             continue
         score = {}
         for vi in p.vertices:
@@ -629,11 +647,14 @@ def add_hair_cap(name, body, arm, reg, mat, spec):
             keep.append(p.index)
     if not keep:
         return None
+
     new = body.copy()
     new.data = me.copy()
     new.name = "Hair_" + name
     new.data.materials.clear()
     new.data.materials.append(mat)
+    if strand_mat is not None:
+        new.data.materials.append(strand_mat)
     bpy.context.collection.objects.link(new)
     for m in list(new.modifiers):
         new.modifiers.remove(m)
@@ -646,15 +667,40 @@ def add_hair_cap(name, body, arm, reg, mat, spec):
     bm.free()
     new.data.update()
     for v in new.data.vertices:
-        v.co = v.co + v.normal * 0.009
+        v.co = v.co + v.normal * 0.006
     for p in new.data.polygons:
         p.material_index = 0
         p.use_smooth = True
     mod = new.modifiers.new("Solidify", 'SOLIDIFY')
-    mod.thickness = 0.010
+    mod.thickness = 0.008
     mod.offset = 1.0
     bpy.context.view_layer.objects.active = new
     bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    if spec.get("long_hair"):
+        # 長髪。帯を前に置くと顔を横切る板に見えるので、キャップの
+        # **後ろ半分だけ** を肩まで下ろしてシルエットを作る。
+        me2 = new.data
+        zs = [v.co.z for v in me2.vertices]
+        z0 = min(zs)
+        y_cut = ymin + (ymax - ymin) * 0.34
+        cy2 = (ymin + ymax) * 0.5
+        band = hh * 0.30
+        for v in me2.vertices:
+            if v.co.y < y_cut:
+                continue
+            d = v.co.z - z0
+            if d >= band:
+                continue
+            t = 1.0 - d / band
+            t = t * t * (3.0 - 2.0 * t)
+            c = v.co.copy()
+            c.z -= hh * 1.05 * t
+            c.x = cx + (c.x - cx) * (1.0 + 0.22 * t)
+            c.y = cy2 + (c.y - cy2) * (1.0 + 0.16 * t)
+            v.co = c
+        me2.update()
+
     am = new.modifiers.new("Armature", 'ARMATURE')
     am.object = arm
     new.parent = arm
@@ -662,7 +708,79 @@ def add_hair_cap(name, body, arm, reg, mat, spec):
     return new
 
 
-# ---------------------------------------------------------------- アニメ# ---------------------------------------------------------------- アニメ
+def _ribbon(verts, faces, uvs, pts, width, ang):
+    base = len(verts)
+    for (x, y, z, t) in pts:
+        tx, ty = -math.sin(ang) * width, math.cos(ang) * width
+        verts.append((x - tx, y - ty, z))
+        verts.append((x + tx, y + ty, z))
+    for i in range(len(pts) - 1):
+        k = base + i * 2
+        faces.append((k, k + 1, k + 3, k + 2))
+        uvs.append([(0.0, pts[i][3]), (1.0, pts[i][3]),
+                    (1.0, pts[i + 1][3]), (0.0, pts[i + 1][3])])
+
+
+def _add_strands(hair_obj, hv, cx, hbot, htop, ymin, ymax, z_front, mat_index):
+    """前髪 3 枚 + サイドと後ろ 16 枚を髪オブジェクトに足す。"""
+    import random
+    rnd = random.Random(23)
+    hh = htop - hbot
+    rx = max(abs(c.x - cx) for c in hv)
+    cy = (ymin + ymax) * 0.5
+    ry = (ymax - ymin) * 0.5
+    z_shoulder = hbot - hh * 1.00
+
+    verts, faces, uvs = [], [], []
+    # 前髪: 額を横切る 3 枚(眉にかかる長さ)
+    for k in (-1, 0, 1):
+        x = cx + k * rx * 0.44
+        pts = []
+        for j in range(4):
+            t = 1.0 - j / 3.0
+            z = z_front + hh * 0.06 - (1.0 - t) * hh * 0.30
+            y = ymin - 0.004 - (1.0 - t) * 0.012
+            pts.append((x + k * (1.0 - t) * rx * 0.10, y, z, t))
+        _ribbon(verts, faces, uvs, pts, rx * 0.30, math.pi * 0.5)
+    # サイドと後ろ: 16 枚
+    for k in range(16):
+        a = 2.0 * math.pi * k / 16.0
+        if math.sin(a) < -0.45:            # 正面は前髪が担当
+            continue
+        pts = []
+        end = z_shoulder + hh * rnd.uniform(0.0, 0.25)
+        top = z_front + hh * 0.10
+        for j in range(5):
+            t = 1.0 - j / 4.0
+            z = end + (top - end) * t
+            f = 1.0 + (1.0 - t) * (0.18 + rnd.uniform(0.0, 0.10))
+            pts.append((cx + math.cos(a) * rx * f, cy + math.sin(a) * ry * f, z, t))
+        _ribbon(verts, faces, uvs, pts, rx * 0.34, a)
+
+    if not faces:
+        return
+    me = hair_obj.data
+    off = len(me.vertices)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bverts = [bm.verts.new(v) for v in verts]
+    bm.verts.ensure_lookup_table()
+    uvl = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
+    for fi, f in enumerate(faces):
+        try:
+            face = bm.faces.new([bverts[i] for i in f])
+        except ValueError:
+            continue
+        face.material_index = mat_index
+        face.smooth = True
+        for li, loop in enumerate(face.loops):
+            loop[uvl].uv = uvs[fi][li]
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
+# ---------------------------------------------------------------- アニメ# ---------------------------------------------------------------- アニメ# ---------------------------------------------------------------- アニメ
 
 class RemapAnim(Anim):
     """自前のボーン名で書いたアニメを、別のリグのボーン名へ読み替える。"""
@@ -728,7 +846,7 @@ def build_anims(ao):
 
 SPECS = {
     "npc_boss": dict(
-        height=1.68, verts=2200,
+        height=1.68, verts=1150,
         macro={"gender": 0.94, "age": 0.80, "muscle": 0.38, "weight": 0.74,
                "height": 0.40, "proportions": 0.45},
         jacket=0.006, trouser=0.008, hair_back=0.006, long_hair=False,
@@ -737,7 +855,7 @@ SPECS = {
                  leg="suit_black", shoe="shoe_leather", hair="hair_thin"),
     ),
     "npc_son": dict(
-        height=1.72, verts=2200,
+        height=1.72, verts=1150,
         macro={"gender": 0.90, "age": 0.76, "muscle": 0.46, "weight": 0.60,
                "height": 0.50, "proportions": 0.50},
         jacket=0.008, trouser=0.010, hair_back=0.002, long_hair=False,
@@ -746,7 +864,7 @@ SPECS = {
                  leg="jumper", shoe="shoe_leather", hair="hair_salt"),
     ),
     "npc_granddaughter": dict(
-        height=1.60, verts=2200,
+        height=1.60, verts=1150,
         macro={"gender": 0.02, "age": 0.26, "muscle": 0.30, "weight": 0.34,
                "height": 0.40, "proportions": 0.62, "cupsize": 0.45,
                "firmness": 0.6},
@@ -780,6 +898,11 @@ def build_one(name):
 
     straighten_rest(body, arm)
     feet_to_floor(body, arm)
+    # 髪は **間引く前** の頭から作る(間引くと頭頂の頂点が足りず斑になる)
+    reg_full, _ = body_regions(body)
+    hair = add_hair_cap(name, body, arm, reg_full, m_hair, spec, m_strand)
+    if hair is not None:
+        decimate(hair, 330)
     decimate(body, spec["verts"])
     reg, bounds = body_regions(body)
     face, face_rect = find_face(body, reg, bounds)
@@ -806,15 +929,7 @@ def build_one(name):
 
     garments = add_clothing(name, body, arm, spec,
                             {"cloth": m_torso, "leg": m_leg})
-    hair = add_hair_cap(name, body, arm, reg, m_hair, spec)
-    if hair is not None:
-        hair.parent = arm
-        hair.matrix_parent_inverse = Matrix.Identity(4)
-        vg = hair.vertex_groups.new(name=GE["Head"])
-        vg.add(list(range(len(hair.data.vertices))), 1.0, 'REPLACE')
-        mod = hair.modifiers.new("Armature", 'ARMATURE')
-        mod.object = arm
-
+    # 髪の親子付けとウェイトは add_hair_cap() で済んでいる
     set_scene_frames(180)
     build_anims(arm)
     BC.face_godot_forward(arm)
