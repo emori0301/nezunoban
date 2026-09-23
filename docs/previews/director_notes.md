@@ -81,7 +81,9 @@ AUTOPLAY RESULT ending=portrait   dread=0 minutes=91    AUTOPLAY OK portrait
 | `--autoplay=<mode>` `--speed=N` | 自動プレイ |
 | `--shots=<dir>` `--shot-interval=<sec>` | 自動プレイ中、既定 20 秒おきに `<dir>/HHMM_<n>.png` を保存。夜全体の目視用。**`--headless` では撮れない** |
 | `--cctv-shot=<path>` | 監視モニターの SubViewport(256x192)をそのまま PNG に保存して終了。画面内のモニターは小さすぎて人影が判別できないため |
+| `--cctv-feed=<0\|1>` | `--cctv-shot` と併用。撮る前にチャンネルを式場(0)/玄関(1)に切り替える |
 | `--scare=<関数名>` | `scares.gd` の脅かしを 1 つだけ発火させる。`--screenshot` / `--cctv-shot` と組み合わせて使う |
+| `--scare=body_rises` | 火車エンド直前の起き上がりカットだけ出す |
 | `--reload-test=<sec>` | 数秒ごとに `reload_current_scene()` を繰り返す。`Game.reset()` のシグナル一括解除との二重解除を確かめる用 |
 
 夜を通しで目で見るとき:
@@ -226,13 +228,28 @@ systems 側を動かすものは `Director._fire_scare` の `match` に別名を
 | 18 | `set_second_footsteps` | ドライアイス運搬中 | なし | **音のみ**(1.5m 後ろで歩調に合わせた `step_lino_*`) |
 | 19 | `breath_behind` | 同上、独白のあと 1 回 | なし | **音のみ**(`breath_close`) |
 | 20 | `tv_player_back` | 控室、23:40 以降 | `tv_player_back.png` | TV はつく。**後ろ姿のオーバーレイは 2 秒で消えるので撮影タイミングがシビア** |
-| 21 | `monitor_ghost_genkan` | 事務所、23:00 以降 | `monitor_ghost_genkan.png` | **見えない。level 待ち**(下の「他担当への依頼」5)。人影そのものは `_diag_genkan.png` で存在を確認済み |
+| 21 | `monitor_ghost_genkan` | 事務所、23:00 以降 | `monitor_ghost_genkan.png` | 見える。明るくなったポーチに、こちらへ背を向けた人影。level の 3659be4 で解決 |
 | 22 | `vending_cats` | 外、03:00 以降。猫が居るとき | なし | 未撮影(自販機前に猫 5 匹。`Cat.sit_at` 任せ) |
 | 23 | `guest_book_self_name` | 受付の芳名帳を 00:00 以降に見たとき | なし | **テキストのみ**(最後の行 + 独白) |
 | 24 | `spawn_figure`(23:00 のモニター) | 23:00 | `monitor_figure_cctv.png` | 見える。CCTV に座った人影 |
 | 25 | `set_moonlight` | 04:00 の全消灯と同時 | `set_moonlight.png` | 見える。非常灯の緑 + 月明かりで「暗いが輪郭は追える」 |
+| 26 | `_body_rises`(director) | 火車エンド直前(灯し直し失敗 / 火車に捕まった瞬間) | `body_rises.png` | 見える。棺が開いて故人が上体を起こす 2 秒のカット |
 
 音のみのものは画面に出ないのが仕様なので、直す対象からは外してある。
+
+## 火車エンド直前の起き上がり
+
+`Director.kasha_catches()` の頭で `_body_rises()` を呼び、棺の蓋が開いて故人が
+上体を起こす 2 秒のカットを挟んでから火車エンドへ行く。
+プレイヤーの視線は `look_at_point` で棺へ向ける。
+
+**yaw は 90(棺と同じ)が正しい。** npc からは「棺と同じ yaw 90 だと祭壇を向くので -90 に」と
+聞いていたが、-90 にすると体が棺の頭側からはみ出す(足が棺の外に出る)。
+90 にすると体は棺の中に収まり、起き上がった上体は部屋側を向く
+(`body_risen` は起き上がった先で自分の足元を向くので、頭が祭壇側 = +X なら顔は部屋側)。
+`out/director/scares/body_rises.png` で確認した。npc の覚え書きと食い違うので共有したい。
+
+QA は `--scare=body_rises` で単体発火できる。
 
 ## シグナルの後始末
 
@@ -343,7 +360,13 @@ director 側の保険(`_walk` / `face_off` の `teleport_to` フォールバッ�
 
 社長の 1 行は 0ebc634 で script.md に追記された。
 
-### 5. level — 玄関の監視カメラが庇の中に埋まっている
+### 5. level — 玄関の監視カメラが庇の中に埋まっている(解決済み)
+
+level の 3659be4 でカメラを庇の下へ移し、ポーチを明るくしてもらった。
+玄関チャンネルに人影が映ることを確認済み(`out/director/scares/monitor_ghost_genkan.png`)。
+ポーチが明るくなったぶん人影は暗くしてよくなったので、明るさを 0.42 から 0.2 に下げた。
+
+### 旧: level — 玄関の監視カメラが庇の中に埋まっている
 
 `Anchor_Cam_Genkan (-11.4, 2.56, 2.4)` は玄関ポーチの庇の内側にあるらしく、
 モニターの玄関チャンネルは画面の大半が黒い庇で埋まる。

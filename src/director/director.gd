@@ -763,7 +763,7 @@ func _body_rises() -> void:
 		return
 	root.add_child(br)
 	br.global_position = c3.global_position
-	br.rotation.y = deg_to_rad(-90.0)
+	br.rotation.y = deg_to_rad(90.0)
 	scares.glitch(0.8)
 	var p := Game.player
 	if p and p.has_method(&"look_at_point"):
