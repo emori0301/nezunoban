@@ -361,7 +361,7 @@ func show_face(seconds: float = -1.0, reason: String = "peek") -> void:
 	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(_face_cam, "global_position", target + Vector3(0, 0.30, 0.01), minf(seconds * 0.6, 1.6))
 	_breath_timer = 0.0
-	await get_tree().create_timer(seconds).timeout
+	await get_tree().create_timer(seconds, false).timeout
 
 	_face_cam.current = false
 	if _prev_cam != null and is_instance_valid(_prev_cam):

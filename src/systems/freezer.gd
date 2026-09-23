@@ -14,6 +14,7 @@ signal found_empty
 @export var carried: bool = true          # 運搬中は両手が塞がる
 @export var take_prompt: String = "ドライアイスを取る"
 @export var empty_line: String = "……空だ。もう無い。"
+@export var hands_full_prompt: String = "両手が塞がっている"
 @export var open_seconds: float = 2.2
 @export var keep_open: bool = false       # 確認用: 蓋を開けっぱなしにする
 ## freezer_chest.glb の "Lid"(原点 (0, 0.785, -0.342)、X 回転の - で開く)
@@ -118,7 +119,7 @@ func take(player: Node3D) -> void:
 	_busy = true
 	Audio.play_at(&"freezer_open", global_position)
 	_set_lid(true)
-	await get_tree().create_timer(0.55).timeout
+	await get_tree().create_timer(0.55, false).timeout
 	if is_empty:
 		Dialogue.monologue(empty_line)
 		found_empty.emit()
@@ -126,7 +127,7 @@ func take(player: Node3D) -> void:
 		SystemUtil.give_item(player, item_name, carried)
 		taken.emit()
 	if not keep_open:
-		await get_tree().create_timer(open_seconds).timeout
+		await get_tree().create_timer(open_seconds, false).timeout
 		_set_lid(false)
 		Audio.play_at(&"freezer_close", global_position)
 	_busy = false
@@ -135,8 +136,16 @@ func take(player: Node3D) -> void:
 # Interactable
 # --------------------------------------------------------------------------
 
+func get_prompt() -> String:
+	if SystemUtil.is_carrying(Game.player):
+		return hands_full_prompt
+	return take_prompt
+
 func _can_interact(player: Node3D) -> bool:
 	if _busy:
+		return false
+	# 運搬物を持っているあいだは開けない(持ち物が黙って消えるのを防ぐ)
+	if carried and SystemUtil.is_carrying(player):
 		return false
 	# もう持っているなら取れない
 	return not SystemUtil.has_item(player, item_name)

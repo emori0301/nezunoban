@@ -49,6 +49,11 @@ const SCREEN_SHADER := "res://src/systems/shaders/crt_screen.gdshader"
 ## プレイヤーのカメラが 11 を含まないと本体ごと見えなくなるので既定は false。
 @export var hide_from_cctv: bool = false
 @export var look_prompt: String = "モニターを見る"
+## 映像を描くのはプレイヤーがこの部屋にいるときだけ(毎フレーム式場と玄関を
+## 描き直すと draw call がもったいない)。まだ一度も部屋イベントが来ていない間は
+## 描き続けるので、部屋 Area3D の無いテストシーンでもそのまま映る。
+@export var active_room: StringName = &"Room_Office"
+@export var only_update_in_room: bool = true
 
 var feed_index: int = 0
 
@@ -59,12 +64,16 @@ var _mat: ShaderMaterial
 var _switch_t: float = 0.0
 var _glitch: float = 0.0
 var _static_amount: float = 0.10
+var _force_update: bool = false
+var _room_seen: bool = false
+var _in_room: bool = false
 
 func _ready() -> void:
 	super._ready()
 	prompt = look_prompt
 	_static_amount = base_static
 	_build()
+	Events.on(&"player_entered_room", _on_player_entered_room)
 	call_deferred(&"_resolve_cameras")
 	set_process(true)
 
@@ -144,6 +153,25 @@ func _build() -> void:
 	glow.shadow_enabled = false
 	glow.position = screen_offset + Vector3(0, 0, 0.5)
 	add_child(glow)
+
+func _on_player_entered_room(data: Dictionary) -> void:
+	_room_seen = true
+	_in_room = StringName(String(data.get("room", ""))) == active_room
+	_apply_feed_update()
+
+func _apply_feed_update() -> void:
+	if _vp == null:
+		return
+	var on: bool = _force_update or not only_update_in_room or not _room_seen or _in_room
+	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
+
+## director の --cctv-shot など、プレイヤーが事務所に居なくても映像が要るとき。
+func set_force_update(on: bool) -> void:
+	_force_update = on
+	_apply_feed_update()
+
+func is_feed_updating() -> bool:
+	return _vp != null and _vp.render_target_update_mode == SubViewport.UPDATE_ALWAYS
 
 ## Anchor_Cam_* にカメラを置く。無ければ警告して、モニターの前あたりを映す。
 func _resolve_cameras() -> void:

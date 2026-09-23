@@ -109,7 +109,7 @@ func open() -> void:
 		return
 	_busy = true
 	Audio.play_at(&"safe_dial", global_position)
-	await get_tree().create_timer(1.1).timeout
+	await get_tree().create_timer(1.1, false).timeout
 	Audio.play_at(&"safe_open", global_position)
 	is_open = true
 	enabled = false

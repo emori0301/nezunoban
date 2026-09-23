@@ -227,7 +227,7 @@ func _setup_state() -> void:
 	if tv and not args.has("unlit"):
 		tv.turn_on()
 		if args.has("tvface"):
-			await get_tree().create_timer(0.6).timeout
+			await get_tree().create_timer(0.6, false).timeout
 			tv.set_overlay(SystemUtil.tv_face_texture(), 0.9)
 	var fz := nodes.get("freezer") as Freezer
 	if fz:
@@ -263,7 +263,7 @@ func _setup_state() -> void:
 
 	_place_camera()
 	if args.has("faceview") and cof:
-		await get_tree().create_timer(0.3).timeout
+		await get_tree().create_timer(0.3, false).timeout
 		cof.show_face(60.0, "test")
 	if args.has("shot"):
 		_do_shot(String(args["shot"]))
@@ -307,7 +307,7 @@ func _aim(eye: Vector3, at: Vector3) -> void:
 
 func _do_shot(path: String) -> void:
 	var wait := float(args.get("wait", "1.6"))
-	await get_tree().create_timer(wait).timeout
+	await get_tree().create_timer(wait, false).timeout
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())

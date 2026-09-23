@@ -18,11 +18,21 @@ signal picked_up(item: StringName)
 @export var pickup_sound: StringName = &"paper_rustle"
 @export var take_prompt: String = "拾う"
 @export var disappear: bool = true          # 拾ったら消える
+@export var hands_full_prompt: String = "両手が塞がっている"
 
 func _ready() -> void:
 	super._ready()
 	prompt = take_prompt
 	one_shot = true
+
+func get_prompt() -> String:
+	if carried and SystemUtil.is_carrying(Game.player):
+		return hands_full_prompt
+	return take_prompt
+
+## 運搬物として持つ拾い物は、すでに両手が塞がっていたら拾えない。
+func _can_interact(player: Node3D) -> bool:
+	return not (carried and SystemUtil.is_carrying(player))
 
 func take(player: Node3D) -> void:
 	if pickup_sound != &"":

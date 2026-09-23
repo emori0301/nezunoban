@@ -37,6 +37,16 @@ static func give_item(p: Node, item: StringName, carried: bool = false) -> void:
 	else:
 		c.call(item)
 
+## 運搬物(ドライアイス・水)で両手が塞がっているか。
+## player 側の is_carrying() があればそれを、無ければ carried_item を見る。
+static func is_carrying(p: Node) -> bool:
+	if p == null:
+		return false
+	if p.has_method(&"is_carrying"):
+		return bool(p.call(&"is_carrying"))
+	var v: Variant = p.get(&"carried_item")
+	return v != null and StringName(v) != &""
+
 static func take_item(p: Node, item: StringName) -> void:
 	if p == null or not p.has_method(&"take_item"):
 		return

@@ -124,7 +124,8 @@ func _process(delta: float) -> void:
 	_t += delta
 	if not is_lit:
 		return
-	_remaining -= delta * maxf(burn_multiplier, 0.0)
+	# --debug の F2/F3 で時計を倍速にしたときにロウソクだけ遅れないよう Clock.speed を掛ける
+	_remaining -= delta * maxf(burn_multiplier, 0.0) * Clock.speed
 	if _remaining <= 0.0:
 		_remaining = 0.0
 		_extinguish(&"burn_out")

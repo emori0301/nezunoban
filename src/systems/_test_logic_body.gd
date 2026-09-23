@@ -16,6 +16,8 @@ class StubPlayer extends Node3D:
 		items.erase(i)
 		if carried_item == i:
 			carried_item = &""
+	func is_carrying() -> bool:
+		return carried_item != &""
 	func set_locked(v: bool) -> void:
 		locked = v
 	func look_at_point(_p: Vector3, _d: float = 0.8) -> void:
@@ -49,6 +51,7 @@ func run() -> int:
 	await t_clock_events()
 	await t_installer_find()
 	await t_moving_parts()
+	await t_review_fixes()
 
 	print("")
 	if failures.is_empty():
@@ -95,7 +98,7 @@ func data_of(name: StringName) -> Dictionary:
 	return {}
 
 func wait(sec: float) -> void:
-	await get_tree().create_timer(sec).timeout
+	await get_tree().create_timer(sec, false).timeout
 
 # --------------------------------------------------------------------------
 # tests
@@ -312,6 +315,66 @@ func t_clock_events() -> void:
 	ok(fired[0], "Clock.skip_to で 23:00 のイベントが出る")
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
+
+## review_1.md の指摘(M1 受話器置き忘れ / M2 運搬物の上書き / M3 モニター描画 / L2 Clock.speed)
+func t_review_fixes() -> void:
+	print("\n-- review_1 の修正")
+
+	# M1: 受話器を上げっぱなしでも台本の電話が鳴る
+	var ph := spawn("res://src/systems/phone.tscn") as Phone
+	ph.pick_up()
+	ok(ph.off_hook, "受話器を上げた状態")
+	clear_events()
+	ph.ring(5.0)
+	ok(ph.is_ringing, "置き忘れていても鳴る")
+	ok(not ph.off_hook, "受話器が勝手に戻る")
+	ok(saw(&"phone_ring"), "phone_ring が出る")
+	ph.stop_ring()
+	ph.queue_free()
+
+	# M2: 運搬中は水もドライアイスも取れない
+	var sk := spawn("res://src/systems/sink.tscn") as Sink
+	var fz := spawn("res://src/systems/freezer.tscn") as Freezer
+	player.items.clear()
+	player.carried_item = &""
+	ok(sk.can_interact(player), "手が空いていれば水を汲める")
+	player.give_item(&"dry_ice", true)
+	ok(not sk.can_interact(player), "ドライアイスを持っていると水を汲めない")
+	eq(sk.get_prompt(), "両手が塞がっている", "流しのプロンプト")
+	ok(not fz.can_interact(player), "運搬中は冷凍庫を開けられない")
+	eq(fz.get_prompt(), "両手が塞がっている", "冷凍庫のプロンプト")
+	player.take_item(&"dry_ice")
+	ok(sk.can_interact(player), "手を空ければまた汲める")
+	sk.queue_free()
+	fz.queue_free()
+
+	# M3: モニターは事務所にいるときだけ描く
+	var mon := spawn("res://src/systems/monitor.tscn") as Monitor
+	ok(mon.is_feed_updating(), "部屋イベントが来るまでは描く(テストシーン向け)")
+	Events.emit_event(&"player_entered_room", {"room": "Room_Hall"})
+	await get_tree().process_frame
+	ok(not mon.is_feed_updating(), "他の部屋にいるあいだは描かない")
+	Events.emit_event(&"player_entered_room", {"room": "Room_Office"})
+	await get_tree().process_frame
+	ok(mon.is_feed_updating(), "事務所に入ると描く")
+	Events.emit_event(&"player_entered_room", {"room": "Room_Shikijo"})
+	await get_tree().process_frame
+	mon.set_force_update(true)
+	ok(mon.is_feed_updating(), "--cctv-shot 用に強制更新できる")
+	mon.set_force_update(false)
+	ok(not mon.is_feed_updating(), "強制更新を外すと戻る")
+	mon.queue_free()
+
+	# L2: Clock.speed を見る
+	var inc := spawn("res://src/systems/incense_stand.tscn") as IncenseStand
+	inc.burn_seconds = 4.0
+	Game.set_flag(&"incense_sticks", 5)
+	Clock.speed = 8.0
+	inc.light()
+	await wait(0.75)
+	ok(not inc.is_burning, "Clock.speed=8 なら 4秒ぶんが 0.5秒で尽きる")
+	Clock.speed = 1.0
+	inc.queue_free()
 
 ## models が入れた Lid / Window / Door / Lever が実際に動くか。
 func t_moving_parts() -> void:

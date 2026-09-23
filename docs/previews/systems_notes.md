@@ -46,6 +46,20 @@ systems 側で表を二重に持つとずれるので、**level のプレース�
   group `cat` でフィルタしているのでプレイヤーが跨いでも発火しない。
 - 猫を置くときは `collision_layer` に 8 か 4 のどちらかを入れて `monitorable = true` にすること。
 
+## director への依頼(review_1 の修正に伴うもの)
+
+- **`Clock.speed` は systems 側で掛けるようにした。** 線香とロウソクの残量は
+  `delta * burn_multiplier * Clock.speed` で減る(review_1 L2)。
+  autoplay が `burn_seconds` を速度で割って辻褄を合わせていたはずなので、
+  **その割り算を外してほしい**。外さないと二重に効いて線香が一瞬で尽きる。
+  `docs/previews/director_notes.md` の autoplay の記述も直してほしい。
+- **監視モニターは事務所にいるときだけ描くようにした**(review_1 M3)。
+  `--cctv-shot` のようにプレイヤーが事務所に居なくても映像が要るときは
+  `mon.set_force_update(true)` を呼んでから撮り、終わったら false に戻すこと。
+  `mon.is_feed_updating()` で今描いているか確認できる。
+- 電話は受話器が上がっていても `ring()` が通るようにした(review_1 M1)。
+  勝手に `hang_up()` してから鳴るので、呼び出し側は今までどおりでよい。
+
 ## director への依頼・使い方
 
 - 取り出しは `SystemsInstaller.find(&"coffin")`。供花だけ左右 2 つあるので `find_all(&"flower_stand")`。

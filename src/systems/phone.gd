@@ -85,8 +85,12 @@ func _process(delta: float) -> void:
 
 ## 鳴らす。timeout 秒で取り逃し。
 func ring(timeout: float = 30.0) -> void:
-	if is_ringing or off_hook:
+	if is_ringing:
 		return
+	if off_hook:
+		# 受話器を上げっぱなしだと台本の電話が丸ごと飛ぶので、勝手に戻す。
+		# hang_up() が phone_hangup を鳴らすので「受話器が戻る音」も出る。
+		hang_up()
 	is_ringing = true
 	was_answered = false
 	_deadline = timeout
