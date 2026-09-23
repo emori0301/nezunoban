@@ -267,3 +267,98 @@ const ENDING_PORTRAIT_LINES := [
 	"祭壇の遺影を見た。",
 	"それは、私の顔だった。",
 ]
+
+
+# ============================================================ v0.3 追加(推奨セット)
+# docs/script.md「v0.3 追加(推奨セット)」が正本。一字も変えない。
+
+## 導入の追加(21)
+const ADDED_BOSS_CATS := ["キヨさんは村じゃ猫婆で通ってた。二十匹も飼ってな。"]
+const ADDED_HIKARI_FATHER := ["……父は、おばあちゃんが死んだ日のこと、何も言わないんです。"]
+## 施錠の場所を教える 1 行(監督の許可済み。script.md には監督が追記)
+const ADDED_BOSS_LOCK := ["扉の横の金具だ。"]
+
+## E-1 金庫
+const SAFE_CODE := "1009"
+const MEMO_DESK_TITLE := "社長の机のメモ"
+const MEMO_DESK_BODY := "金庫の番号は婆さんの命日。忘れるな。"
+const IEI_BACK_TITLE := "遺影の裏"
+const IEI_BACK_BODY := """春日 キヨ
+令和七年十月九日 没
+行年八十八"""
+const M_SAFE_WRONG := "違う。"
+const M_SAFE_WRONG3 := "……急かされている。"
+
+## E-2 分電盤
+const M_BREAKER_WRONG := "跳ねた。順番がある。"
+
+## E-3 電話(発信)
+const PHONE_BOSS := "0246"
+const PHONE_HIKARI := "3175"
+const PHONE_KIYO := "4419"
+const PHONE_VOICEMAIL_LINE := "ただいま電話に出ることができません。"
+const M_PHONE_BOSS_AFTER := "……誰かが、聞いている。"
+const PHONE_HIKARI_1 := [
+	"……はい。",
+	"……父は、まだそこに居ますか。",
+	"父は、猫を……いえ。何でもないです。",
+	"線香、切らさないでください。",
+]
+const PHONE_HIKARI_LATE := ["……父は、まだそこに?"]
+const PHONE_KIYO_VOICE := "……かえして……"
+const M_PHONE_KIYO_AFTER := "誰も住んでいない家だ。"
+const PHONE_UNAVAILABLE_LINE := "おかけになった電話番号は、現在使われておりません。"
+
+## E-4 押入れ・障子
+const PAGE5_TITLE := "前任者の走り書き"
+const PAGE5_BODY := """猫は誠を見ている。
+俺は見なかったことにする。
+三時の電話には出るな。"""
+const M_SHOJI_CATS := "全部、こっちを見ている。"
+
+## E-5 血の手形
+const M_BLOOD_FIRST := "手形だ。……小さい。"
+const M_BLOOD_SAFE := "金庫の前で途切れている。"
+
+## E-6 ラジオ
+const M_RADIO_1 := "ラジオ。つけた覚えはない。"
+const M_RADIO_2 := "また、ついている。"
+
+## E-7 冷凍庫の袋
+const PAGE6_TITLE := "収容票"
+const PAGE6_BODY := """動物愛護センター 収容票
+種別 猫　頭数 十九
+依頼者 春日 誠
+受付 十月九日"""
+
+## 収集物を読んだ後の独白(22)。索引は収集番号。
+const PAGE_AFTER := {
+	1: "猫は、誰が悪いか知っている。",
+	2: "前の人も、猫を見ている。",
+	3: "首に痣。事故じゃない。",
+	4: "金で通した。警察は来ない。",
+	5: "三時の電話。",
+	6: "十月九日。おばあちゃんが死んだ日だ。",
+}
+
+## 息子の寝言(23、順に)
+const SON_SLEEP_TALK := [
+	"……違う……俺じゃ……猫が……",
+	"……婆さん……そんな目で……見るな……",
+	"……燃やせば……終わる……",
+]
+
+## 「かえして」の後(24)
+const M_CATS_RETURN := "猫を、返せと言っている。"
+
+## 真相の回想(25)。[画像, 文, 必要な収集番号]
+const RECAP := [
+	["recap_truck", "十月九日。十九匹の猫が、軽トラで運ばれた。", 6],
+	["recap_cats", "その週、キヨは首を絞められて死んだ。", 3],
+	["recap_ledger", "息子は金を払い、社長は日付を書き換えた。", 4],
+]
+const RECAP_UNREAD := "……"
+
+## 追加タスク
+const TASK_BREAKER_ORDER := "分電盤のレバーを順に上げる"
+const TASK_RADIO := "ラジオを消す"

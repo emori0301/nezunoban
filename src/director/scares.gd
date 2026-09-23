@@ -889,3 +889,182 @@ class Spot extends Interactable:
 	func _interact(p: Node3D) -> void:
 		if on_use.is_valid():
 			on_use.call(p)
+
+
+# ============================================================ v0.3 追加(推奨セット)
+
+# ---------------------------------------------------------- E-5 血の手形
+
+var _blood_i: int = 0
+var _blood_path: Array = []
+
+## 廊下に入るたびに 3 枚ずつ増やす。全 15 枚で金庫の扉に届く。
+func blood_handprints_step() -> bool:
+	var b := building()
+	if b == null or not b.has_method(&"handprint_path"):
+		return false
+	if _blood_path.is_empty():
+		_blood_path = b.call(&"handprint_path")
+	if _blood_path.is_empty() or _blood_i >= _blood_path.size():
+		return false
+	var tex: Texture2D = SystemUtil.load_texture("blood_handprint")
+	var first := _blood_i == 0
+	for i in 3:
+		if _blood_i >= _blood_path.size():
+			break
+		var t: Transform3D = _blood_path[_blood_i]
+		var d := Decal.new()
+		d.texture_albedo = tex
+		d.size = Vector3(0.18, 0.35, 0.18)
+		d.albedo_mix = 1.0
+		d.modulate = Color(0.85, 0.72, 0.72)
+		attach(d)
+		d.global_transform = t
+		_blood_i += 1
+	if first:
+		dir.monologue(ScriptText.M_BLOOD_FIRST)
+	elif _blood_i >= _blood_path.size():
+		var smear: Texture2D = SystemUtil.load_texture("blood_smear")
+		if smear:
+			var sd := Decal.new()
+			sd.texture_albedo = smear
+			sd.size = Vector3(0.5, 0.4, 0.5)
+			sd.albedo_mix = 1.0
+			attach(sd)
+			sd.global_transform = _blood_path[_blood_path.size() - 1]
+		dir.monologue(ScriptText.M_BLOOD_SAFE)
+	return true
+
+
+# ---------------------------------------------------------- E-9 廊下の猫の目
+
+const EYE_SPOTS := [
+	Vector3(6.4, 0.30, -7.0), Vector3(6.4, 0.30, -5.2), Vector3(7.2, 0.30, -0.3),
+	Vector3(-3.4, 0.30, 0.4), Vector3(1.6, 0.30, -0.7), Vector3(4.8, 0.30, 0.6),
+	Vector3(6.9, 0.30, -3.0), Vector3(0.2, 0.30, 0.6), Vector3(3.4, 0.30, -0.6),
+	Vector3(5.6, 0.30, -6.4), Vector3(-1.2, 0.30, -0.5), Vector3(2.4, 0.30, 0.5),
+]
+var _eyes: Array[Node3D] = []
+
+## 廊下の暗がりに光る目を n 対。近づくと消える。
+func cat_eyes(n: int) -> void:
+	clear_eyes()
+	var spots := EYE_SPOTS.duplicate()
+	for i in mini(n, spots.size()):
+		var idx := rng.randi_range(0, spots.size() - 1)
+		var pos: Vector3 = spots[idx]
+		spots.remove_at(idx)
+		var root := Node3D.new()
+		root.name = "CatEyes"
+		root.position = pos
+		root.rotation_degrees = Vector3(0, rng.randf_range(-180.0, 180.0), 0)
+		var mat := SystemUtil.emissive_material(null, Color(1.0, 0.92, 0.35), 3.0, false)
+		for side in [-0.045, 0.045]:
+			var mi := MeshInstance3D.new()
+			var sp := SphereMesh.new()
+			sp.radius = 0.014
+			sp.height = 0.024
+			mi.mesh = sp
+			mi.position = Vector3(side, 0, 0)
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root.add_child(mi)
+		attach(root)
+		_eyes.append(root)
+	if not _eyes.is_empty():
+		Audio.play_at(&"cat_purr", _eyes[0].global_position, -24.0, 1.0, 6.0)
+
+
+func clear_eyes() -> void:
+	for e in _eyes:
+		if is_instance_valid(e):
+			e.queue_free()
+			_spawned.erase(e)
+	_eyes.clear()
+
+
+# ---------------------------------------------------------- E-10 窓の外の猫の群れ
+
+func cat_crowd() -> bool:
+	var b := building()
+	if b == null or not b.has_method(&"window_outside_spots"):
+		return false
+	var n := 0
+	for w in [&"Window_Shikijo", &"Window_Hikaeshitsu"]:
+		var spots: Array = b.call(&"window_outside_spots", w)
+		var wp: Node3D = b.get_window_pane(w) if b.has_method(&"get_window_pane") else null
+		for pos in spots:
+			var p3 := spawn_prop("cat", pos, 0.0, Vector3(0.18, 0.36, 0.7), Color(0.05, 0.05, 0.06))
+			if wp:
+				p3.rotation_degrees.y = yaw_to(pos, wp.global_position)
+			var ap := p3.find_child("AnimationPlayer", true, false) as AnimationPlayer
+			if ap and ap.has_animation("sit"):
+				ap.play("sit")
+				ap.seek(rng.randf_range(0.0, 2.0), true)
+			n += 1
+	if n == 0:
+		return false
+	Audio.play(&"cat_chorus", -6.0)
+	return true
+
+
+## 電話のあとなどに、いちばん近い窓の外へ猫を 1 匹。
+func cat_at_nearest_window() -> void:
+	var b := building()
+	if b == null:
+		return
+	var best := Vector3(13.0, 0.0, 5.0)
+	var bd := INF
+	for w in [&"Window_Shikijo", &"Window_Toilet", &"Window_Office"]:
+		var wp: WindowPane = b.get_window_pane(w)
+		if wp == null:
+			continue
+		var d := wp.global_position.distance_to(player_pos())
+		if d < bd:
+			bd = d
+			best = wp.global_position + (wp.global_position - player_pos()).normalized() * 1.4
+	best.y = 0.0
+	var cat: Node = dir.npc(&"cat", 0)
+	if cat and cat.has_method(&"sit_at"):
+		cat.call(&"set_active", true)
+		cat.call(&"sit_at", best, player_pos())
+	else:
+		spawn_prop("cat", best, yaw_to(best, player_pos()), Vector3(0.18, 0.36, 0.7), Color(0.05, 0.05, 0.06))
+	Audio.play_at(&"cat_meow_2", best + Vector3(0, 0.3, 0), -2.0, 1.0, 24.0)
+
+
+# ---------------------------------------------------------- E-8 遺影が家族写真に
+
+func family_photo() -> bool:
+	var iei := sys(&"iei")
+	if iei == null or not iei.has_method(&"set_portrait"):
+		return false
+	var late := int(Clock.game_minutes) >= 400
+	var tex: Texture2D = SystemUtil.load_texture("family_photo_player" if late else "family_photo")
+	if tex == null:
+		return false
+	var before: Texture2D = SystemUtil.load_texture("iei_photo")
+	iei.call(&"set_portrait", tex)
+	glitch(0.35)
+	await Events.wait(2.0)
+	if is_instance_valid(iei) and before:
+		iei.call(&"set_portrait", before)
+	return true
+
+
+# ---------------------------------------------------------- E-4 障子の外の猫
+
+func shoji_cats() -> bool:
+	if Game.get_flag(&"shoji_cats", false):
+		return false
+	Game.set_flag(&"shoji_cats", true)
+	for c in dir.npc_all(&"cat"):
+		if c.has_method(&"set_eye_glow"):
+			c.call(&"set_eye_glow", 6.0)
+		if c.has_method(&"face"):
+			c.call(&"face", player_pos())
+	Audio.play(&"cat_meow_1", -2.0)
+	Audio.play(&"cat_meow_3", -5.0)
+	stinger(-2.0)
+	dir.monologue(ScriptText.M_SHOJI_CATS)
+	return true

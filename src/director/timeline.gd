@@ -23,11 +23,13 @@ const SCHEDULE := [
 	["00:30", "ev_dry_ice", "ドライアイス交換 / 足音が2人分"],
 	["01:00", "ev_office_note", "宿直日誌(収集②)/ 扉が閉まる"],
 	["01:30", "ev_yukan", "湯灌室が開く(収集③)"],
+	["01:35", "ev_radio", "事務所のラジオが勝手につく"],
 	["02:00", "ev_phone_wet", "電話(濡れた声)"],
 	["02:30", "ev_ushimitsu", "丑三つ時(3分)"],
 	["03:00", "ev_safe", "金庫の台帳(収集④)/ 廊下の人影"],
-	["03:20", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡 / 顔③"],
+	["03:20", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡 / 顔③ / 奥の袋(収集⑥)"],
 	["03:40", "ev_lid_slides", "棺の蓋が独りでにずれる"],
+	["03:50", "ev_cat_crowd", "窓の外に猫の群れ"],
 	["04:00", "ev_finale", "全消灯 / 火車 / 灯し直し x3"],
 	["04:45", "ev_dawn_light", "夜明けの光 / 鴉"],
 	["05:00", "ev_dawn", "朝 / エンディング"],
@@ -86,6 +88,9 @@ func apply_past(m: int) -> void:
 		var c: Node = dir.sys(&"coffin")
 		if c:
 			c.call(&"set_face_state", 1)
+	if m > 120:
+		dir.enable_note(dir.oshiire_note(), true)
+		dir.shoji_armed = true
 	if m > 240:
 		dir.enable_office_note(true)
 	if m > 270:
@@ -302,6 +307,8 @@ func _entry_pos(entry: StringName) -> Vector3:
 
 func ev_tv() -> void:
 	dir.log_event("ev_tv")
+	dir.enable_note(dir.oshiire_note(), true)   # 押入れの鞄(収集⑤)
+	dir.shoji_armed = true
 	var tv: Node = dir.sys(&"tv")
 	if tv == null:
 		return
@@ -544,6 +551,9 @@ func play_wet_call() -> void:
 		dir.quench(&"incense_stand")
 	scares.glitch(0.5)
 	await dir.monologue(ScriptText.M_PHONE_WET_AFTER)
+	Audio.play(&"cat_chorus", -8.0)
+	await Events.wait(1.6)
+	await dir.monologue(ScriptText.M_CATS_RETURN)
 
 
 # ============================================================ 03:00 丑三つ時
@@ -626,7 +636,54 @@ func ev_freezer_empty() -> void:
 	if coffin:
 		coffin.call(&"set_face_state", 3)
 	scares.paw_prints()
+	dir.enable_note(dir.bag_note(), true)      # 庫内の奥の袋(収集⑥)
 	Tasks.set_task(&"dry_ice", ScriptText.TASK_DRY_ICE)
+
+
+# ============================================================ 01:35 ラジオ
+
+var _radio_stage: int = 0
+
+func ev_radio() -> void:
+	dir.log_event("ev_radio")
+	var r: Node = dir.sys(&"radio")
+	if r == null:
+		return
+	_radio_stage = 1
+	r.call(&"play_voice", &"radio_talk")
+	r.call(&"turn_on")
+	dir.monologue(ScriptText.M_RADIO_1)
+
+
+## Director が radio_off で呼ぶ
+func on_radio_off() -> void:
+	if _radio_stage == 1:
+		_radio_stage = 2
+		await Events.wait(20.0 / maxf(Clock.speed, 0.01))
+		if Game.state != Game.State.PLAYING:
+			return
+		var r: Node = dir.sys(&"radio")
+		if r == null:
+			return
+		r.call(&"turn_on")
+		dir.monologue(ScriptText.M_RADIO_2)
+		await Events.wait(6.0 / maxf(Clock.speed, 0.01))
+		if is_instance_valid(r) and bool(r.get(&"is_on")):
+			r.call(&"play_voice", &"phone_voice_wet")
+	elif _radio_stage == 2:
+		_radio_stage = 3
+		var iei: Node = dir.sys(&"iei")
+		if iei:
+			iei.call(&"set_face_down", true)
+		scares.stinger(-4.0)
+		dir.monologue(ScriptText.M_IEI)
+
+
+# ============================================================ 03:50 猫の群れ
+
+func ev_cat_crowd() -> void:
+	dir.log_event("ev_cat_crowd")
+	scares.cat_crowd()
 
 
 # ============================================================ 03:40 棺の蓋
@@ -680,6 +737,7 @@ func ev_finale(quiet: bool = false) -> void:
 		if b.has_method(&"set_emergency_lights"):
 			b.call(&"set_emergency_lights", true)   # 緑の非常灯は点けたままにする
 	scares.set_moonlight(true)            # 窓からの月明かり(真っ暗だと歩けない)
+	scares.clear_eyes()
 	if inc:
 		dir.quench(&"incense_stand")
 	if cnd:

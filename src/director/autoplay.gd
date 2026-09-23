@@ -26,6 +26,7 @@ var shot_interval: float = 20.0
 var _shot_t: float = 0.0
 var _shot_n: int = 0
 var _shooting: bool = false
+var _dialed: bool = false
 var _t: float = 0.0
 var _elapsed: float = 0.0
 var _busy: bool = false
@@ -49,6 +50,7 @@ func begin() -> void:
 	Dialogue.auto_advance = true
 	Dialogue.auto_line_seconds = 0.08
 	Dialogue.auto_chooser = Callable(self, "choose")
+	Dialogue.auto_code = ScriptText.SAFE_CODE     # 金庫のダイヤル
 	Clock.speed = maxf(speed, 0.1)
 	# 線香・ロウソクの減りは systems 側が delta * Clock.speed で進めるので、
 	# ここで burn_seconds を speed で割ると二重に効いて一瞬で尽きる。何もしない。
@@ -141,6 +143,12 @@ func _act() -> void:
 	# 5. 猫(kasha モードは棺をまたがせたいので追い払わない)
 	if mode != &"kasha" and await _shoo_cat():
 		return
+	# 5.5 収集物(押入れの鞄・冷凍庫の袋・遺影の裏)を読む
+	if mode == &"morning" and await _read_extras():
+		return
+	# 5.6 一夜に一度だけ電話をかける
+	if await _try_phone_call():
+		return
 	# 6. いまのタスク(モードによっては線香を無視する)
 	var id := _pick_task()
 	if id != &"":
@@ -198,7 +206,8 @@ func _shoo_cat() -> bool:
 ## kasha モードで線香を放置すると以後のタスクに進めなくなる。
 const TASK_ORDER := [
 	&"talk_boss", &"relight", &"cat", &"breaker", &"backdoor", &"window",
-	&"dry_ice", &"flowers", &"candle", &"lid", &"incense_stock", &"incense", &"last_incense",
+	&"dry_ice", &"flowers", &"candle", &"lid", &"radio",
+	&"incense_stock", &"incense", &"last_incense",
 ]
 ## kasha モード(導入後)が触らないタスク。
 ## 線香を放置して異変度を溜め、勝手口と式場の窓を開けたままにして猫を入れる
@@ -258,7 +267,9 @@ func _do_task(id: StringName) -> bool:
 		&"candle":
 			return await _use(dir.sys(&"candle"), 1.0)
 		&"breaker":
-			return await _use(dir.sys(&"breaker"), 1.0)
+			return await _pull_levers()
+		&"radio":
+			return await _use(dir.sys(&"radio"), 1.0)
 		&"dry_ice":
 			if _has_item(&"dry_ice"):
 				return await _use(dir.sys(&"coffin"), 1.3)
@@ -281,6 +292,57 @@ func _do_task(id: StringName) -> bool:
 
 
 # ============================================================ 操作
+
+## 分電盤の 3 本のレバーを正しい順(主幹 → 廊下 → 式場)で上げる。
+## 追加の収集物を読む。読んだら true。
+func _read_extras() -> bool:
+	for n in [dir.oshiire_note(), dir.bag_note()]:
+		if n != null and is_instance_valid(n) and n.enabled and not n.has_been_read:
+			return await _use(n, 1.0)
+	var iei: Node = dir.sys(&"iei")
+	if iei and iei.has_method(&"read_back") and not Game.get_flag(&"read_iei_back", false):
+		Game.set_flag(&"read_iei_back", true)
+		iei.call(&"read_back")
+		return true
+	return false
+
+
+func _pull_levers() -> bool:
+	var br: Node = dir.sys(&"breaker")
+	if br == null:
+		return false
+	var order: Array = br.get(&"required_order") if br.get(&"required_order") != null else []
+	if order.is_empty():
+		return await _use(br, 1.0)
+	for name in order:
+		var lever := br.find_child(String(name), true, false)
+		if lever == null:
+			continue
+		if bool(lever.get(&"is_up")):
+			continue
+		await _use(lever, 1.0)
+		await Events.wait(0.2 / maxf(speed, 0.1))
+	return true
+
+
+## 一夜に一度だけ、孫娘に電話をかける(E-3 の経路を QA で通す)。
+func _try_phone_call() -> bool:
+	if _dialed or mode == &"kasha":
+		return false
+	if int(Clock.game_minutes) < 120 or dir.timeline.finale_running():
+		return false
+	var ph: Node = dir.sys(&"phone")
+	if ph == null or bool(ph.get(&"is_ringing")) or bool(ph.get(&"off_hook")):
+		return false
+	if not ph.has_method(&"dial"):
+		_dialed = true          # systems が発信を入れるまでは飛ばす
+		return false
+	_dialed = true
+	Dialogue.auto_code = ScriptText.PHONE_HIKARI
+	var ok := await _use(ph, 1.0)
+	Dialogue.auto_code = ScriptText.SAFE_CODE
+	return ok
+
 
 func _has_item(item: StringName) -> bool:
 	var p := player()

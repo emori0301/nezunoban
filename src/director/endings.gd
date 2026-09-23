@@ -153,6 +153,21 @@ func save_progress(id: StringName) -> void:
 		push_warning("Endings: progress.cfg を書けない (%d)" % err)
 
 
+## エンディング文の前に「真相」の回想を出す(E-12/25)。
+## 読んだ収集物に対応する行だけ文が出て、未読は「……」。
+func _recap(e: Node) -> void:
+	if e == null or not e.has_method(&"show_recap"):
+		return
+	var images: Array = []
+	var lines: Array = []
+	for row in ScriptText.RECAP:
+		images.append(String(row[0]))
+		var need := int(row[2])
+		var read := bool(Game.get_flag(StringName("page_read_%d" % need), false))
+		lines.append(String(row[1]) if read else ScriptText.RECAP_UNREAD)
+	await e.call(&"show_recap", images, lines)
+
+
 ## エンディング文のあとにクレジットを流す。
 func _roll_credits(vp: Node) -> void:
 	if vp == null:

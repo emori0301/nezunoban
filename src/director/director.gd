@@ -23,6 +23,9 @@ const POS_HIKAESHITSU_ZABUTON := Vector3(-1.35, 0.0, 3.8)
 const POS_OFFICE_NOTE := Vector3(-8.85, 0.76, 6.15)
 const POS_YUKAN_NOTE := Vector3(7.3, 0.87, -9.55)
 const POS_BACKYARD_BOX := Vector3(2.4, 0.95, -6.95)
+const POS_OSHIIRE_BAG := Vector3(-3.4, 0.55, 4.35)
+const POS_FREEZER_BAG := Vector3(3.6, 0.55, -6.3)
+const POS_HIKAESHITSU_DOOR := Vector3(-2.2, 0.0, 1.1)
 
 ## 会話するときに NPC が止まるプレイヤーからの距離(m)
 const TALK_DISTANCE := 1.8
@@ -45,6 +48,11 @@ var pending_call: StringName = &""
 
 var _npc_installer: Node = null
 var _office_note: Note = null
+var _oshiire_note: Note = null
+var _bag_note: Note = null
+var shoji_armed: bool = false
+var _sleep_talk_i: int = 0
+var _sleep_talk_t: float = 0.0
 var _yukan_note: Note = null
 var _stock_box: Node = null
 var _scare_timer: float = 0.0
@@ -416,9 +424,22 @@ func _setup_static() -> void:
 	if m:
 		m.set(&"enabled", false)
 		m.set(&"visible", false)
+	Game.set_flag(&"safe_code", ScriptText.SAFE_CODE)
 	var sf := sys(&"safe")
 	if sf:
 		sf.call(&"set_note", ScriptText.PAGE4_TITLE, ScriptText.PAGE4_BODY, 4)
+	var desk0 := sys(&"boss_desk")
+	if desk0:
+		desk0.set(&"memo_title", ScriptText.MEMO_DESK_TITLE)
+		desk0.set(&"memo_body", ScriptText.MEMO_DESK_BODY)
+	var iei0 := sys(&"iei")
+	if iei0:
+		iei0.set(&"back_title", ScriptText.IEI_BACK_TITLE)
+		iei0.set(&"back_body", ScriptText.IEI_BACK_BODY)
+	_oshiire_note = _make_note(POS_OSHIIRE_BAG, ScriptText.PAGE5_TITLE, ScriptText.PAGE5_BODY, 5)
+	_bag_note = _make_note(POS_FREEZER_BAG, ScriptText.PAGE6_TITLE, ScriptText.PAGE6_BODY, 6)
+	enable_note(_oshiire_note, false)
+	enable_note(_bag_note, false)
 	var desk := sys(&"boss_desk")
 	if desk:
 		desk.call(&"enable_key", false)
@@ -440,6 +461,20 @@ func _make_note(pos: Vector3, title: String, body: String, page: int) -> Note:
 	root.add_child(n)
 	n.global_position = pos
 	return n
+
+
+func enable_note(n: Note, on: bool) -> void:
+	if n and is_instance_valid(n):
+		n.enabled = on
+		n.visible = on
+
+
+func bag_note() -> Note:
+	return _bag_note
+
+
+func oshiire_note() -> Note:
+	return _oshiire_note
 
 
 func enable_office_note(on: bool) -> void:
@@ -549,6 +584,7 @@ func _connect_events() -> void:
 	Events.on(&"candle_out", func(_d): _on_candle_out())
 	Events.on(&"candle_lit", func(_d): _on_candle_lit())
 	Events.on(&"window_closed", func(d): _on_window_closed(d))
+	Events.on(&"window_opened", func(d): _on_window_opened(d))
 	Events.on(&"door_closed", func(d): _on_door_closed(d))
 	Events.on(&"phone_answered", func(_d): _on_phone_answered())
 	Events.on(&"phone_missed", func(_d): pending_call = &"")
@@ -562,6 +598,14 @@ func _connect_events() -> void:
 	Events.on(&"cat_crossed_coffin", func(_d): _on_cat_crossed())
 	Events.on(&"futon_rest", func(_d): finish(Game.ENDING_PORTRAIT))
 	Events.on(&"relight_success", func(d): timeline.on_relight(int(d.get("n", 1))))
+	Events.on(&"safe_wrong", func(d): _on_safe_wrong(int(d.get("count", 1))))
+	Events.on(&"breaker_lever", func(d): _on_breaker_lever(d))
+	Events.on(&"phone_dialed", func(d): _on_phone_dialed(String(d.get("number", ""))))
+	Events.on(&"radio_on", func(_d): Tasks.set_task(&"radio", ScriptText.TASK_RADIO))
+	Events.on(&"radio_off", func(_d):
+		Tasks.complete(&"radio")
+		timeline.on_radio_off())
+	Events.on(&"door_locked", func(d): _on_door_locked(d))
 	Events.on(&"chase_started", func(_d): set_chase_audio(true))
 	Events.on(&"chase_ended", func(_d): set_chase_audio(false))
 	var mon := sys(&"monitor")
@@ -695,11 +739,28 @@ func _apply_dread_floor() -> void:
 		Dread.add(want - Dread.value, &"time")
 
 
+const EYE_STAGES := [[180, 2], [270, 6], [360, 12]]
+
 func _on_minute(_m: int) -> void:
 	if Game.state != Game.State.PLAYING:
 		return
 	_apply_dread_floor()
 	apply_incense_pace()
+	_update_cat_eyes()
+
+
+func _update_cat_eyes() -> void:
+	if timeline.finale_running():
+		return
+	var m := int(Clock.game_minutes)
+	var want := 0
+	for row in EYE_STAGES:
+		if m >= int(row[0]):
+			want = int(row[1])
+	if want == 0 or want == int(Game.get_flag(&"cat_eyes_n", 0)):
+		return
+	Game.set_flag(&"cat_eyes_n", want)
+	scares.cat_eyes(want)
 
 
 func _on_hour(_hour: int) -> void:
@@ -714,22 +775,27 @@ func _on_hour(_hour: int) -> void:
 
 # ---------------------------------------------------------- 扉・窓・電話
 
+## 障子を 23:00 以降に開けると、駐車場の猫が一斉にこちらを向く(E-4)
+func _on_window_opened(d: Dictionary) -> void:
+	if not shoji_armed:
+		return
+	if StringName(d.get("window", "")) == &"Window_Hikaeshitsu":
+		scares.shoji_cats()
+
+
 func _on_window_closed(d: Dictionary) -> void:
 	if StringName(d.get("window", "")) == &"Window_Shikijo":
 		timeline.on_shikijo_window_closed()
 
 
-func _on_door_closed(d: Dictionary) -> void:
-	if StringName(d.get("door", "")) != &"Door_Backyard":
-		return
-	if not Tasks.has(&"backdoor"):
-		return
-	var b := building()
-	var door: Door = b.get_door(&"Door_Backyard") if b else null
-	if door:
-		door.set_locked(true)
-	Tasks.complete(&"backdoor")
-	Audio.play_at(&"door_locked", door.global_position if door else Vector3.ZERO, -4.0)
+## 勝手口は「閉める」だけでは終わらない。枠の脇の金具で施錠して完了(E: DoorLock)。
+func _on_door_locked(d: Dictionary) -> void:
+	if StringName(d.get("door", "")) == &"Door_Backyard":
+		Tasks.complete(&"backdoor")
+
+
+func _on_door_closed(_d: Dictionary) -> void:
+	pass
 
 
 func _on_phone_answered() -> void:
@@ -745,13 +811,115 @@ func _on_phone_answered() -> void:
 				ph.call(&"hang_up")
 
 
+## 金庫のダイヤルを外した
+func _on_safe_wrong(count: int) -> void:
+	if count >= 3:
+		var c := sys(&"coffin")
+		if c:
+			c.call(&"knock")
+		monologue(ScriptText.M_SAFE_WRONG3)
+	else:
+		monologue(ScriptText.M_SAFE_WRONG)
+
+
+## 分電盤のレバー。順を間違えると別の部屋の灯りが 1 つ落ちる。
+const BREAKER_PENALTY_ROOMS := [&"Room_Genkan", &"Room_Backyard", &"Room_Toilet", &"Room_Hikaeshitsu"]
+
+func _on_breaker_lever(d: Dictionary) -> void:
+	if bool(d.get("ok", true)):
+		return
+	Audio.play(&"spark", 0.0)
+	var b := building()
+	if b:
+		for r in BREAKER_PENALTY_ROOMS:
+			if b.get_light_state(r):
+				b.set_room_lights(r, false)
+				break
+	scares.glitch(0.4)
+	monologue(ScriptText.M_BREAKER_WRONG)
+
+
+## 自分から電話をかけたときの応答(E-3)。
+func _on_phone_dialed(number: String) -> void:
+	var ph := sys(&"phone")
+	var again := bool(Game.get_flag(StringName("dialed_" + number), false))
+	Game.set_flag(StringName("dialed_" + number), true)
+	match number:
+		ScriptText.PHONE_BOSS:
+			await _phone_boss(ph, again)
+		ScriptText.PHONE_HIKARI:
+			await _phone_hikari(ph, again)
+		ScriptText.PHONE_KIYO:
+			await _phone_kiyo(ph, again)
+		_:
+			_remote(ph, &"phone_unavailable")
+			await Dialogue.say("", ScriptText.PHONE_UNAVAILABLE_LINE)
+	if ph:
+		ph.call(&"hang_up")
+
+
+func _remote(ph: Node, sound: StringName) -> void:
+	if ph and ph.has_method(&"play_remote"):
+		ph.call(&"play_remote", sound)
+	else:
+		Audio.play(sound, -4.0)
+
+
+func _phone_boss(ph: Node, again: bool) -> void:
+	_remote(ph, &"phone_ringback")
+	await Events.wait(1.2 if again else 3.0)
+	_remote(ph, &"phone_voicemail")
+	await Dialogue.say("", ScriptText.PHONE_VOICEMAIL_LINE)
+	if not again:
+		_remote(ph, &"phone_breath")
+		await Events.wait(2.0)
+		await monologue(ScriptText.M_PHONE_BOSS_AFTER)
+
+
+func _phone_hikari(ph: Node, again: bool) -> void:
+	_remote(ph, &"phone_ringback")
+	await Events.wait(1.6)
+	if int(Clock.game_minutes) >= 300:
+		for l in ScriptText.PHONE_HIKARI_LATE:
+			await Dialogue.say(ScriptText.SPEAKER_HIKARI, String(l))
+		Audio.play(&"cat_meow_2", -4.0)
+		await Events.wait(1.2)
+		return
+	var lines: Array = ScriptText.PHONE_HIKARI_1
+	if again:
+		lines = [ScriptText.PHONE_HIKARI_1[ScriptText.PHONE_HIKARI_1.size() - 1]]
+	for l in lines:
+		await Dialogue.say(ScriptText.SPEAKER_HIKARI, String(l))
+
+
+func _phone_kiyo(ph: Node, _again: bool) -> void:
+	_remote(ph, &"phone_ringback")
+	await Events.wait(2.0)
+	Audio.play(&"cat_meow_1", -2.0)
+	Audio.play(&"cat_meow_3", -4.0)
+	await Events.wait(1.4)
+	_remote(ph, &"phone_voice_wet")
+	await Dialogue.say("", ScriptText.PHONE_KIYO_VOICE)
+	Dread.add(1, &"phone_kiyo")
+	scares.cat_at_nearest_window()
+	await monologue(ScriptText.M_PHONE_KIYO_AFTER)
+
+
 # ---------------------------------------------------------- 部屋
 
 func _on_room(room: StringName) -> void:
 	scares.set_room_ambience(room)
 	match room:
+		&"Room_Hall":
+			if int(Clock.game_minutes) >= 360:
+				scares.blood_handprints_step()
+		&"Room_Hikaeshitsu":
+			if int(Clock.game_minutes) >= 120:
+				pass
 		&"Room_Shikijo":
 			scares.whisper_from_coffin()
+			if Dread.value >= 3:
+				scares.family_photo()
 			if _pending_altar_figure:
 				_pending_altar_figure = false
 				_altar_figure()
@@ -772,9 +940,13 @@ func _on_room(room: StringName) -> void:
 # ---------------------------------------------------------- 収集物・猫
 
 func _on_page_read(n: int) -> void:
+	Game.set_flag(StringName("page_read_%d" % n), true)
 	match n:
 		2: timeline.on_office_note_read()
 		4: timeline.on_ledger_read()
+	if ScriptText.PAGE_AFTER.has(n):
+		await Events.wait(0.5)
+		monologue(String(ScriptText.PAGE_AFTER[n]))
 
 
 func _on_guest_book_viewed() -> void:
@@ -855,6 +1027,7 @@ func refresh_dread_ambient() -> void:
 func _process(delta: float) -> void:
 	if Game.state != Game.State.PLAYING or intro_running:
 		return
+	_sleep_talk_tick(delta)
 	# 追加の脅かし。前半は静か、後半ほど密度が上がる(_scare_interval を見よ)
 	_scare_timer -= delta * maxf(Clock.speed, 1.0)
 	if _scare_timer <= 0.0:
@@ -917,6 +1090,25 @@ func _can_scare() -> bool:
 	if timeline.next_event_minute(m) - m < SCARE_GAP_MINUTES:
 		return false
 	return true
+
+
+## 01:30 以降、息子が寝ている控室の戸の前 1.5m で寝言(3 種を順に)
+func _sleep_talk_tick(delta: float) -> void:
+	if _sleep_talk_i >= ScriptText.SON_SLEEP_TALK.size():
+		return
+	if not Game.get_flag(&"son_asleep", false) or Dialogue.busy:
+		return
+	_sleep_talk_t -= delta
+	if _sleep_talk_t > 0.0:
+		return
+	_sleep_talk_t = 1.0
+	var p := Game.player
+	if p == null or p.global_position.distance_to(POS_HIKAESHITSU_DOOR) > 1.5:
+		return
+	var line := String(ScriptText.SON_SLEEP_TALK[_sleep_talk_i])
+	_sleep_talk_i += 1
+	_sleep_talk_t = 8.0
+	Dialogue.say(ScriptText.SPEAKER_SON, line)
 
 
 ## 火車との距離 0..1(0 = 目の前、1 = 遠い)
@@ -1117,6 +1309,7 @@ func play_intro() -> void:
 	if cnd:
 		cnd.call(&"light")
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_RULES)
+	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_CATS)
 
 	# --- 孫娘 ---
 	if hikari:
@@ -1129,6 +1322,7 @@ func play_intro() -> void:
 		page1.visible = false
 		await page1.read()
 	await _say_lines(ScriptText.SPEAKER_HIKARI, ScriptText.HIKARI_AFTER)
+	await _say_lines(ScriptText.SPEAKER_HIKARI, ScriptText.ADDED_HIKARI_FATHER)
 	_send_home(hikari)
 
 	# --- 社長が帰る ---
@@ -1136,6 +1330,7 @@ func play_intro() -> void:
 	await face_off(boss)
 	# 「勝手口の鍵」→「式場の蛍光灯」→「じゃあな」の順で言わせる
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[0]))
+	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LOCK)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LIGHTS)
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[1]))
 	var b := building()
