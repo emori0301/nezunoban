@@ -321,13 +321,21 @@ static func _outside(b: Building) -> void:
 	var asphalt := LevelMaterials.get_mat("asphalt", 0.4)
 	var conc := LevelMaterials.get_mat("concrete", 0.5)
 	var steel := LevelMaterials.get_mat("steel", 1.0)
-	var paint := LevelMaterials.plain(Color(0.62, 0.61, 0.55))
+	var paint := LevelMaterials.plain(Color(0.46, 0.45, 0.41))
 
 	# 駐車場
 	LevelBuild.box(node, Vector3(-20.0, -0.012, 0.0), Vector3(18.0, 0.02, 26.0), asphalt, false, "concrete", false)
 	for i in 9:
 		LevelBuild.box(node, Vector3(-22.5, 0.0, -10.0 + i * 2.5), Vector3(4.8, 0.012, 0.12),
 			paint, false, "", false)
+	# 区画の頭の白線と車止め
+	LevelBuild.box(node, Vector3(-22.5, 0.0, 0.0), Vector3(0.12, 0.012, 20.2), paint, false, "", false)
+	for j in 8:
+		var bz: float = -8.75 + j * 2.5
+		# 12cm の段差に当たり判定を付けると歩きが引っかかるので飾りのみ
+		LevelBuild.box(node, Vector3(-20.7, 0.06, bz), Vector3(0.5, 0.12, 0.62),
+			LevelMaterials.get_mat_tinted("concrete", 2.0, Color(0.34, 0.34, 0.33)), false, "", false)
+
 	# 建物まわりの犬走り
 	LevelBuild.box(node, Vector3(-12.6, -0.008, 0.0), Vector3(3.4, 0.02, 12.0), conc, false, "concrete", false)
 
@@ -339,11 +347,27 @@ static func _outside(b: Building) -> void:
 	# 玄関口の灯り。CCTV に外に立つ人影が映るよう、ポーチの床まで届かせる。
 	b.add_bulb(R, Vector3(-11.7, 2.12, 0.0), Color(1.0, 0.86, 0.64), 1.2, 6.5, false)
 
-	# 看板「やすらぎ会館」
-	LevelBuild.box(node, Vector3(-11.1, 2.62, 0.0), Vector3(0.07, 0.52, 3.0),
-		LevelMaterials.plain(Color(0.12, 0.12, 0.13)), false, "", false)
-	LevelBuild.sign_text(node, "やすらぎ会館", Vector3(-11.15, 2.62, 0.0), -90.0,
-		0.34, Color(0.86, 0.82, 0.70), true, 320)
+	# 看板「やすらぎ会館」。庇の上、白地に黒。下から弱く照らす。
+	LevelBuild.box(node, Vector3(-11.10, 2.63, 0.0), Vector3(0.08, 0.5, 2.9),
+		LevelMaterials.plain(Color(0.22, 0.22, 0.23)), false, "", false)
+	LevelBuild.box(node, Vector3(-11.15, 2.63, 0.0), Vector3(0.02, 0.42, 2.76),
+		LevelMaterials.plain(Color(0.88, 0.87, 0.83)), false, "", false)
+	LevelBuild.sign_text(node, "やすらぎ会館", Vector3(-11.17, 2.63, 0.0), -90.0,
+		0.32, Color(0.07, 0.07, 0.08), true, 384)
+	for sz in [-0.95, 0.95]:
+		LevelBuild.box(node, Vector3(-11.42, 2.44, sz), Vector3(0.22, 0.07, 0.1),
+			LevelMaterials.plain(Color(0.25, 0.25, 0.26)), false, "", false)
+	var sign_light := OmniLight3D.new()
+	sign_light.name = "Light_Sign"
+	sign_light.position = Vector3(-11.5, 2.5, 0.0)
+	sign_light.light_color = Color(1.0, 0.93, 0.80)
+	sign_light.light_energy = 0.9
+	sign_light.omni_range = 3.4
+	sign_light.omni_attenuation = 1.5
+	sign_light.shadow_enabled = false
+	sign_light.light_specular = 0.0
+	node.add_child(sign_light)
+	b.add_light(R, sign_light)
 
 	# 自販機。前面は glb の Panel マテリアル(vending_panel テクスチャ)が光るので板を重ねない。
 	# glb の前面(Panel)はローカル +Z 側なので、西を向かせるには yaw = -90。
@@ -364,8 +388,11 @@ static func _outside(b: Building) -> void:
 	b.add_light(R, vl)
 
 	# 霊柩車
-	b.add_prop(R, "Hearse", "hearse", Vector3(-17.8, 0.0, -3.2), 6.0,
+	# 停めてある車なのでヘッドライトは消す(glb は点灯状態で作られている)
+	var hearse := b.add_prop(R, "Hearse", "hearse", Vector3(-17.8, 0.0, -3.2), 6.0,
 		Vector3(2.0, 1.75, 5.2), Color(0.09, 0.09, 0.11))
+	_tune_emission(hearse, "HeadLight", 0.0)
+	_tune_emission(hearse, "TailLight", 0.0)
 
 	# フェンス
 	_fence(node, -30.0, -14.0, -30.0, 14.0, steel)
@@ -393,6 +420,40 @@ static func _outside(b: Building) -> void:
 	LevelBuild.box(node, Vector3(-4.25, 2.55, -6.0), Vector3(0.3, 0.14, 0.24),
 		LevelMaterials.plain(Color(0.25, 0.25, 0.24)), false, "", false)
 	b.add_bulb(R, Vector3(-4.35, 2.42, -6.0), Color(1.0, 0.86, 0.62), 0.9, 6.0, true)
+
+	# 遠景の民家。フェンスの向こう、暗闇に窓明かりだけが浮かぶ。
+	var night_wall := LevelMaterials.plain(Color(0.035, 0.035, 0.045))
+	for hs in [[-54.0, -24.0, 4.4], [-61.0, 7.0, 3.8], [-49.0, 27.0, 5.0], [-66.0, -9.0, 4.0]]:
+		var hx: float = hs[0]
+		var hz: float = hs[1]
+		var hh: float = hs[2]
+		LevelBuild.box(node, Vector3(hx, hh * 0.5, hz), Vector3(9.0, hh, 8.0), night_wall, false, "", false)
+		LevelBuild.box(node, Vector3(hx, hh + 0.5, hz), Vector3(10.0, 1.2, 9.0), night_wall, false, "", false)
+		for wz in [-1.8, 1.8]:
+			LevelBuild.box(node, Vector3(hx + 4.55, hh * 0.55, hz + wz), Vector3(0.06, 1.0, 1.3),
+				LevelMaterials.emissive(Color(1.0, 0.86, 0.58), 1.4), false, "", false)
+
+	# 電柱と電線(国道側)
+	var pole_mat := LevelMaterials.get_mat_tinted("concrete", 1.0, Color(0.42, 0.42, 0.42))
+	var wire_mat := LevelMaterials.plain(Color(0.05, 0.05, 0.06))
+	const POLE_Z := [-20.0, -4.0, 12.0, 28.0]
+	for pz in POLE_Z:
+		LevelBuild.box(node, Vector3(-31.6, 4.2, pz), Vector3(0.22, 8.4, 0.22), pole_mat, true, "", false)
+		LevelBuild.box(node, Vector3(-31.6, 7.9, pz), Vector3(1.5, 0.09, 0.09), pole_mat, false, "", false)
+		LevelBuild.box(node, Vector3(-31.6, 7.35, pz), Vector3(1.1, 0.08, 0.08), pole_mat, false, "", false)
+	for wi in POLE_Z.size() - 1:
+		var z0: float = POLE_Z[wi]
+		var z1: float = POLE_Z[wi + 1]
+		for wy in [7.86, 7.62, 7.32]:
+			LevelBuild.box(node, Vector3(-31.6, wy, (z0 + z1) * 0.5),
+				Vector3(0.035, 0.035, z1 - z0), wire_mat, false, "", false)
+
+	# 霊柩車の周りの水たまり(反射はしない暗い板)
+	var puddle := LevelMaterials.plain(Color(0.028, 0.030, 0.038), 0.15)
+	for pd in [[-17.2, -0.4, 2.6, 1.7], [-19.4, -5.6, 1.9, 1.2], [-15.8, -6.4, 1.4, 2.1],
+			[-21.2, -1.8, 1.2, 1.0]]:
+		LevelBuild.box(node, Vector3(pd[0], 0.002, pd[1]), Vector3(pd[2], 0.008, pd[3]),
+			puddle, false, "", false)
 
 	# CCTV(玄関の外側)。庇(下端 y=2.20)より下に潜らせないと、画が庇で黒く潰れる。
 	LevelBuild.box(node, Vector3(-11.18, 2.12, 1.72), Vector3(0.3, 0.16, 0.24),

@@ -96,7 +96,7 @@ func open(force: bool = false) -> void:
 	is_open = true
 	_set_solid(false)
 	_animate(true, TWEEN_TIME)
-	Audio.play(&"door_steel_open" if steel else &"door_open")
+	Audio.play(_sound(true))
 	Events.emit_event(&"door_opened", {"door": name})
 	if auto_close_after > 0.0:
 		_auto_id += 1
@@ -112,7 +112,7 @@ func close() -> void:
 	is_open = false
 	_auto_id += 1
 	_animate(false, TWEEN_TIME)
-	Audio.play(&"door_steel_close" if steel else &"door_close")
+	Audio.play(_sound(false))
 	Events.emit_event(&"door_closed", {"door": name})
 
 
@@ -122,7 +122,7 @@ func slam() -> void:
 	var was_open := is_open
 	is_open = false
 	_animate(false, SLAM_TIME)
-	Audio.play(&"door_steel_close" if steel else &"door_close", 6.0, 0.88)
+	Audio.play(_sound(false), 6.0, 0.88)
 	if was_open:
 		Events.emit_event(&"door_closed", {"door": name})
 
@@ -152,6 +152,16 @@ func _animate(opening: bool, dur: float) -> void:
 func _set_solid(solid: bool) -> void:
 	for s in _shapes:
 		s.disabled = not solid
+
+
+## 形式ごとの開閉音。鉄扉 > 開き戸 > 引き戸 の順に判定する。
+## audio がまだ作っていない音は Audio 側が警告を出して無視するので、先に呼んでおいてよい。
+func _sound(opening: bool) -> StringName:
+	if steel:
+		return &"door_steel_open" if opening else &"door_steel_close"
+	if kind == Kind.SWING:
+		return &"door_swing_open" if opening else &"door_swing_close"
+	return &"door_open" if opening else &"door_close"
 
 
 func _panel_material() -> StandardMaterial3D:
