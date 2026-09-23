@@ -481,133 +481,188 @@ def add_hair(name, obj, reg, bounds, hair_mat, spec, strand_mat=None):
 
 # ---------------------------------------------------------------- 服
 
-def torso_ids(body):
-    """胴(腕を含まない)の頂点。断面を測るのに使う。"""
-    names = ("pelvis", "spine_01", "spine_02", "spine_03")
-    gi = {g.index for g in body.vertex_groups if g.name in names}
-    return [v.index for v in body.data.vertices
-            if any(g.group in gi and g.weight > 0.4 for g in v.groups)]
+GARMENT_GROUPS = {
+    "jacket": {"pelvis", "spine_01", "spine_02", "spine_03",
+               "clavicle_l", "clavicle_r",
+               "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"},
+    "jumper": {"pelvis", "spine_01", "spine_02", "spine_03",
+               "clavicle_l", "clavicle_r",
+               "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"},
+    "dress": {"pelvis", "spine_01", "spine_02", "spine_03",
+              "clavicle_l", "clavicle_r",
+              "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"},
+    "trousers": {"thigh_l", "thigh_r", "calf_l", "calf_r"},
+}
 
 
-def group_ids(body, names, w=0.4):
-    gi = {g.index for g in body.vertex_groups if g.name in names}
-    return [v.index for v in body.data.vertices
-            if any(g.group in gi and g.weight > w for g in v.groups)]
+def dup_shell(body, arm, keep, name, mat, push=0.003, thick=0.012):
+    """素体を複製し、指定のボーンに属する面だけ残して厚みを付ける。
 
-
-def section(body, ids, z, tol):
-    """その高さでの胴の半幅・半奥行・中心 y。"""
-    pts = [body.data.vertices[i].co for i in ids
-           if abs(body.data.vertices[i].co.z - z) < tol]
-    if len(pts) < 4:
-        return 0.16, 0.11, 0.0
-    rx = max(abs(p.x) for p in pts)
-    ys = [p.y for p in pts]
-    return max(rx, 0.05), max((max(ys) - min(ys)) * 0.5, 0.04), (max(ys) + min(ys)) * 0.5
-
-
-def add_garment(name, body, arm, reg, mats, spec):
-    """胴に着せる上着。骨の位置から着丈を決め、素体の断面を測って一回り
-    大きい筒を作る。素体を膨らませるだけだと「黒いボディスーツ」に見えるので、
-    裾・襟・ネクタイを形として足す。"""
-    style = spec.get("garment")
-    if not style:
-        return []
-    # 着丈の基準はメッシュから測る。
-    # `add_builtin_rig` の骨は素体のスケールに完全には追従せず(頭の骨は
-    # 身長を変えても同じ位置に来る)、骨基準だと背の低い人物で服が浮く。
+    別に筒を作ると体と無関係な形になり、腕が中に消える。素体そのものを
+    写し取れば、形も動きも必ず体に沿う。ウェイトは複製で引き継がれる。
+    """
     me = body.data
-    nz = [me.vertices[vi].co.z for i in reg["neck"] for vi in me.polygons[i].vertices]
-    lz = [me.vertices[vi].co.z for i in reg["leg"] for vi in me.polygons[i].vertices]
-    fz = [me.vertices[vi].co.z for i in reg["foot"] for vi in me.polygons[i].vertices]
-    if not nz or not lz:
-        return []
-    z_neck = min(nz)                             # 首の付け根 = 肩のライン
-    z_hip = max(lz)                              # 腰(腿の付け根)
-    z_foot = min(fz) if fz else min(lz)
-    z_knee = z_foot + (z_hip - z_foot) * 0.52    # 膝
-    span = max(z_neck - z_hip, 0.05)
-    ids = torso_ids(body)
-    if not ids:
-        return []
-    tol = span * 0.07
+    g2n = {g.index: g.name for g in body.vertex_groups}
+    keep_polys = []
+    for p in me.polygons:
+        score = {}
+        for vi in p.vertices:
+            for g in me.vertices[vi].groups:
+                n = g2n.get(g.group)
+                if n:
+                    score[n] = score.get(n, 0.0) + g.weight
+        if score and max(score, key=score.get) in keep:
+            keep_polys.append(p.index)
+    if not keep_polys:
+        return None
 
-    def at(t, grow):
-        """t=1 が首の付け根、t=0 が腰。"""
-        z = z_hip + span * t
-        rx, ry, cy = section(body, ids, z, tol)
-        return (0.0, cy, z, rx * grow, ry * grow, t)
+    new = body.copy()
+    new.data = me.copy()
+    new.name = name
+    new.data.materials.clear()
+    new.data.materials.append(mat)
+    bpy.context.collection.objects.link(new)
+    for m in list(new.modifiers):
+        new.modifiers.remove(m)
 
-    b = Builder("Garment_" + name)
-    if style == "dress":
-        hem_z = z_knee + (z_hip - z_knee) * 0.10        # 膝丈
-        # 一番上は首の穴。すぐ下を肩幅にして肩の傾斜を作る
-        # (首の高さを肩幅のままにすると、頭が樽から出ているように見える)
-        nr = section(body, group_ids(body, ("neck_01",), 0.5) or ids,
-                     z_neck + span * 0.03, tol * 0.6)
-        rows = [(0.0, nr[2], z_neck + span * 0.02, nr[0] * 1.25, nr[1] * 1.30, 1.06),
-                at(0.94, 1.02), at(0.78, 1.06), at(0.52, 1.07), at(0.22, 1.09)]
-        rx, ry, cy = section(body, ids, z_hip + span * 0.05, tol)
-        rows.append((0.0, cy, z_hip, rx * 1.14, ry * 1.16, 0.0))
-        rows.append((0.0, cy, hem_z, rx * 1.42, ry * 1.46, -0.6))
-        b.add(tube(rows, n=14, cap_start=False), mats["cloth"], uvscale=2.6, smooth=True)
-    else:
-        nr = section(body, group_ids(body, ("neck_01",), 0.5) or ids,
-                     z_neck + span * 0.03, tol * 0.6)
-        rows = [(0.0, nr[2], z_neck + span * 0.02, nr[0] * 1.25, nr[1] * 1.30, 1.06),
-                at(0.94, 1.03), at(0.76, 1.08), at(0.50, 1.10), at(0.22, 1.12)]
-        rx, ry, cy = section(body, ids, z_hip + span * 0.05, tol)
-        drop = span * (0.26 if style == "jacket" else 0.10)
-        hem_z = z_hip - drop
-        rows.append((0.0, cy, z_hip, rx * 1.14, ry * 1.16, 0.0))
-        rows.append((0.0, cy, hem_z, rx * 1.16, ry * 1.18, -0.3))
-        b.add(tube(rows, n=14, cap_start=False), mats["cloth"], uvscale=2.6, smooth=True)
-        if style == "jumper":                            # 裾のリブ
-            b.add(tube([(0.0, cy, hem_z + span * 0.06, rx * 1.15, ry * 1.17, 1.0),
-                        (0.0, cy, hem_z - span * 0.01, rx * 1.08, ry * 1.10, 0.0)],
-                       n=14, cap_start=False, cap_end=False),
-                  mats["cloth"], uvscale=5.0, smooth=True)
+    bm = bmesh.new()
+    bm.from_mesh(new.data)
+    bm.faces.ensure_lookup_table()
+    ks = set(keep_polys)
+    drop = [f for f in bm.faces if f.index not in ks]
+    bmesh.ops.delete(bm, geom=drop, context='FACES')
+    bm.to_mesh(new.data)
+    bm.free()
+    new.data.update()
+    for p in new.data.polygons:
+        p.material_index = 0
+        p.use_smooth = True
 
-    # 襟。肩幅ではなく **首の太さ** から測る(胴の断面だと襟が肩まで広がる)
-    nids = group_ids(body, ("neck_01",), w=0.5)
-    nrx, nry, ncy = section(body, nids or ids, z_neck + span * 0.04, tol * 0.6)
-    b.add(tube([(0.0, ncy, z_neck + span * 0.09, nrx * 1.10, nry * 1.12, 1.0),
-                (0.0, ncy, z_neck - span * 0.01, nrx * 1.34, nry * 1.40, 0.0)],
-               n=12, cap_start=False, cap_end=False),
-          mats["collar"], uvscale=7.0, smooth=True)
+    # 体からわずかに浮かせてから厚みを付ける(Z ファイト防止)
+    if push:
+        for v in new.data.vertices:
+            v.co = v.co + v.normal * push
+        new.data.update()
+    mod = new.modifiers.new("Solidify", 'SOLIDIFY')
+    mod.thickness = thick
+    mod.offset = 1.0
+    mod.use_rim = True
+    bpy.context.view_layer.objects.active = new
+    bpy.ops.object.modifier_apply(modifier=mod.name)
 
-    if style == "jacket":
-        srx, sry, scy = section(body, ids, z_neck - span * 0.10, tol)
-        for sx in (-1, 1):
-            v, f = box_taper(srx * 0.34, sry * 0.14, srx * 0.20, sry * 0.11,
-                             span * 0.34,
-                             (sx * srx * 0.32, scy - sry * 1.04, z_neck - span * 0.22))
-            v = tr(v, rot=(0, sx * 0.18, 0),
-                   pivot=(sx * srx * 0.32, scy - sry * 1.04, z_neck - span * 0.05))
-            b.add((v, f), mats["cloth"], uvscale=4.0)
-        # ネクタイ(結び目 + 剣先)
-        b.add(box_taper(srx * 0.22, sry * 0.10, srx * 0.16, sry * 0.10, span * 0.08,
-                        (0.0, scy - sry * 1.06, z_neck - span * 0.08)),
-              mats["tie"], uvscale=9.0)
-        b.add(box_taper(srx * 0.16, sry * 0.09, srx * 0.22, sry * 0.09, span * 0.40,
-                        (0.0, scy - sry * 1.06, z_neck - span * 0.32)),
-              mats["tie"], uvscale=6.0)
-
-    ob = b.build()
-    ob.parent = arm
-    ob.matrix_parent_inverse = Matrix.Identity(4)
-    g = {}
-    chain = [("pelvis", z_hip - span * 0.10), ("spine_01", z_hip + span * 0.30),
-             ("spine_03", z_hip + span * 0.72), ("neck_01", z_neck + span * 0.04)]
-    add_chain_weights(g, ob, range(len(ob.data.vertices)), chain, lambda c: c.z)
-    bind_weights(ob, arm, g)
-    # bind_weights は matrix_parent_inverse を arm.matrix_world の逆で上書きする。
-    # 素体と同じ「アーマチュアのローカル空間」に置きたいので戻す。
-    ob.matrix_parent_inverse = Matrix.Identity(4)
-    return [ob]
+    am = new.modifiers.new("Armature", 'ARMATURE')
+    am.object = arm
+    new.parent = arm
+    new.matrix_parent_inverse = Matrix.Identity(4)
+    return new
 
 
-# ---------------------------------------------------------------- アニメ
+def extend_hem(obj, drop, flare=0.0, band=0.02):
+    """下端の頂点を下へ伸ばす。flare>0 で外へ広げる(スカート)。"""
+    me = obj.data
+    zs = [v.co.z for v in me.vertices]
+    if not zs:
+        return
+    z0 = min(zs)
+    cx = sum(v.co.x for v in me.vertices) / len(me.vertices)
+    cy = sum(v.co.y for v in me.vertices) / len(me.vertices)
+    for v in me.vertices:
+        d = v.co.z - z0
+        if d >= band:
+            continue
+        t = 1.0 - d / max(band, 1e-6)
+        t = t * t * (3.0 - 2.0 * t)          # 端だけ急に動かすとギザギザになる
+        c = v.co.copy()
+        c.z -= drop * t
+        if flare:
+            f = 1.0 + flare * t
+            c.x = cx + (c.x - cx) * f
+            c.y = cy + (c.y - cy) * f
+        v.co = c
+    me.update()
+
+
+def add_clothing(name, body, arm, spec, mats):
+    """上着・ズボン(またはワンピース)を素体の複製から作る。"""
+    style = spec.get("garment")
+    out = []
+    if not style:
+        return out
+    top = dup_shell(body, arm, GARMENT_GROUPS[style], "Cloth_" + name,
+                    mats["cloth"], push=0.003, thick=0.012)
+    if top is not None:
+        if style == "dress":
+            # 腰から膝まで下ろして広げる
+            extend_hem(top, spec.get("skirt_drop", 0.30), flare=0.42, band=0.13)
+        else:
+            extend_hem(top, 0.07, flare=0.06, band=0.075)
+        out.append(top)
+    if spec.get("trousers", True):
+        low = dup_shell(body, arm, GARMENT_GROUPS["trousers"], "Trouser_" + name,
+                        mats["leg"], push=0.003, thick=0.010)
+        if low is not None:
+            out.append(low)
+    return out
+
+
+def add_hair_cap(name, body, arm, reg, mat, spec):
+    """頭の頂点を複製して膨らませた髪のキャップ。"""
+    me = body.data
+    head_z = [me.vertices[vi].co.z for i in reg["head"] for vi in me.polygons[i].vertices]
+    if not head_z:
+        return None
+    htop, hbot = max(head_z), min(head_z)
+    hh = htop - hbot
+    z_line = hbot + hh * (0.66 if spec.get("long_hair") else 0.70)
+    g2n = {g.index: g.name for g in body.vertex_groups}
+    keep = []
+    for p in me.polygons:
+        if p.center.z < z_line:
+            continue
+        score = {}
+        for vi in p.vertices:
+            for g in me.vertices[vi].groups:
+                n = g2n.get(g.group)
+                if n:
+                    score[n] = score.get(n, 0.0) + g.weight
+        if score and max(score, key=score.get) == "head":
+            keep.append(p.index)
+    if not keep:
+        return None
+    new = body.copy()
+    new.data = me.copy()
+    new.name = "Hair_" + name
+    new.data.materials.clear()
+    new.data.materials.append(mat)
+    bpy.context.collection.objects.link(new)
+    for m in list(new.modifiers):
+        new.modifiers.remove(m)
+    bm = bmesh.new()
+    bm.from_mesh(new.data)
+    bm.faces.ensure_lookup_table()
+    ks = set(keep)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in ks], context='FACES')
+    bm.to_mesh(new.data)
+    bm.free()
+    new.data.update()
+    for v in new.data.vertices:
+        v.co = v.co + v.normal * 0.009
+    for p in new.data.polygons:
+        p.material_index = 0
+        p.use_smooth = True
+    mod = new.modifiers.new("Solidify", 'SOLIDIFY')
+    mod.thickness = 0.010
+    mod.offset = 1.0
+    bpy.context.view_layer.objects.active = new
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    am = new.modifiers.new("Armature", 'ARMATURE')
+    am.object = arm
+    new.parent = arm
+    new.matrix_parent_inverse = Matrix.Identity(4)
+    return new
+
+
+# ---------------------------------------------------------------- アニメ# ---------------------------------------------------------------- アニメ
 
 class RemapAnim(Anim):
     """自前のボーン名で書いたアニメを、別のリグのボーン名へ読み替える。"""
@@ -696,7 +751,7 @@ SPECS = {
                "height": 0.40, "proportions": 0.62, "cupsize": 0.45,
                "firmness": 0.6},
         jacket=0.005, trouser=0.0, hair_back=0.004, long_hair=True,
-        garment="dress",
+        garment="dress", trousers=False, skirt_drop=0.30,
         tex=dict(face="face_granddaughter", skin="skin_gd", torso="torso_dress",
                  leg="skin_gd", shoe="shoe_leather", hair="hair_long"),
     ),
@@ -732,10 +787,6 @@ def build_one(name):
     reg["head"] -= face
 
     # 服の厚み(素体は裸なので、着ている部分を法線方向へ膨らませる)
-    if spec["jacket"] > 0:
-        inflate(body, reg["torso"] | reg["arm"], spec["jacket"])
-    if spec["trouser"] > 0:
-        inflate(body, reg["leg"], spec["trouser"])
     inflate(body, reg["foot"], 0.007)
 
     set_uvs(body, reg, bounds, face_rect)
@@ -753,9 +804,9 @@ def build_one(name):
     for p in me.polygons:
         p.use_smooth = True
 
-    garments = add_garment(name, body, arm, reg, {
-        "cloth": m_torso, "collar": m_collar, "tie": m_tie}, spec)
-    hair = add_hair(name, body, reg, bounds, m_hair, spec, m_strand)
+    garments = add_clothing(name, body, arm, spec,
+                            {"cloth": m_torso, "leg": m_leg})
+    hair = add_hair_cap(name, body, arm, reg, m_hair, spec)
     if hair is not None:
         hair.parent = arm
         hair.matrix_parent_inverse = Matrix.Identity(4)
