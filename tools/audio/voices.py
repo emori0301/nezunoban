@@ -2233,17 +2233,15 @@ def radio_talk():
             c += 0.35 * sine(snap(f * 2.0, dur), n, r.random() * TWO_PI)
             c += 0.12 * sine(snap(f * 3.0, dur), n, r.random() * TWO_PI)
         bgm += c * w
-    bgm = lowpass(bgm, 2600.0, order=2, circular=True) * 0.10
+    bgm = lowpass(bgm, 2600.0, order=2, circular=True) * 0.09
 
     # --- 呟きと相槌 ---
     talk = zeros(n)
     speech = (
-        (0.4, 2.6, 118.0, 4.2, 1.00, 2210),
-        (3.6, 1.9, 112.0, 3.8, 0.92, 2211),
-        (6.2, 3.1, 124.0, 4.5, 1.00, 2212),
-        (10.1, 2.2, 116.0, 4.0, 0.88, 2213),
-        (13.4, 2.8, 121.0, 4.3, 0.96, 2214),
-        (17.0, 2.1, 114.0, 3.9, 0.90, 2215),
+        (1.2, 2.4, 118.0, 3.8, 1.00, 2210),
+        (6.0, 1.8, 112.0, 3.5, 0.86, 2211),
+        (10.8, 2.6, 124.0, 4.0, 0.96, 2212),
+        (15.6, 2.0, 116.0, 3.6, 0.82, 2213),
     )
     for at, d, f0, sps, lv, sd in speech:
         ns = N(d)
@@ -2254,22 +2252,22 @@ def radio_talk():
         )
         place_wrap(talk, norm_peak(v, -0.5) * lv, at)
     # 相槌 (別の話者、少し高い。1〜2 音節)
-    for at, f0, sd in ((3.15, 148.0, 2220), (9.5, 155.0, 2221), (12.9, 143.0, 2222), (19.2, 150.0, 2223)):
+    for at, f0, sd in ((3.95, 148.0, 2220), (8.15, 155.0, 2221), (13.75, 143.0, 2222), (17.9, 150.0, 2223)):
         ns = N(0.42)
         v = _speech_blur(ns, sd, [(0.0, f0), (1.0, f0 * 0.82)], 3.0, formant_scale=0.95, breath=0.14)
         place_wrap(talk, norm_peak(v, -4.0), at)
 
     # --- 受信のノイズとチューニングの揺れ ---
-    hiss = band(loop_noise(n, 0.6, 2230), 500.0, 3400.0, order=2, circular=True) * 0.13
+    hiss = band(loop_noise(n, 0.6, 2230), 500.0, 3400.0, order=2, circular=True) * 0.075
     tune = 0.72 + 0.28 * (0.5 + 0.5 * loop_smooth(n, 0.25, 2231))      # 電波の強弱
     whistle = sine(snap(2750.0, dur), n) * 0.018 * (1.0 - tune) * 2.0  # ヘテロダインの口笛
-    out = (0.95 * talk + bgm) * tune + hiss + whistle
+    out = (0.80 * talk + bgm) * tune + hiss + whistle
     # たまに混信のざわつき
     for at, sd in ((5.3, 2240), (14.8, 2241)):
         nb = N(0.55)
         b = band(white(nb, sd), 600.0, 3400.0, order=2) * segments([(0, 0.0), (0.3, 1.0), (1, 0.0)], nb)
         place_wrap(out, norm_peak(b, -17.0), at)
-    out = _phone_band(out, noise=0.010, seed=2250, drive=1.6, circular=True)
+    out = _phone_band(out, noise=0.009, seed=2250, drive=1.4, circular=True)
     return dc_kill(out, circular=True)
 
 

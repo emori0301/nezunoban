@@ -3,7 +3,7 @@
 `tools/audio/gen_audio.py` が自動生成する。手で編集しない。
 
 - 形式: WAV 44.1kHz / mono / 16bit。素材は一切使わず numpy で合成している。
-- 本数 **105**、合計 **354.9 秒**、**29.9 MB**(ループ 18 / 単発 87)。
+- 本数 **115**、合計 **393.5 秒**、**33.1 MB**(ループ 20 / 単発 95)。
 - ピーク正規化: 単発 -3 dBFS / 環境ループ -12 dBFS / ドローン -15 dBFS。全ファイル DC 除去済み。
 - ループ音には WAV の `smpl` チャンクを書いてある。インポータの `edit/loop_mode` は 既定の `Detect From WAV` のままでよく、ループ点は自動で付く。
 
@@ -20,7 +20,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 `fix_imports.py` が要るのは、Godot 4.7 の wav インポータの既定が **QOA(非可逆)**
 だから。この作品の環境音はほぼ無音に近いところで鳴るので、非可逆の粗が出ると困る。
-`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 30MB 程度。
+`compress/mode=0`(PCM 非圧縮)に固定している。それでも全部で 33MB 程度。
 **順序に注意**: `.import` ファイルは Godot が import したときに初めて作られるので、
 新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。
 必ず **import -> fix_imports -> import** の順で回すこと。
@@ -32,7 +32,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 ## 照合結果
 
-- CLAUDE.md「音名一覧」: **105** 個
+- CLAUDE.md「音名一覧」: **115** 個
 - 欠け: **0** 
 - 一覧に無い余分な wav: **0** 
 
@@ -62,6 +62,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `heartbeat` | 0.000000 | 0.00 | OK |
 | `incense_hiss` | 0.003787 | 0.05 | OK |
 | `phone_ring` | 0.000000 | 0.00 | OK |
+| `phone_ringback` | 0.000000 | 0.00 | OK |
+| `radio_talk` | 0.000612 | 0.04 | OK |
 | `snore_1` | 0.000000 | 0.00 | OK |
 | `snore_2` | 0.000000 | 0.00 | OK |
 | `tv_static` | 0.049715 | 0.11 | OK |
@@ -104,6 +106,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `heartbeat` | 1.00 | -3.0 | -21.9 | ○ | 0.00000 | 0.00 | 0 | -10 |
 | `incense_hiss` | 4.00 | -3.0 | -27.8 | ○ | 0.00379 | 0.05 | 0 | -24 |
 | `phone_ring` | 3.00 | -3.0 | -14.9 | ○ | 0.00000 | 0.00 | 0 | 0 |
+| `phone_ringback` | 3.00 | -3.0 | -11.3 | ○ | 0.00000 | 0.00 | 0 | -6 |
+| `radio_talk` | 20.00 | -3.0 | -18.5 | ○ | 0.00061 | 0.04 | 0 | -12 |
 | `snore_1` | 3.50 | -3.0 | -18.2 | ○ | 0.00000 | 0.00 | 0 | -14 |
 | `snore_2` | 3.50 | -3.0 | -18.7 | ○ | 0.00000 | 0.00 | 0 | -14 |
 | `tv_static` | 3.00 | -3.0 | -17.0 | ○ | 0.04972 | 0.11 | 0 | -14 |
@@ -119,6 +123,7 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `candle_blow` | 2.76 | -3.0 | -24.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `candle_light` | 3.85 | -3.0 | -27.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `car_arrive` | 7.00 | -3.0 | -17.9 | — | 0.00000 | 0.00 | 0 | -4 |
+| `cat_chorus` | 6.00 | -3.0 | -20.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_hiss` | 1.87 | -3.0 | -19.4 | — | 0.00000 | 0.00 | 0 | 0 |
 | `cat_jump` | 0.42 | -3.0 | -26.2 | — | 0.00000 | 0.00 | 0 | -6 |
 | `cat_meow_1` | 1.14 | -3.0 | -18.9 | — | 0.00000 | 0.00 | 0 | 0 |
@@ -165,11 +170,18 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `page_turn` | 0.80 | -3.0 | -22.2 | — | 0.00000 | 0.00 | 0 | -10 |
 | `paper_rustle` | 1.45 | -3.0 | -28.8 | — | 0.00000 | 0.00 | 0 | -10 |
 | `phone_breath` | 3.20 | -3.0 | -16.7 | — | 0.00000 | 0.00 | 0 | -8 |
+| `phone_dial` | 1.20 | -3.0 | -10.9 | — | 0.00000 | 0.00 | 0 | -6 |
 | `phone_hangup` | 0.47 | -3.0 | -24.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `phone_pickup` | 0.82 | -3.0 | -33.4 | — | 0.00000 | 0.00 | 0 | 0 |
+| `phone_unavailable` | 3.20 | -3.0 | -9.4 | — | 0.00000 | 0.00 | 0 | -6 |
 | `phone_voice_wet` | 3.20 | -3.0 | -14.5 | — | 0.00000 | 0.00 | 0 | 0 |
+| `phone_voicemail` | 3.20 | -3.0 | -12.0 | — | 0.00000 | 0.00 | 0 | -6 |
+| `radio_off` | 0.30 | -3.0 | -26.1 | — | 0.00000 | 0.00 | 0 | -6 |
+| `radio_on` | 0.50 | -3.0 | -20.0 | — | 0.00000 | 0.00 | 0 | -6 |
 | `safe_dial` | 2.00 | -3.0 | -27.8 | — | 0.00000 | 0.00 | 0 | 0 |
 | `safe_open` | 2.30 | -3.0 | -21.8 | — | 0.00000 | 0.00 | 0 | 0 |
+| `safe_wrong` | 0.60 | -3.0 | -26.3 | — | 0.00000 | 0.00 | 0 | 0 |
+| `spark` | 0.60 | -3.0 | -24.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `step_concrete_1` | 0.69 | -3.0 | -29.8 | — | 0.00000 | 0.00 | 0 | -14 |
 | `step_concrete_2` | 0.78 | -3.0 | -28.4 | — | 0.00000 | 0.00 | 0 | -14 |
 | `step_concrete_3` | 0.71 | -3.0 | -31.3 | — | 0.00000 | 0.00 | 0 | -14 |
@@ -204,6 +216,14 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 上半分が波形(横線は -3 dBFS と -12 dBFS の目安、クリップした列は赤)、下半分がスペクトログラム(縦軸は 30Hz〜20kHz の対数、上が高域、ダイナミックレンジ 78dB)。
 
+- `radio_talk` — ![radio_talk](audio_radio_talk.png)
+- `phone_dial` — ![phone_dial](audio_phone_dial.png)
+- `phone_ringback` — ![phone_ringback](audio_phone_ringback.png)
+- `phone_voicemail` — ![phone_voicemail](audio_phone_voicemail.png)
+- `phone_unavailable` — ![phone_unavailable](audio_phone_unavailable.png)
+- `cat_chorus` — ![cat_chorus](audio_cat_chorus.png)
+- `spark` — ![spark](audio_spark.png)
+- `safe_wrong` — ![safe_wrong](audio_safe_wrong.png)
 - `door_swing_close` — ![door_swing_close](audio_door_swing_close.png)
 - `door_lock` — ![door_lock](audio_door_lock.png)
 - `door_unlock` — ![door_unlock](audio_door_unlock.png)
