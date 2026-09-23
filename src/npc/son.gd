@@ -103,4 +103,4 @@ func _snore_loop(g: int) -> void:
 			Audio.play_at(snore_sounds[i % snore_sounds.size()], head_position(),
 				-2.0, snore_pitch, 9.0)
 			i += 1
-		await get_tree().create_timer(snore_interval).timeout
+		await get_tree().create_timer(snore_interval, false).timeout

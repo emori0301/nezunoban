@@ -256,7 +256,7 @@ func _catch() -> void:
 	face_now(Game.player)
 	Audio.play_at(&"kasha_screech", global_position, 0.0, 1.0, 30.0)
 	caught.emit()
-	await get_tree().create_timer(catch_freeze).timeout
+	await get_tree().create_timer(catch_freeze, false).timeout
 	_catching = false
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
@@ -330,7 +330,7 @@ func _run_retreat(g: int) -> void:
 		return
 	_free_anim = true
 	play_anim(anim_idle)
-	await get_tree().create_timer(retreat_idle_seconds).timeout
+	await get_tree().create_timer(retreat_idle_seconds, false).timeout
 	if not _alive(g):
 		return
 	_free_anim = false

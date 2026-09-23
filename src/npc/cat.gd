@@ -233,7 +233,7 @@ func _state_outside_idle(g: int) -> void:
 		var wait := _rng.randf_range(meow_interval.x, meow_interval.y)
 		var t := 0.0
 		while t < wait and _alive(g):
-			await get_tree().create_timer(0.3).timeout
+			await get_tree().create_timer(0.3, false).timeout
 			t += 0.3
 			_watch_player()
 		if not _alive(g):
@@ -277,7 +277,7 @@ func _state_approach(g: int) -> void:
 		return
 
 	face(NpcUtil.opening_center(target_entry))
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5, false).timeout
 	if not _alive(g):
 		return
 	if NpcUtil.is_opening_open(target_entry):
@@ -295,11 +295,11 @@ func _state_approach(g: int) -> void:
 			return
 		Audio.play_at(StringName("cat_scratch_%d" % (i + 1)),
 			NpcUtil.opening_center(target_entry), 0.0, _rng.randf_range(0.95, 1.05), 22.0)
-		await get_tree().create_timer(1.6).timeout
+		await get_tree().create_timer(1.6, false).timeout
 	if not _alive(g):
 		return
 	Audio.play_at(&"window_tap", NpcUtil.opening_center(target_entry), 0.0, 1.0, 22.0)
-	await get_tree().create_timer(3.0).timeout
+	await get_tree().create_timer(3.0, false).timeout
 	if not _alive(g):
 		return
 	if NpcUtil.is_opening_open(target_entry):
@@ -376,10 +376,10 @@ func _scratch_at_blocked_door(g: int) -> void:
 			return
 		Audio.play_at(StringName("cat_scratch_%d" % (i + 1)), at, 0.0,
 			_rng.randf_range(0.95, 1.05), 22.0)
-		await get_tree().create_timer(1.6).timeout
+		await get_tree().create_timer(1.6, false).timeout
 	if not _alive(g):
 		return
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(2.0, false).timeout
 
 
 ## 蓋の上へ 0.4 秒で飛び乗って座る。
@@ -401,7 +401,7 @@ func _state_on_coffin(g: int) -> void:
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * 0.28
 		global_position = p, 0.0, 1.0, 0.4)
-	await get_tree().create_timer(0.4).timeout
+	await get_tree().create_timer(0.4, false).timeout
 	if not _alive(g):
 		set_scripted(false)
 		return
@@ -434,7 +434,7 @@ func _hop_down(g: int) -> void:
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * 0.12
 		global_position = p, 0.0, 1.0, 0.35)
-	await get_tree().create_timer(0.35).timeout
+	await get_tree().create_timer(0.35, false).timeout
 	if not _alive(g):
 		set_scripted(false)
 		return
@@ -488,7 +488,7 @@ func _state_hiding(g: int) -> void:
 	set_speed_override(-1.0)
 	_free_anim = true
 	play_anim(anim_sit)
-	await get_tree().create_timer(hide_seconds).timeout
+	await get_tree().create_timer(hide_seconds, false).timeout
 	if not _alive(g):
 		return
 	_set_state(State.TO_COFFIN)
@@ -518,7 +518,7 @@ func _traverse(to: Vector3, sill: float) -> void:
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * peak
 		global_position = p, 0.0, 1.0, 1.0)
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	if _gen != g:
 		return
 	set_scripted(false)

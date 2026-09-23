@@ -470,7 +470,7 @@ func leave_via(door_name: StringName = &"Door_Genkan", emit_left: bool = true) -
 		if bool(door.get(&"locked")):
 			door.call(&"set_locked", false)
 		door.call(&"open")
-		await get_tree().create_timer(0.8).timeout
+		await get_tree().create_timer(0.8, false).timeout
 	await go_to(o["outside"])
 	if door and bool(door.get(&"is_open")):
 		door.call(&"close")
@@ -513,7 +513,7 @@ func enter_from_genkan(to_pos: Vector3) -> void:
 		if bool(door.get(&"locked")):
 			door.call(&"set_locked", false)
 		door.call(&"open")
-		await get_tree().create_timer(0.8).timeout
+		await get_tree().create_timer(0.8, false).timeout
 	await go_to(o["inside"])
 	if door and bool(door.get(&"is_open")):
 		door.call(&"close")
