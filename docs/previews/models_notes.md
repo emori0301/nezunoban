@@ -625,3 +625,75 @@ X 軸なので変換の影響を受けません。そのままで正しいです
   (帯を正面に置くと顔を横切る板に見えたため外しました)
 - 顔テクスチャの投影の継ぎ目が顎のラインに残ります
 - in-game スクショ(受付の社長 / 式場の孫娘 / 玄関前の息子)は未取得
+
+---
+
+## MPFB2(人物 3 体の素体)— 最終版
+
+### 出典とライセンス
+
+| もの | 出典 | ライセンス |
+|---|---|---|
+| MPFB2 本体 | https://github.com/makehumancommunity/mpfb2 (v2.0.17) | GPL-3.0-or-later |
+| MakeHuman のベースメッシュ・ターゲット(素体の形) | http://www.makehumancommunity.org/ | **CC0** |
+| 生成した `npc_*.glb` | — | CC0 の素体由来なので配布に制限なし |
+
+MPFB2 本体は **ビルド時のツール**で、ゲームには同梱されません。出力される
+メッシュは CC0 のベースメッシュとターゲットから作られるので、GPL は波及しません。
+
+### 再生成の手順
+
+```bash
+# 1 回だけ: Blender に MPFB2 を入れる(約 45MB)
+curl -sS -L -o /tmp/mpfb.zip \
+  "https://extensions.blender.org/download/sha256:4f0a879d64a39bf646fbf5f53601ac678855da329d650617dca5737548239a87/add-on-mpfb-v2.0.17.zip"
+blender --background --python-expr \
+  'import bpy; bpy.ops.extensions.package_install_files(filepath="/tmp/mpfb.zip", repo="user_default", enable_on_install=True)'
+
+# 人物 3 体
+blender --background --python tools/blender/build_humans_mpfb.py
+blender --background --python tools/blender/build_humans_mpfb.py -- npc_boss   # 1 体だけ
+```
+
+`build_all.sh` は MPFB の有無を見て、入っていなければこの工程を飛ばします。
+最新版の URL は `https://extensions.blender.org/api/v1/extensions/` の
+`id == "mpfb"` の `archive_url` で取れます。
+
+### 落とし穴(全部はまりました)
+
+1. **`create_human(feet_on_ground=True)` はメッシュだけ持ち上げ、リグを動かさない。**
+   0.8m ズレる。`False` で作り、足を床に乗せるのはアーマチュアの location で。
+2. **マクロはシェイプキーとして乗る。** 素の頂点座標から身長は測れない。
+   一度作って `bake_targets` し、実身長を測って生成スケールを直して作り直す。
+3. **`add_builtin_rig` の骨は素体のスケールに完全には追従しない**(頭の骨は
+   身長を変えても同じ位置に来る)。**服の着丈はメッシュの部位から測る。**
+4. **リグを付けたあとに頂点を動かすと、アーマチュアモディファイアが引き戻す。**
+   寸法合わせはリグを付ける前に済ませる。
+5. **素体は A ポーズ。** 自作アニメは腕が真下の前提なので `straighten_rest()` で
+   正立させてレストポーズに焼く。`pose_bone.matrix` に代入するときは
+   **骨の頭を中心に回す**(そのまま掛けるとアーマチュア原点まわりの回転になる)。
+6. **頂点グループには MakeHuman 独自のもの(`body` `scalp` `lips` …)が混ざる。**
+   重み 1.0 で入っていて骨の判定を潰すので、**ボーン名だけに絞る**
+   (`bone_group_map()`)。これを忘れると髪や服の面が 1 枚も選ばれない。
+7. **髪のキャップは Decimate の前に作る。** 間引いた後の頭は頂点が足りず、
+   キャップが頭頂の小さな斑になる。
+
+### 作り方の要点
+
+- 服は別の筒ではなく **素体メッシュを複製 → 部位で切る → Solidify(1.2cm 外側)**。
+  ウェイトは複製で引き継がれるので、形も動きも必ず体に沿う。
+- スカートと上着の裾は **別メッシュのロフト(円錐台)**。
+  Solidify 後のリムを掴んで伸ばす方式は、リムの頂点が拾えず効かない。
+  上端 `pelvis`、下端 `thigh_l`/`thigh_r` 0.5/0.5 の手動ウェイト。
+- リグは MPFB の `game_engine`(53 ボーン)。自作アニメは `GE` の対応表で
+  ボーン名を読み替えて当てる。`idle`/`walk`/`sit`/`sit_floor`/`sleep` の 5 種。
+- 髪テクスチャは **細い毛筋の低コントラストノイズ**。太い筋を強く乗せて減色すると
+  ブロック状の迷彩に見える。白髪は面ではなく筋として混ぜる。
+- 顔テクスチャの上端 24px(出力 128px で 12px)を髪色へグラデーションで馴染ませる。
+  ここを地肌のままにすると髪との境に肌色の帯が出る。
+
+| モデル | 頂点(Godot) | 身長 | メッシュ |
+|---|---|---|---|
+| `npc_boss` | 4477 | 1.71 m | Belt / Cloth / Collar / Hair / Hem / body / Trouser |
+| `npc_son` | 4392 | 1.75 m | 同上 |
+| `npc_granddaughter` | 4097 | 1.62 m | Cloth / Hair / body / Skirt / Trouser |
