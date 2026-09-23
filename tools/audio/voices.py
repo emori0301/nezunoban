@@ -491,117 +491,113 @@ def _ceiling_step(seed, pitch, length):
 # ==========================================================================
 @reg("door_swing_open")
 def door_swing_open():
-    """開き戸: ラッチが外れる -> 蝶番の軋み (ピッチが上がる) -> 木の落ち着き。"""
-    total = N(1.65)
+    """開き戸を開ける: ラッチの「カチャ」-> 蝶番の軽い軋み -> 開ききって止まる。"""
+    total = N(1.15)
     out = zeros(total)
     nl = N(0.12)
-    latch = metal_hit(nl, 2501, base=2100.0, decay=0.020, count=5, bright=0.8) * env_ar(nl, 0.0002, 0.010, 6.0)
-    latch += wood_knock(nl, 2502, pitch=1.3, decay=0.35, thump=0.4) * 0.5
-    place(out, norm_peak(latch, -6.0), 0.0)
-    nc = N(1.05)
-    rate = segments([(0.0, 26.0), (0.25, 44.0), (0.7, 30.0), (1.0, 16.0)], nc)
-    cr = creak(nc, 210.0, 470.0, 2503, rate=rate, ratios=(1.0, 2.03, 3.11, 4.68, 6.2), q=44.0, curve=0.8)
-    cr *= segments([(0.0, 0.0), (0.05, 0.9), (0.45, 1.0), (0.8, 0.55), (1.0, 0.0)], nc)
-    cr = cr + 0.25 * svf_tv(white(nc, 2504) * 0.5, glide(210.0, 470.0, nc, 0.8) * 2.0, 6.0, "bp") * segments(
-        [(0.0, 0.0), (0.1, 0.7), (1.0, 0.0)], nc
-    )
-    place(out, norm_peak(cr, -2.5), 0.09)
-    nw = N(0.32)
-    settle = wood_knock(nw, 2505, pitch=0.8, decay=0.7, thump=1.0) * 0.55
-    place(out, norm_peak(settle, -10.0), 1.22)
-    out = room(out, ROOM_LINO, wet=0.24)
-    return norm_peak(trim_tail(out, -68.0), -0.5)
+    latch = metal_hit(nl, 2501, base=2000.0, decay=0.016, count=5, bright=0.9) * env_ar(nl, 0.0002, 0.007, 7.0)
+    latch += wood_knock(nl, 2502, pitch=1.5, decay=0.25, bright=1.0, thump=0.35) * 0.55
+    place(out, norm_peak(latch, -0.5), 0.0)
+    # 蝶番。短く、Q を低くして鳴きすぎないようにする
+    nc = N(0.42)
+    rate = segments([(0.0, 22.0), (0.35, 34.0), (1.0, 18.0)], nc)
+    cr = creak(nc, 260.0, 430.0, 2503, rate=rate, ratios=(1.0, 2.05, 3.1), q=20.0, curve=0.9)
+    cr *= segments([(0.0, 0.0), (0.12, 1.0), (0.6, 0.6), (1.0, 0.0)], nc)
+    place(out, norm_peak(highpass(cr, 230.0, order=1), -9.0), 0.07)
+    place(out, _kotton(2505, 0.95, 0.60, 0.32), 0.56)
+    out = room(out, dict(dur=0.35, decay=0.09, damp_hz=4000.0, predelay=0.006, seed=122), wet=0.20)[:total]
+    return norm_peak(dc_kill(trim_tail(out, -62.0)), -0.5)
 
 
 @reg("door_swing_close")
 def door_swing_close():
-    """開き戸を閉める: 重い衝突 + ラッチ + 短い残響。"""
-    total = N(1.1)
+    """開き戸を閉める: 取っ手のカチャ -> 短い軋み -> 枠に当たってラッチが落ちる。"""
+    total = N(1.00)
     out = zeros(total)
-    ns = N(0.20)
-    swing = band(white(ns, 2601), 200.0, 1800.0, order=2) * segments([(0, 0.0), (0.8, 0.5), (1, 1.0)], ns) * 0.22
-    place(out, swing, 0.0)
-    nb = N(0.55)
-    slam = wood_knock(nb, 2602, pitch=0.62, decay=1.5, bright=0.7, thump=2.4)
-    slam += lowpass(white(nb, 2603) * env_ar(nb, 0.0006, 0.035, 4.0), 220.0, order=3) * 1.5
-    place(out, norm_peak(slam, -0.8), 0.20)
     nl = N(0.10)
-    latch = metal_hit(nl, 2604, base=1900.0, decay=0.018, count=5) * env_ar(nl, 0.0002, 0.008, 7.0)
-    place(out, norm_peak(latch, -11.0), 0.245)
-    out = room(out, ROOM_LINO, wet=0.30)
-    return norm_peak(trim_tail(out, -68.0), -0.5)
+    handle = metal_hit(nl, 2601, base=2200.0, decay=0.013, count=4, bright=0.9) * env_ar(nl, 0.0002, 0.006, 7.0)
+    place(out, norm_peak(handle, -7.0), 0.0)
+    nc = N(0.30)
+    cr = creak(nc, 300.0, 235.0, 2602, rate=segments([(0, 26.0), (1, 16.0)], nc), ratios=(1.0, 2.05, 3.1), q=18.0)
+    cr *= segments([(0.0, 0.0), (0.15, 1.0), (1.0, 0.0)], nc)
+    place(out, norm_peak(highpass(cr, 230.0, order=1), -8.0), 0.04)
+    # 枠に当たる。室内の木戸なので唸らせない
+    nt = N(0.42)
+    thud = wood_knock(nt, 2603, pitch=0.80, decay=0.75, bright=0.75, thump=1.0)
+    place(out, norm_peak(highpass(thud, 150.0, order=1), -0.5), 0.34)
+    nla = N(0.10)
+    lat = metal_hit(nla, 2604, base=1900.0, decay=0.013, count=5, bright=1.0) * env_ar(nla, 0.0002, 0.006, 7.0)
+    place(out, norm_peak(lat, -9.0), 0.368)
+    out = room(out, dict(dur=0.35, decay=0.09, damp_hz=4000.0, predelay=0.006, seed=123), wet=0.20)[:total]
+    return norm_peak(dc_kill(trim_tail(out, -62.0)), -0.5)
 
 
-# ---- 引き戸 (敷居を滑る「ゴロゴロ」+ 戸当たりの「トン」) ----
-def _flatten(x, cutoff=14.0, floor=0.10):
-    """信号の遅い振幅ムラを均す。擦る音の「ゴロゴロ」を一定の粒立ちにするため。"""
-    env = lowpass(np.abs(x), cutoff, order=2)
-    m = float(np.max(env))
-    if m <= 0.0:
-        return x
-    env = np.maximum(env, floor * m)
-    return x / env * float(np.mean(env))
+# ---- 引き戸 (軽い木の擦れ + レールのコロコロ + 戸当たりのコトン) ----
+def _shoji_glide(n, seed, vel, bright=1.0):
+    """引き戸が敷居を滑る「スーッ」。摩擦音なので粒は立てず、中域中心にする。
+    速いほど明るくなるように、帯域の中心を速度に連動させる。"""
+    cen = (850.0 + 1500.0 * np.clip(vel, 0.0, 1.0)) * bright
+    g = svf_tv(white(n, seed), cen, 0.85, "bp") * 1.6
+    g += 0.28 * band(white(n, seed + 1), 2600.0, 6000.0, order=2) * np.clip(vel, 0.0, 1.0) ** 1.4
+    # 木の色付け。Q は低くして鳴かせない
+    g = g + 0.45 * resonators(g, [560.0, 1080.0, 1850.0], [2.5, 2.2, 2.0], [1.0, 0.6, 0.3])
+    g *= 0.84 + 0.16 * smooth_noise(n, 16.0, seed + 2)      # ゆっくりしたムラだけ
+    return highpass(g, 330.0, order=2)                      # 低域は控えめ
 
 
-def _slide_rumble(n, seed, vel, bright, panel_pitch):
-    """敷居の上を木の戸が滑る音。速度 vel(0..1 の配列)に合わせて粒が詰まる。"""
-    rate = 16.0 + 54.0 * vel
-    bump = stick_slip(n, rate, seed, jitter=0.75, sharp=55.0)
-    grit = grain_env(n, max(20, int(n / SR * 150)), seed + 1, dur_sec=0.005, jitter=0.9)
-    drive = 0.45 * bump + 0.55 * grit
-    src = band(white(n, seed + 2), 110.0, 2600.0 * bright, order=2) * (0.2 + 0.8 * drive)
-    panel = resonators(
-        src,
-        [92.0 * panel_pitch, 158.0 * panel_pitch, 254.0 * panel_pitch, 407.0 * panel_pitch],
-        [9, 8, 7, 6],
-        [1.0, 0.62, 0.34, 0.18],
-    )
-    rattle = bandpass(white(n, seed + 3), 2300.0, 3.0, 1) * grain_env(n, 14, seed + 4, dur_sec=0.003) * 0.12 * bright
-    return _flatten(0.75 * src + 0.95 * panel + rattle)
+def _rail_bump(seed, pitch, level):
+    """レールの継ぎ目を越える小さな「コロ」。"""
+    n = N(0.13)
+    exc = white(n, seed) * env_ar(n, 0.0002, 0.0018, 7.0)
+    b = resonators(exc, [245 * pitch, 430 * pitch, 760 * pitch], [10, 8, 7], [1.0, 0.50, 0.22])
+    b += lowpass(white(n, seed + 1) * env_ar(n, 0.0004, 0.006, 6.0), 700.0, order=2) * 0.55
+    return norm_peak(highpass(b, 230.0, order=1), -0.5) * level
 
 
-def _slide_door(seed, dur_slide, vel_pts, stop_pitch, stop_force, bright, panel_pitch, tail):
-    total = N(dur_slide + tail)
+def _kotton(seed, pitch, force, dur=0.30):
+    """戸当たりの「コトン」。軽い木の当たりで、低く唸らせない。"""
+    n = N(dur)
+    k = wood_knock(n, seed, pitch=pitch, decay=0.55, bright=0.85, thump=0.65)
+    return norm_peak(highpass(k, 195.0, order=1), -0.5) * force
+
+
+DOOR_ROOM = dict(dur=0.30, decay=0.070, damp_hz=4200.0, predelay=0.005, seed=121)
+
+
+def _slide_door(seed, dur_slide, vel_pts, bumps, glide_db, stop_pitch, stop_force, total_sec):
+    total = N(total_sec)
     out = zeros(total)
     ns = N(dur_slide)
     vel = segments(vel_pts, ns)
-    # 引き手を掴んで動き出すときの「ガタッ」
-    nb = N(0.12)
-    brk = wood_knock(nb, seed + 9, pitch=1.15 * panel_pitch, decay=0.30, bright=0.7, thump=0.8)
-    place(out, norm_peak(brk, -11.0), 0.0)
-    rum = _slide_rumble(ns, seed, vel, bright, panel_pitch)
-    rum *= np.clip(vel, 0.0, 1.0) ** 0.8
-    place(out, norm_peak(rum, -6.5), 0.015)
-    # 戸当たりの「トン」+ 板の残鳴
-    nk = N(0.55)
-    stop = wood_knock(nk, seed + 5, pitch=stop_pitch, decay=1.2, bright=0.55, thump=1.7)
-    stop += resonators(
-        white(nk, seed + 6) * env_ar(nk, 0.0003, 0.004, 7.0),
-        [92.0 * panel_pitch, 158.0 * panel_pitch, 254.0 * panel_pitch],
-        [16, 13, 10], [1.0, 0.5, 0.22],
-    ) * 0.9
-    place(out, norm_peak(stop, -0.5), dur_slide - 0.012, stop_force)
-    out = room(out, ROOM_LINO, wet=0.26)
-    return norm_peak(dc_kill(trim_tail(out, -64.0)), -0.5)
+    g = _shoji_glide(ns, seed, vel) * np.clip(vel, 0.0, 1.0) ** 0.9
+    g *= segments([(0.0, 0.0), (0.06, 1.0), (0.9, 0.9), (1.0, 0.35)], ns)
+    place(out, norm_peak(g, glide_db), 0.0)
+    for at, pit, lv, sd in bumps:
+        place(out, _rail_bump(sd, pit, lv), at)
+    place(out, _kotton(seed + 5, stop_pitch, stop_force), dur_slide - 0.006)
+    out = room(out, DOOR_ROOM, wet=0.18)[:total]
+    return norm_peak(dc_kill(out), -0.5)
 
 
 @reg("door_open")
 def door_open():
-    """木の引き戸を開ける: 敷居を滑るゴロゴロ -> 戸当たりのトン。"""
+    """木の引き戸を開ける: 軽い擦れ + レールのコロコロ 3 回 + 戸当たりのコトン。"""
     return _slide_door(
-        3201, 0.92,
-        [(0.0, 0.15), (0.12, 1.0), (0.62, 0.92), (0.88, 0.55), (1.0, 0.2)],
-        stop_pitch=0.72, stop_force=1.0, bright=1.0, panel_pitch=1.0, tail=0.6,
+        3201, 0.60,
+        [(0.0, 0.10), (0.15, 1.0), (0.70, 0.95), (1.0, 0.45)],
+        [(0.13, 1.06, 0.40, 3210), (0.29, 0.94, 0.34, 3211), (0.45, 1.12, 0.30, 3212)],
+        glide_db=-9.0, stop_pitch=1.02, stop_force=0.85, total_sec=0.90,
     )
 
 
 @reg("door_close")
 def door_close():
-    """木の引き戸を閉める: 少し速く滑って、戸当たりで強く止まる。"""
+    """閉める方は擦れが短く、最後のトンがやや強い。"""
     return _slide_door(
-        3251, 0.78,
-        [(0.0, 0.25), (0.10, 1.0), (0.55, 1.0), (0.85, 0.8), (1.0, 0.45)],
-        stop_pitch=0.64, stop_force=1.0, bright=0.92, panel_pitch=0.97, tail=0.75,
+        3251, 0.44,
+        [(0.0, 0.15), (0.12, 1.0), (0.72, 0.95), (1.0, 0.55)],
+        [(0.11, 0.98, 0.38, 3260), (0.26, 1.08, 0.32, 3261)],
+        glide_db=-12.0, stop_pitch=0.92, stop_force=1.0, total_sec=0.90,
     )
 
 

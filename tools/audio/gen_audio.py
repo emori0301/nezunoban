@@ -32,6 +32,7 @@ CLAUDE_MD = os.path.join(ROOT, "CLAUDE.md")
 
 # 波形を目で見る音 (依頼された 5 つ + 各系統から代表)
 PNG_NAMES = [
+    "door_swing_close",
     "door_lock", "door_unlock",
     "amb_morning", "car_arrive",
     "door_swing_open", "cat_meow_2", "cat_meow_3", "stinger_3",
