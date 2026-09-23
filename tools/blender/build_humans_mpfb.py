@@ -564,6 +564,54 @@ def dup_shell(body, arm, keep, name, mat, push=0.003, thick=0.012):
     return new
 
 
+def torso_ids(body):
+    names = ("pelvis", "spine_01", "spine_02", "spine_03")
+    gi = {g.index for g in body.vertex_groups if g.name in names}
+    return [v.index for v in body.data.vertices
+            if any(g.group in gi and g.weight > 0.4 for g in v.groups)]
+
+
+def ring_at(body, ids, z, tol):
+    """その高さでの半径(x)と奥行(y)と中心 y。"""
+    pts = [body.data.vertices[i].co for i in ids
+           if abs(body.data.vertices[i].co.z - z) < tol]
+    if len(pts) < 4:
+        return 0.16, 0.11, 0.0
+    rx = max(abs(p.x) for p in pts)
+    ys = [p.y for p in pts]
+    return max(rx, 0.05), max((max(ys) - min(ys)) * 0.5, 0.04), (max(ys) + min(ys)) * 0.5
+
+
+def cone_skirt(name, body, arm, mat, z_top, z_bot, rx, ry, cy, grow_top, grow_bot,
+               n=24, sections=5):
+    """腰から下へ広がる円錐台。スカートや上着の裾に使う。
+
+    Solidify 後のリムを掴んで伸ばす方式は、リムの頂点が拾えず効かなかった。
+    別メッシュのロフトなら形が確実に出る。
+    """
+    rows = []
+    for k in range(sections):
+        t = 1.0 - k / (sections - 1.0)          # 1=腰, 0=裾
+        z = z_bot + (z_top - z_bot) * t
+        g = grow_bot + (grow_top - grow_bot) * t
+        rows.append((0.0, cy, z, rx * g, ry * g, t))
+    b = Builder(name)
+    b.add(tube(rows, n=n, cap_start=False, cap_end=False), mat,
+          uvscale=2.4, smooth=True)
+    ob = b.build()
+    # 上は腰、下は左右の腿に半分ずつ。歩けば脚に沿って動く。
+    groups = {}
+    for v in ob.data.vertices:
+        t = (v.co.z - z_bot) / max(z_top - z_bot, 1e-6)
+        t = min(max(t, 0.0), 1.0)
+        groups.setdefault("pelvis", []).append((v.index, t))
+        groups.setdefault("thigh_l", []).append((v.index, (1.0 - t) * 0.5))
+        groups.setdefault("thigh_r", []).append((v.index, (1.0 - t) * 0.5))
+    bind_weights(ob, arm, groups)
+    ob.matrix_parent_inverse = Matrix.Identity(4)
+    return ob
+
+
 def extend_hem(obj, drop, flare=0.0, band=0.02):
     """下端の頂点を下へ伸ばす。flare>0 で外へ広げる(スカート)。"""
     me = obj.data
@@ -589,21 +637,47 @@ def extend_hem(obj, drop, flare=0.0, band=0.02):
     me.update()
 
 
-def add_clothing(name, body, arm, spec, mats):
-    """上着・ズボン(またはワンピース)を素体の複製から作る。"""
+def add_clothing(name, body, arm, spec, mats, reg):
+    """上着・ズボン(またはワンピース)。素体の複製 + 裾のロフト。"""
     style = spec.get("garment")
     out = []
     if not style:
         return out
+    me = body.data
+    lz = [me.vertices[vi].co.z for i in reg["leg"] for vi in me.polygons[i].vertices]
+    fz = [me.vertices[vi].co.z for i in reg["foot"] for vi in me.polygons[i].vertices]
+    z_hip = max(lz) if lz else 0.0
+    z_foot = min(fz) if fz else (min(lz) if lz else 0.0)
+    leg_h = max(z_hip - z_foot, 0.1)
+    tids = torso_ids(body)
+    rx, ry, cy = ring_at(body, tids or [v.index for v in me.vertices],
+                         z_hip, leg_h * 0.06)
+
     top = dup_shell(body, arm, GARMENT_GROUPS[style], "Cloth_" + name,
                     mats["cloth"], push=0.003, thick=0.012)
     if top is not None:
-        if style == "dress":
-            # 腰から膝まで下ろして広げる
-            extend_hem(top, spec.get("skirt_drop", 0.30), flare=0.42, band=0.13)
-        else:
-            extend_hem(top, 0.07, flare=0.06, band=0.075)
         out.append(top)
+
+    if style == "dress":
+        # スカート: 腰から膝下 5cm まで
+        z_knee = z_foot + leg_h * 0.48
+        skirt = cone_skirt("Skirt_" + name, body, arm, mats["skirt"],
+                           z_hip + 0.01, z_knee - 0.05, rx, ry, cy,
+                           grow_top=1.10, grow_bot=1.10 + 0.12 / max(rx, 0.05),
+                           n=20, sections=4)
+        out.append(skirt)
+    else:
+        # 上着の裾: 腰の下 8cm まで
+        hem = cone_skirt("Hem_" + name, body, arm, mats["cloth"],
+                         z_hip + 0.02, z_hip - 0.08, rx, ry, cy,
+                         grow_top=1.10, grow_bot=1.14, sections=3)
+        out.append(hem)
+        # ベルトの線
+        belt = cone_skirt("Belt_" + name, body, arm, mats["belt"],
+                          z_hip + 0.05, z_hip + 0.015, rx, ry, cy,
+                          grow_top=1.13, grow_bot=1.13, sections=2)
+        out.append(belt)
+
     if spec.get("trousers", True):
         low = dup_shell(body, arm, GARMENT_GROUPS["trousers"], "Trouser_" + name,
                         mats["leg"], push=0.003, thick=0.010)
@@ -864,12 +938,12 @@ SPECS = {
                  leg="jumper", shoe="shoe_leather", hair="hair_salt"),
     ),
     "npc_granddaughter": dict(
-        height=1.60, verts=1150,
+        height=1.60, verts=950,
         macro={"gender": 0.02, "age": 0.26, "muscle": 0.30, "weight": 0.34,
                "height": 0.40, "proportions": 0.62, "cupsize": 0.45,
                "firmness": 0.6},
         jacket=0.005, trouser=0.0, hair_back=0.004, long_hair=True,
-        garment="dress", trousers=False, skirt_drop=0.30,
+        garment="dress", trousers=True, skirt_drop=0.30,
         tex=dict(face="face_granddaughter", skin="skin_gd", torso="torso_dress",
                  leg="skin_gd", shoe="shoe_leather", hair="hair_long"),
     ),
@@ -889,6 +963,8 @@ def build_one(name):
     m_hair = material(name + "_Hair", t["hair"], rough=0.9)
     m_strand = material(name + "_Strand", "hair_strand", rough=0.9,
                         alpha_from_tex=True)
+    m_skirt = material(name + "_Skirt", t.get("skirt", t["torso"]), rough=0.92)
+    m_belt = material(name + "_Belt", t.get("belt", "shoe_leather"), rough=0.5)
     m_collar = material(name + "_Collar", t.get("collar", t["torso"]), rough=0.9)
     m_tie = material(name + "_Tie", t.get("tie", t["torso"]), rough=0.8)
 
@@ -928,7 +1004,8 @@ def build_one(name):
         p.use_smooth = True
 
     garments = add_clothing(name, body, arm, spec,
-                            {"cloth": m_torso, "leg": m_leg})
+                            {"cloth": m_torso, "leg": m_leg,
+                             "skirt": m_skirt, "belt": m_belt}, reg)
     # 髪の親子付けとウェイトは add_hair_cap() で済んでいる
     set_scene_frames(180)
     build_anims(arm)

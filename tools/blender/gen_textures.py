@@ -1199,6 +1199,44 @@ def t_hair_strand():
     return rgba(posterize(base, 26), np.clip(a, 0, 1))
 
 
+def _fabric(color, seed, weave=0.05, folds=0.10):
+    """無地の布。指定色に織り目と縦皺だけ乗せる。"""
+    T = 128
+    img = rgb(T, color)
+    img = mul_gray(img, 0.93 + norm(fbm(T, 26, 3, seed)) * 0.14)
+    img = mul_gray(img, 1.0 - periodic_lines(T, 52, 0, 0.42, 0.34) * weave)
+    img = mul_gray(img, 1.0 - periodic_lines(T, 52, 1, 0.42, 0.34) * weave * 0.85)
+    img = mul_gray(img, 1.0 - folds * (1.0 - _folds(4.0, 0.42, seed + 3, 5,
+                                                    axis=0, size=T)))
+    return finish(mul_gray(img, grunge(T, seed + 7, 0.10)), seed + 9, noise=0.022)
+
+
+def t_cloth_navy():      return _fabric((0.080, 0.080, 0.120), 841)
+def t_cloth_navy_lt():   return _fabric((0.110, 0.110, 0.130), 851)
+def t_cloth_olive():     return _fabric((0.210, 0.205, 0.145), 861, folds=0.14)
+def t_cloth_gray():      return _fabric((0.135, 0.135, 0.140), 871)
+def t_cloth_black():     return _fabric((0.070, 0.070, 0.082), 881, folds=0.13)
+def t_cloth_tights():    return _fabric((0.095, 0.095, 0.105), 891, weave=0.03)
+
+
+def t_shoe_sneaker():
+    T = 128
+    img = rgb(T, (0.72, 0.71, 0.68))
+    img = mul_gray(img, 0.88 + norm(fbm(T, 30, 3, 901)) * 0.22)
+    img = mix(img, rgb(T, (0.52, 0.51, 0.48)), norm(fbm(T, 6, 3, 902)) * 0.26)
+    rect(img, 96, 0, 128, T, (0.86, 0.85, 0.82), 0.9)          # ソール
+    rect(img, 92, 0, 98, T, (0.30, 0.30, 0.32), 0.7)
+    return finish(mul_gray(img, grunge(T, 903, 0.24)), 904)
+
+
+def t_shoe_loafer():
+    T = 128
+    img = rgb(T, (0.065, 0.062, 0.068))
+    img = mul_gray(img, 0.80 + norm(fbm(T, 34, 3, 911)) * 0.45)
+    img = mix(img, rgb(T, (0.20, 0.19, 0.20)), norm(fbm(T, 14, 2, 912)) * 0.18)
+    return finish(img, 913, noise=0.02)
+
+
 def t_shoe_leather():
     T = 128
     img = rgb(T, (0.085, 0.082, 0.085))
@@ -1479,6 +1517,14 @@ ALL = {
     "hair_long": t_hair_long,
     "hair_strand": t_hair_strand,
     "shoe_leather": t_shoe_leather,
+    "shoe_sneaker": t_shoe_sneaker,
+    "shoe_loafer": t_shoe_loafer,
+    "cloth_navy": t_cloth_navy,
+    "cloth_navy_lt": t_cloth_navy_lt,
+    "cloth_olive": t_cloth_olive,
+    "cloth_gray": t_cloth_gray,
+    "cloth_black": t_cloth_black,
+    "cloth_tights": t_cloth_tights,
     "ihai": t_ihai,
     "lantern_paper": t_lantern_paper,
     "lantern_inner": t_lantern_inner,
