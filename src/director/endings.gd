@@ -74,9 +74,15 @@ func run(id: StringName) -> void:
 	_show_screen(id)
 
 
+## 駐車場(玄関の外)。社長の車が入ってくる位置。
+const CAR_POS := Vector3(-14.6, 0.6, 2.2)
+
 ## 05:00 の朝。鴉と鐘、そして車の音。
 func _morning_prologue(id: StringName) -> void:
 	Audio.play(&"crow_morning", -2.0)
+	# 火車エンドは 04:20 前後で終わるので社長は来ない。
+	if id != Game.ENDING_KASHA:
+		Audio.play_at(&"car_arrive", CAR_POS, 0.0, 1.0, 45.0)
 	await Events.wait(2.2)
 	Audio.play(&"chime_dawn", -4.0)
 	var b: Building = dir.building()

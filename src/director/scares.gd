@@ -193,11 +193,16 @@ const ROOM_AMBIENT := {
 
 func set_room_ambience(room: StringName) -> void:
 	var want: StringName = ROOM_AMBIENT.get(room, &"amb_room")
+	# 夜明け後の外は amb_morning の層がそのまま鳴っているので、部屋の層は足さない
+	if _dawn_on and room == &"Room_Outside":
+		want = &""
 	if want == _ambient_room:
 		return
 	if _ambient_room != &"":
 		Audio.stop_ambient(_ambient_room, 1.2)
 	_ambient_room = want
+	if want == &"":
+		return
 	Audio.ambient(want, -12.0 if want == &"amb_fluorescent" else -9.0, 1.4)
 
 
@@ -251,6 +256,7 @@ const DAWN_LIGHTS := [
 const DAWN_COLOR := Color(0.72, 0.82, 1.0)
 
 var _dawn: Array[Node3D] = []
+var _dawn_on: bool = false
 
 func start_dawn(duration: float) -> void:
 	if not _dawn.is_empty():
@@ -281,6 +287,12 @@ func start_dawn(duration: float) -> void:
 	var v := vhs()
 	if v and v.has_method(&"set_tint"):
 		v.set_tint(Color(0.88, 0.94, 1.08))
+	# 夜の外の音を朝の音に差し替える。屋内でも窓越しに薄く聞こえる層として残す。
+	_dawn_on = true
+	Audio.stop_ambient(&"amb_outside", 4.0)
+	if _ambient_room == &"amb_outside":
+		_ambient_room = &""
+	Audio.ambient(&"amb_morning", -18.0, 4.0)
 
 
 ## --time= で 04:45 より後から始めたとき、いきなり明るい状態にする。
