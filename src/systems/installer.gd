@@ -186,6 +186,9 @@ func _place(anchor_name: String, prefab: String, anchor: Node) -> Node:
 		(node as Node3D).global_transform = Transform3D(_facing_for(anchor_name, prefab, a), a.global_position)
 	node.add_to_group(StringName("system_" + prefab))
 	node.add_to_group(&"system")
+	# level が配置後に rebake_navmesh() で家具を障害物として焼き直すための目印。
+	# これが無いと NPC が棺や焼香台の中に立って動けなくなる。
+	node.add_to_group(&"navsource")
 	node.set_meta(&"anchor", anchor_name)
 	placed[anchor_name] = node
 	return node
