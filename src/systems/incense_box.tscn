@@ -19,6 +19,7 @@ add_flag_amount = 10
 pickup_line = "線香の箱。十本ある。"
 pickup_sound = &"paper_rustle"
 take_prompt = "線香の箱を取る"
+take_prompt_format = "線香の箱を取る(%d 本)"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)

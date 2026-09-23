@@ -53,6 +53,7 @@ func run() -> int:
 	await t_moving_parts()
 	await t_review_fixes()
 	await t_blocked_text()
+	await t_stock_prompt()
 
 	print("")
 	if failures.is_empty():
@@ -319,6 +320,23 @@ func t_clock_events() -> void:
 	ok(fired[0], "Clock.skip_to で 23:00 のイベントが出る")
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
+
+## プロンプトに線香の在庫が出ること
+func t_stock_prompt() -> void:
+	print("\n-- プロンプトの在庫表示")
+	var inc := spawn("res://src/systems/incense_stand.tscn") as IncenseStand
+	Game.set_flag(&"incense_sticks", 7)
+	eq(inc.get_prompt(), "線香を立てる(残り 7)", "在庫が出る")
+	inc.light()
+	eq(inc.get_prompt(), "線香を立てる(残り 6)", "立てると減った数がすぐ出る")
+	Game.set_flag(&"incense_sticks", 0)
+	eq(inc.get_prompt(), "線香を立てる(残り 0)", "在庫 0 でも数を出す")
+	ok(inc.get_blocked_text() != "", "在庫 0 の理由文はそのまま: %s" % inc.get_blocked_text())
+	inc.queue_free()
+
+	var box := spawn("res://src/systems/incense_box.tscn") as Pickup
+	eq(box.get_prompt(), "線香の箱を取る(10 本)", "線香箱は本数を出す")
+	box.queue_free()
 
 ## 押しても反応しないとき、理由の文が必ず出ること(ユーザー指摘「E を押しても反応しない」)
 func t_blocked_text() -> void:

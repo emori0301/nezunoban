@@ -28,6 +28,8 @@ signal burn_progress(ratio: float)
 ## 在庫が無いときの独白。日本語の文面は director が差し替えられるように export にしてある。
 @export var no_stock_line: String = "線香が無い。"
 @export var no_stock_text: String = "線香が無い。裏の在庫棚か。"
+## プロンプトの書式。%d に Game.get_flag(&"incense_sticks") が入る。
+@export var prompt_format: String = "線香を立てる(残り %d)"
 ## 煙がゆっくり横に流れる既定の風。director が set_wind() で上書きできる。
 @export var smoke_drift: Vector3 = Vector3(0.035, 0.0, 0.02)
 
@@ -210,6 +212,12 @@ func _extinguish() -> void:
 # --------------------------------------------------------------------------
 # Interactable
 # --------------------------------------------------------------------------
+
+## 在庫は毎回読む(director が補充しても即反映される)。
+func get_prompt() -> String:
+	if prompt_format == "":
+		return prompt
+	return prompt_format % int(Game.get_flag(&"incense_sticks", 0))
 
 func get_blocked_text() -> String:
 	if int(Game.get_flag(&"incense_sticks", 0)) <= 0:

@@ -17,6 +17,8 @@ signal picked_up(item: StringName)
 @export var pickup_line: String = ""
 @export var pickup_sound: StringName = &"paper_rustle"
 @export var take_prompt: String = "拾う"
+## 空でなければ take_prompt の代わりに使う。%d に add_flag_amount が入る。
+@export var take_prompt_format: String = ""
 @export var disappear: bool = true          # 拾ったら消える
 @export var hands_full_prompt: String = "両手が塞がっている"
 @export var hands_full_text: String = "両手が塞がっている。"
@@ -29,6 +31,8 @@ func _ready() -> void:
 func get_prompt() -> String:
 	if carried and SystemUtil.is_carrying(Game.player):
 		return hands_full_prompt
+	if take_prompt_format != "" and add_flag_amount != 0:
+		return take_prompt_format % add_flag_amount
 	return take_prompt
 
 func get_blocked_text() -> String:
