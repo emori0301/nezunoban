@@ -55,6 +55,7 @@ var _last_event_minute: int = -99
 var _drone: StringName = &""
 var _applying_past: bool = false
 var _chase_on: bool = false
+var _vhs_boost: float = 0.0
 var _heart_t: float = 0.0
 
 
@@ -261,6 +262,21 @@ func _parse_args() -> Dictionary:
 	return out
 
 
+## QA のための起動かどうか。自動プレイや撮影で user://progress.cfg を汚さない(review R2)。
+const QA_ARGS := [
+	"autoplay", "ending", "scare", "credits", "cctv-shot", "cctv-feed",
+	"screenshot", "tour", "shots", "reload-test", "dread", "time", "intro",
+]
+
+func is_qa_run() -> bool:
+	if autoplay != null:
+		return true
+	for a in QA_ARGS:
+		if args.has(a):
+			return true
+	return false
+
+
 func log_event(name: String) -> void:
 	_last_event_minute = int(Clock.game_minutes)
 	var line := "%s %s" % [Clock.hhmm(), name]
@@ -387,10 +403,7 @@ func _setup_static() -> void:
 	_yukan_note = _make_note(POS_YUKAN_NOTE, ScriptText.PAGE3_TITLE, ScriptText.PAGE3_BODY, 3)
 	enable_office_note(false)
 	enable_yukan_note(false)
-	# VHS の基準値
-	var v := scares.vhs()
-	if v and v.has_method(&"set_intensity"):
-		v.set_intensity(0.32)
+	refresh_vhs()
 
 
 func _make_note(pos: Vector3, title: String, body: String, page: int) -> Note:
@@ -698,6 +711,26 @@ func _on_dread_level(_level: int) -> void:
 	refresh_dread_ambient()
 
 
+## 設定の「VHS の強さ」を基準にする。異変度と演出はそこからの上乗せ。
+## 毎回 Settings から読み直すので、設定を変えたらそのまま効く(review R1)。
+func vhs_base() -> float:
+	Settings.load_all()
+	return Settings.vhs_intensity
+
+
+## 丑三つ時のような一時的な上乗せ。終わったら 0 に戻す。
+func set_vhs_boost(v: float) -> void:
+	_vhs_boost = v
+	refresh_vhs()
+
+
+func refresh_vhs() -> void:
+	var v := scares.vhs()
+	if v == null or not v.has_method(&"set_intensity"):
+		return
+	v.set_intensity(clampf(vhs_base() + 0.15 * float(Dread.level()) + _vhs_boost, 0.0, 1.0))
+
+
 func refresh_dread_ambient() -> void:
 	var lvl := Dread.level()
 	var want: StringName = &""
@@ -711,9 +744,7 @@ func refresh_dread_ambient() -> void:
 		_drone = want
 		if want != &"":
 			Audio.ambient(want, -14.0, 3.0)
-	var v := scares.vhs()
-	if v and v.has_method(&"set_intensity"):
-		v.set_intensity(0.32 + 0.15 * lvl)
+	refresh_vhs()
 	var iei := sys(&"iei")
 	if iei:
 		iei.call(&"set_follow_player", lvl >= 1)
@@ -924,7 +955,8 @@ func finish(ending: StringName) -> void:
 
 
 func _on_night_ended(id: StringName) -> void:
-	endings.save_progress(id)
+	if not is_qa_run():
+		endings.save_progress(id)
 	endings.run(id)
 
 

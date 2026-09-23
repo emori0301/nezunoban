@@ -539,9 +539,7 @@ func ev_ushimitsu() -> void:
 	dir.log_event("ev_ushimitsu")
 	var b: Building = dir.building()
 	Audio.ambient(&"amb_drone_high", -9.0, 0.6)
-	var vhs := scares.vhs()
-	if vhs and vhs.has_method(&"set_intensity"):
-		vhs.set_intensity(0.62)
+	dir.set_vhs_boost(0.3)       # 設定値からの上乗せ(review R1)
 	# 猫3匹を同時に開口部へ
 	var cats: Array = dir.npc_all(&"cat")
 	for i in mini(cats.size(), 3):
@@ -578,8 +576,7 @@ func ev_ushimitsu() -> void:
 	await Events.wait(step * 0.6)
 	scares.breath_behind()                # 丑三つ時の終わりに一度だけ
 	Audio.stop_ambient(&"amb_drone_high", 2.0)
-	if vhs and vhs.has_method(&"set_intensity"):
-		vhs.set_intensity(0.32 + 0.15 * Dread.level())
+	dir.set_vhs_boost(0.0)
 	dir.refresh_dread_ambient()
 
 
