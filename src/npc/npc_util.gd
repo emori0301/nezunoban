@@ -118,7 +118,36 @@ static func opening_center(opening: StringName) -> Vector3:
 	return mid
 
 
-## from に一番近い「開いている」開口部。無ければ &""。
+## from から実際に歩いて行ける開口部のうち、経路が一番短いもの。無ければ &""。
+## 直線距離ではなくナビ経路長で選ぶので、建物の裏に居る猫が反対側の扉を目指して
+## 詰まることがない。only_open = true なら開いているものだけを見る。
+static func nearest_reachable_entry(world: World3D, from: Vector3,
+		only_open: bool = false) -> StringName:
+	if world == null:
+		return &""
+	var map := world.navigation_map
+	var best: StringName = &""
+	var best_len := INF
+	for k in OPENINGS:
+		if only_open and not is_opening_open(k):
+			continue
+		var goal: Vector3 = OPENINGS[k]["outside"]
+		var path := NavigationServer3D.map_get_path(map, from, goal, true)
+		if path.size() < 2:
+			continue
+		# 経路の終点が目標から離れていたら、そこへは辿り着けない
+		if Vector2(path[-1].x - goal.x, path[-1].z - goal.z).length() > 1.0:
+			continue
+		var total := 0.0
+		for i in range(1, path.size()):
+			total += path[i].distance_to(path[i - 1])
+		if total < best_len:
+			best_len = total
+			best = k
+	return best
+
+
+## from に一番近い「開いている」開口部(直線距離)。無ければ &""。
 static func nearest_open_opening(from: Vector3, only_open: bool = true) -> StringName:
 	var best: StringName = &""
 	var best_d := INF
@@ -191,6 +220,39 @@ static func _segment_through_opening(opening: StringName, a: Vector3, b: Vector3
 
 
 # ---------------------------------------------------------------- マテリアル
+
+## マテリアル名でサーフェスを探し、複製して override に差し替えたうえで参照を返す。
+## 毎フレーム emission を触るもの(猫・火車の目)は、_ready で 1 回これを呼んで
+## 返り値を持っておき、以降はその BaseMaterial3D を直接書き換える。
+static func grab_materials(root: Node, material_name: String) -> Array[BaseMaterial3D]:
+	var out: Array[BaseMaterial3D] = []
+	if root == null:
+		return out
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var src := mi.get_active_material(i)
+			if src == null or String(src.resource_name) != material_name:
+				continue
+			var mat := mi.get_surface_override_material(i) as BaseMaterial3D
+			if mat == null or mat == src:
+				mat = (src as BaseMaterial3D).duplicate()
+				mi.set_surface_override_material(i, mat)
+			out.append(mat)
+	return out
+
+
+## 上で拾ったマテリアルの emission をまとめて書き換える(find_children を回さない)。
+static func apply_emission(mats: Array[BaseMaterial3D], energy: float,
+		color: Color = Color(0, 0, 0, 0)) -> void:
+	for mat in mats:
+		mat.emission_enabled = energy > 0.0
+		if color.a > 0.0:
+			mat.emission = Color(color.r, color.g, color.b)
+		mat.emission_energy_multiplier = energy
+
 
 ## マテリアル名でサーフェスを探し、複製してから emission を差し替える。
 ## models_notes.md の「`Eyes` は duplicate() してから触る」に従う。返り値は触った枚数。

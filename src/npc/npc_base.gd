@@ -28,6 +28,9 @@ signal arrived                                   ## walk_to / go_to の到着
 signal talked(player: Node3D)                    ## 話しかけられた(中身は director)
 signal despawned
 signal door_blocked(door_name: StringName)       ## 閉まった扉の前で止まった
+## 移動が外から中断された(stop / set_active(false) / teleport_to)。
+## await go_to() を返すため、このとき arrived も出る。
+signal move_cancelled
 
 @export_group("見た目")
 @export var model_name: String = ""
@@ -87,6 +90,8 @@ var posture: StringName = &"stand"
 var last_move_blocked: bool = false
 ## 直前の移動が詰まって打ち切られたか(家具に引っかかった等)。
 var last_move_failed: bool = false
+## 直前の移動が外から中断されたか(stop / set_active(false) / teleport_to)。
+var last_move_cancelled: bool = false
 var blocked_door_name: StringName = &""
 
 var _shape: CollisionShape3D = null
@@ -108,6 +113,7 @@ var _scripted: bool = false                      ## tween が位置を握って�
 var _flying: bool = false                        ## 天井這い(重力と接地を無視)
 var _blocked_door: StringName = &""
 var _speed_override: float = -1.0
+var _doors: Array[Door] = []
 var _rng := RandomNumberGenerator.new()
 ## デバッグ用: 直近の _steer の結果と理由
 var last_desired: Vector3 = Vector3.ZERO
@@ -222,6 +228,7 @@ func walk_to(pos: Vector3, tolerance: float = -1.0) -> Signal:
 	_blocked_door = &""
 	last_move_blocked = false
 	last_move_failed = false
+	last_move_cancelled = false
 	_nudge_angle = NUDGE_ANGLES[0]
 	_best_progress = INF
 	return arrived
@@ -241,6 +248,7 @@ func retarget(pos: Vector3) -> void:
 		_blocked_door = &""
 		last_move_blocked = false
 		last_move_failed = false
+		last_move_cancelled = false
 
 
 ## 到着まで待つコルーチン。`await npc.go_to(pos)`
@@ -253,12 +261,26 @@ func go_to(pos: Vector3, tolerance: float = -1.0) -> void:
 	await arrived
 
 
-## その場で止まる。
+## その場で止まる。移動中だったら待っている go_to() を返すために arrived も出す。
 func stop() -> void:
+	_blocked_door = &""
+	if is_moving:
+		_cancel_move()
+	else:
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+## 移動の外からの中断。await go_to() が永久に返らなくなるのを防ぐ。
+func _cancel_move() -> void:
+	if not is_moving:
+		return
 	is_moving = false
 	velocity.x = 0.0
 	velocity.z = 0.0
-	_blocked_door = &""
+	last_move_cancelled = true
+	move_cancelled.emit()
+	arrived.emit()
 
 
 ## Node3D か Vector3 の方を向く(ゆっくり回る)。
@@ -308,7 +330,7 @@ func set_active(on: bool) -> void:
 		talk.enabled = on and talkable
 		talk.monitorable = on and talkable
 	if not on:
-		is_moving = false
+		_cancel_move()
 		velocity = Vector3.ZERO
 	else:
 		NpcUtil.set_transparency(model, 0.0)
@@ -324,6 +346,8 @@ func despawn(fade: bool = true) -> void:
 		tw.tween_method(func(v: float) -> void:
 			NpcUtil.set_transparency(model, v), 0.0, 1.0, 0.6)
 		await tw.finished
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
 	set_active(false)
 	despawned.emit()
 
@@ -360,8 +384,8 @@ func teleport_to(pos: Vector3, yaw_deg: float = NAN) -> void:
 	if not is_nan(yaw_deg):
 		rotation.y = deg_to_rad(yaw_deg)
 		_target_yaw = rotation.y
+	_cancel_move()
 	velocity = Vector3.ZERO
-	is_moving = false
 	if agent:
 		agent.target_position = pos
 
@@ -611,12 +635,8 @@ func _check_stuck(delta: float) -> void:
 
 ## a → b の線分が「閉まっている扉」の開口面を横切るなら、その扉を返す。
 func _closed_door_between(a: Vector3, b: Vector3) -> Door:
-	var bld := NpcUtil.building()
-	if bld == null:
-		return null
-	for v in bld.all_doors().values():
-		var d := v as Door
-		if d == null or d.is_open:
+	for d in _cached_doors():
+		if d.is_open:
 			continue
 		var inv := d.global_transform.affine_inverse()
 		var l0 := inv * a
@@ -631,6 +651,21 @@ func _closed_door_between(a: Vector3, b: Vector3) -> Door:
 		if absf(x) <= d.door_width * 0.5 + 0.25 and y >= -0.4 and y <= d.door_height:
 			return d
 	return null
+
+
+## Building.all_doors() は毎回 duplicate を返すので、扉の参照だけ持っておく。
+func _cached_doors() -> Array[Door]:
+	if not _doors.is_empty() and is_instance_valid(_doors[0]):
+		return _doors
+	_doors.clear()
+	var bld := NpcUtil.building()
+	if bld == null:
+		return _doors
+	for v in bld.all_doors().values():
+		var d := v as Door
+		if d != null:
+			_doors.append(d)
+	return _doors
 
 
 static func _flat_distance(a: Vector3, b: Vector3) -> float:

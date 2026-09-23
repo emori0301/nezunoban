@@ -44,6 +44,9 @@ var _gen: int = 0
 var _crawl_t: float = 0.0
 var _repath_t: float = 0.0
 var _caught_armed: bool = true
+var _catching: bool = false
+var _stopped: bool = false        ## stop_chase() で完全停止した
+var _eye_mats: Array[BaseMaterial3D] = []
 var _free_anim: bool = false
 
 
@@ -78,9 +81,12 @@ func _ready() -> void:
 	if talk:
 		talk.enabled = false
 		talk.monitorable = false
+	_eye_mats = NpcUtil.grab_materials(model, "Eyes")
 	set_eye_glow(eye_energy)
+	# 掴んでいる最中(is_chasing を一時的に落としている)でも退くようにする。
+	# director が stop_chase() で完全停止させたあとだけは反応しない。
 	Events.on(&"relight_success", func(_d: Dictionary) -> void:
-		if is_active and is_chasing:
+		if is_active and not _stopped:
 			retreat())
 
 
@@ -101,6 +107,8 @@ func activate() -> void:
 	set_active(true)
 	teleport_to(NpcUtil.snap(get_world_3d(), spawn), 180.0)
 	_caught_armed = true
+	_catching = false
+	_stopped = false
 	set_eye_glow(eye_energy)
 	play_anim(anim_crawl)
 	# 湯灌室の戸を開けて出る
@@ -122,6 +130,7 @@ func start_chase() -> void:
 		return
 	is_chasing = true
 	is_retreating = false
+	_stopped = false
 	_gen += 1
 	set_speed_override(unseen_speed)
 	Events.emit_event(&"chase_started", {})
@@ -133,7 +142,10 @@ func stop_chase() -> void:
 		return
 	is_chasing = false
 	is_retreating = false
+	_catching = false
+	_stopped = true
 	_gen += 1
+	set_scripted(false)
 	stop()
 	_free_anim = true
 	play_anim(anim_idle)
@@ -146,7 +158,9 @@ func retreat() -> void:
 		return
 	is_retreating = true
 	is_chasing = false
+	_catching = false
 	_gen += 1
+	set_scripted(false)
 	_run_retreat(_gen)
 
 
@@ -185,7 +199,7 @@ func go_to_and_take(target: Node3D) -> void:
 
 
 func set_eye_glow(f: float) -> void:
-	NpcUtil.set_emission(model, "Eyes", maxf(f, 0.0), eye_color)
+	NpcUtil.apply_emission(_eye_mats, maxf(f, 0.0), eye_color)
 
 
 func distance_to_player() -> float:
@@ -223,8 +237,18 @@ func _tick_chase(delta: float) -> void:
 		_caught_armed = true
 
 
+## プレイヤーを掴む。`caught` は director がエンディングに直結させるので、
+## 掴んでいる間は再入も二重発火もさせない。
 func _catch() -> void:
+	if _catching:
+		return
+	_catching = true
 	_caught_armed = false
+	# freeze 中は _tick_chase を止める(retarget も catch 判定も走らせない)
+	var was_chasing := is_chasing
+	is_chasing = false
+	_gen += 1
+	var g := _gen
 	stop()
 	set_scripted(true)
 	_free_anim = true
@@ -233,10 +257,14 @@ func _catch() -> void:
 	Audio.play_at(&"kasha_screech", global_position, 0.0, 1.0, 30.0)
 	caught.emit()
 	await get_tree().create_timer(catch_freeze).timeout
+	_catching = false
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
+	# 割り込まれていても scripted は必ず解く(物理が止まったままになるのを防ぐ)
 	set_scripted(false)
 	_free_anim = false
+	if _alive(g):
+		is_chasing = was_chasing
 
 
 ## プレイヤーの視界(FOV 100°・遮蔽なし)に入っているか。

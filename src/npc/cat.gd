@@ -39,6 +39,8 @@ var _free_anim: bool = false      ## true の間は idle/walk の自動切り替
 var _shoo_hiss: bool = false
 var _cross_marker: Area3D = null
 var _on_perch: bool = false       ## 棺の蓋の上に乗っているか
+var _move_tween: Tween = null     ## 飛び乗り/またぎの tween。状態が変わったら kill する
+var _eye_mats: Array[BaseMaterial3D] = []
 
 
 ## 既定値は _init で入れる(.tscn の @export がこの後に適用されるので上書きできる)。
@@ -63,6 +65,7 @@ func _ready() -> void:
 	super._ready()
 	add_to_group(&"cat")
 	_build_cross_marker()
+	_eye_mats = NpcUtil.grab_materials(model, "Eyes")
 	set_eye_glow(eye_energy)
 	talked.connect(_on_talked)
 
@@ -154,7 +157,7 @@ func sit_at(pos: Vector3, face_target: Variant = null) -> void:
 
 ## 目の発光の強さ。異変度が上がったら director が上げる。
 func set_eye_glow(f: float) -> void:
-	NpcUtil.set_emission(model, "Eyes", maxf(f, 0.0), eye_color)
+	NpcUtil.apply_emission(_eye_mats, maxf(f, 0.0), eye_color)
 
 
 func meow() -> void:
@@ -176,6 +179,11 @@ func _set_state(s: State) -> void:
 	state = s
 	_gen += 1
 	_free_anim = false
+	# 飛び乗り/またぎの途中で状態が変わったら、tween に位置を上書きされ続けないよう止める
+	if _move_tween and _move_tween.is_valid():
+		_move_tween.kill()
+	_move_tween = null
+	set_scripted(false)
 	set_flying(false)
 	if Game.debug:
 		print("[cat] %s -> %s" % [name, state_name()])
@@ -236,10 +244,38 @@ func _state_outside_idle(g: int) -> void:
 func _state_approach(g: int) -> void:
 	set_talkable(false)
 	set_speed_override(-1.0)
-	var o: Dictionary = NpcUtil.OPENINGS[target_entry]
-	await go_to(o["outside"])
+	# スポーンが家具や建物に囲われている個体用(既定は空)
+	await walk_spawn_exit_route()
 	if not _alive(g):
 		return
+
+	# 指示された開口部へ行けなければ、歩いて行ける一番近い開口部に切り替える。
+	# (建物の裏に居る猫が反対側の勝手口を目指して詰まるのを防ぐ)
+	var tries := 2
+	while tries > 0:
+		var o: Dictionary = NpcUtil.OPENINGS[target_entry]
+		await go_to(o["outside"])
+		if not _alive(g):
+			return
+		if not (last_move_failed or last_move_blocked or last_move_cancelled):
+			break
+		tries -= 1
+		var alt := NpcUtil.nearest_reachable_entry(get_world_3d(), global_position)
+		if alt == &"" or alt == target_entry or tries <= 0:
+			if Game.debug:
+				print("[cat] %s: %s へ行けないので外で待つ" % [name, target_entry])
+			_set_state(State.OUTSIDE_IDLE)
+			return
+		if Game.debug:
+			print("[cat] %s: %s へ行けないので %s に切り替え" % [name, target_entry, alt])
+		target_entry = alt
+
+	# 開口部の外側に着けていないなら、遠くの扉の音を鳴らさずに引き返す
+	var entry: Dictionary = NpcUtil.OPENINGS[target_entry]
+	if _flat_distance(global_position, entry["outside"]) > 1.6:
+		_set_state(State.OUTSIDE_IDLE)
+		return
+
 	face(NpcUtil.opening_center(target_entry))
 	await get_tree().create_timer(0.5).timeout
 	if not _alive(g):
@@ -274,6 +310,10 @@ func _state_approach(g: int) -> void:
 
 func _state_entering(g: int) -> void:
 	var o: Dictionary = NpcUtil.OPENINGS[target_entry]
+	# 外側の足場に着けていないまま飛び込むと壁を抜けるので、距離を確かめる
+	if _flat_distance(global_position, o["outside"]) > 1.6:
+		_set_state(State.OUTSIDE_IDLE)
+		return
 	await _traverse(o["inside"], float(o["sill"]))
 	if not _alive(g):
 		return
@@ -353,12 +393,15 @@ func _state_on_coffin(g: int) -> void:
 	Audio.play_at(&"cat_jump", global_position, 0.0, 1.0, 18.0)
 	var from := global_position
 	var tw := create_tween()
+	_move_tween = tw
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_method(func(t: float) -> void:
+		if _gen != g:
+			return
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * 0.28
 		global_position = p, 0.0, 1.0, 0.4)
-	await tw.finished
+	await get_tree().create_timer(0.4).timeout
 	if not _alive(g):
 		set_scripted(false)
 		return
@@ -383,12 +426,15 @@ func _hop_down(g: int) -> void:
 	_free_anim = true
 	play_anim(anim_walk, 1.6)
 	var tw := create_tween()
+	_move_tween = tw
 	tw.set_trans(Tween.TRANS_SINE)
 	tw.tween_method(func(t: float) -> void:
+		if _gen != g:
+			return
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * 0.12
 		global_position = p, 0.0, 1.0, 0.35)
-	await tw.finished
+	await get_tree().create_timer(0.35).timeout
 	if not _alive(g):
 		set_scripted(false)
 		return
@@ -402,7 +448,9 @@ func _state_shooed(g: int) -> void:
 	if _shoo_hiss:
 		Audio.play_at(&"cat_hiss", global_position + Vector3(0, 0.25, 0), 0.0, 1.0, 20.0)
 	set_speed_override(run_speed)
-	var exit_name := NpcUtil.nearest_open_opening(global_position)
+	var exit_name := NpcUtil.nearest_reachable_entry(get_world_3d(), global_position, true)
+	if exit_name == &"":
+		exit_name = NpcUtil.nearest_open_opening(global_position)
 	if exit_name == &"":
 		_set_state(State.HIDING)
 		return
@@ -410,7 +458,9 @@ func _state_shooed(g: int) -> void:
 	await go_to(o["inside"])
 	if not _alive(g):
 		return
-	if last_move_blocked:
+	# 扉に阻まれた / 家具に詰まって開口部まで行けなかったときに
+	# _traverse の直線移動を走らせると壁を抜けてしまう
+	if last_move_blocked or last_move_failed or last_move_cancelled:
 		_set_state(State.HIDING)
 		return
 	await _traverse(o["outside"], float(o["sill"]))
@@ -459,12 +509,18 @@ func _traverse(to: Vector3, sill: float) -> void:
 	play_anim(anim_walk, 1.6)
 	var peak: float = sill + 0.35
 	var tw := create_tween()
+	_move_tween = tw
+	var g := _gen
 	tw.set_trans(Tween.TRANS_SINE)
 	tw.tween_method(func(t: float) -> void:
+		if _gen != g:
+			return
 		var p := from.lerp(land, t)
 		p.y = lerpf(from.y, land.y, t) + sin(t * PI) * peak
 		global_position = p, 0.0, 1.0, 1.0)
-	await tw.finished
+	await get_tree().create_timer(1.0).timeout
+	if _gen != g:
+		return
 	set_scripted(false)
 	_free_anim = false
 	global_position = land

@@ -69,6 +69,7 @@ NpcInstaller.all()                    # -> 置かれている NPC 全部
 | `talked(player)` | 話しかけられた。**会話の中身は director が持つ** |
 | `despawned` | `despawn()` が終わった |
 | `door_blocked(door_name)` | 閉まった扉の前で止まった |
+| `move_cancelled` | 移動が外から中断された(`stop` / `set_active(false)` / `teleport_to`)。このとき `arrived` も出るので `await go_to()` は必ず返る |
 
 移動
 
@@ -119,6 +120,7 @@ NpcInstaller.all()                    # -> 置かれている NPC 全部
 |---|---|
 | `last_move_blocked` | 直前の移動が**閉まった扉**に阻まれて終わった |
 | `last_move_failed` | 直前の移動が**家具などで詰まって**打ち切られた |
+| `last_move_cancelled` | 直前の移動が**外から中断**された |
 | `blocked_door_name` | 阻んだ扉の名前 |
 | `last_steer_reason` / `last_desired` | デバッグ用。直近の操舵の理由と目標速度 |
 
@@ -140,6 +142,11 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 | `state` / `state_name()` | 現在の状態 |
 | `coffin_position()` / `coffin_top_y()` | 棺の座標と蓋の上面(実測 0.884) |
 
+`set_target_entry()` の開口部へ歩いて行けないときは、**ナビ経路で一番近い開口部に切り替えます**
+(例: 式場の東裏にスポーンする Spawn_Cat5 は勝手口に届かないので `Window_Shikijo` に回る)。
+切り替え先も無ければ `OUTSIDE_IDLE` に戻ります。開口部の外側 1.6m 以内に着けていないときは
+引っ掻き音を鳴らしません(遠くの扉から音だけ鳴るのを防ぐため)。
+
 状態遷移: `OUTSIDE_IDLE` → `APPROACH` → (開いていれば)`ENTERING` → `INSIDE_WANDER` → `TO_COFFIN`
 → `ON_COFFIN`(蓋の上へ 0.4 秒で飛び乗って `sit`)。
 プレイヤーが `[E] 追い払う` で `SHOOED` → 最寄りの開いた開口部から外へ。
@@ -158,11 +165,12 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 | `set_ceiling_mode(on)` | 天井を這う。y = `ceiling_height - body_height`(廊下で 1.60)、モデルを上下反転 |
 | `go_to_and_take(target)` | 真エンド。到着で `took_target(target)` |
 | `set_eye_glow(f)` / `distance_to_player()` | 目は距離で自動的に強まる(既定 5.0 × 1.0〜2.6) |
-| `caught` | 1.2m 以内に入った。火車は 1 秒止まる。**演出は director** |
+| `caught` | 1.2m 以内に入った。火車は 1 秒止まる。**演出は director**。掴んでいる間は再入も二重発火もしない |
 | `player_sees_me` | 視界(FOV 100°・遮蔽なし)に入っているか |
 
 速さは見られている間 3.0 m/s、見失われている間 1.2 m/s(プレイヤーは 2.5)。
-`relight_success` を受けると自動で `retreat()` する。
+`relight_success` を受けると自動で `retreat()` する(掴んでいる最中でも退く)。
+ただし `stop_chase()` で完全停止させたあとは反応しない。再開は `activate()` / `start_chase()` / `resume()`。
 一度掴んだあとは `catch_rearm_distance`(2.4m)まで離れるまで掴み直さない。
 
 ### `NpcSon` / `NpcBoss` / `NpcGranddaughter`
@@ -196,7 +204,9 @@ await br.rise()                          # rise アニメ 1 回 + body_rise 音 
 |---|---|
 | `OPENINGS` | 外から入れる 5 つの開口部(扉 2・窓 3)の内外の代表点、敷居の高さ、幅 |
 | `is_opening_open(name)` / `opening_node(name)` / `opening_center(name)` | |
-| `nearest_open_opening(from, only_open := true)` | |
+| `nearest_open_opening(from, only_open := true)` | 直線距離 |
+| `nearest_reachable_entry(world, from, only_open := false)` | **ナビ経路長**で選ぶ。建物の裏に居る猫が反対側の扉を目指して詰まらない |
+| `grab_materials(root, name)` / `apply_emission(mats, energy, color)` | 毎フレーム触る発光用。`_ready` で 1 回拾って以降は直接書き換える |
 | `snap(world, pos)` | ナビメッシュ上の最寄り点 |
 | `clear_line(world, a, b, exclude)` / `visible_through_openings(...)` | 視線判定。後者は閉じた窓のガラス越しも「見えている」扱い |
 | `set_emission(root, material_name, energy, color)` | マテリアルを複製してから emission を差し替える |
@@ -282,7 +292,8 @@ gd.set_talkable(true)
 
 ```bash
 godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
-#   cat_enter / cat_shoo / boss_leave / kasha_chase / son_sleep / api / facing / free
+#   cat_enter / cat_shoo / boss_leave / kasha_chase / son_sleep / api / facing / cat_all / free
+#   cat_all … 猫 5 匹を同時に勝手口へ向かわせ、2 秒ごとに state と座標を出して詰まりを測る
 ```
 
 状態遷移とイベントを print しながら `out/npc/` にスクリーンショットを残す。

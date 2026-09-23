@@ -9,6 +9,7 @@ extends Node3D
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=son_sleep
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=api      # API と演出 API
 ##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=facing   # 正面の向きの確認
+##   godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_all  # 猫5匹の到達測定
 ##
 ## --out=out/npc で出力先を変えられる。--free で自由に見回す(カメラは WASD + マウス)。
 
@@ -69,6 +70,7 @@ func _ready() -> void:
 		"son_sleep": await _son_sleep()
 		"api": await _api()
 		"facing": await _facing()
+		"cat_all": await _cat_all()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
@@ -297,6 +299,29 @@ func _api() -> void:
 	print("  go_to_and_take: took_target=%s 火車 pos=%v 息子 pos=%v" % [took[0],
 		k2.global_position, son.global_position])
 	await _shot("api_02_kasha_takes_son", Vector3(-3.45, 1.15, 1.55), Vector3(-1.5, 0.4, 2.25))
+
+
+## 猫 5 匹を同時に勝手口へ向かわせ、どの個体が詰まるかを測る。
+func _cat_all() -> void:
+	building.get_door(&"Door_Backyard").open()
+	building.get_door(&"Door_Shikijo").open()
+	var cats := NpcInstaller.find_all(&"cat")
+	for c in cats:
+		(c as Cat).activate()
+		(c as Cat).set_target_entry(&"Door_Backyard")
+	for step in 16:
+		await get_tree().create_timer(2.0).timeout
+		var line := "t=%2ds " % ((step + 1) * 2)
+		for c in cats:
+			var k := c as Cat
+			line += "%s:%s@(%.1f,%.1f)%s " % [k.name, k.state_name(),
+				k.global_position.x, k.global_position.z,
+				"!" if k.last_move_failed else ""]
+		print(line)
+	for c in cats:
+		var k := c as Cat
+		print("  %s 最終 state=%s pos=%v inside=%s failed=%s" % [k.name, k.state_name(),
+			k.global_position, k.is_inside, k.last_move_failed])
 
 
 ## 正面の向きの確認。猫と社長を「+X を向け」と指示して、-X 側と +X 側の両方から撮る。
