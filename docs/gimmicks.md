@@ -79,3 +79,72 @@
 24. 「かえして」を明確に: 電話の声の後に猫の鳴き声、独白「猫を、返せと言っている。」
 25. エンディング後に「真相」の短い回想(3枚の静止画: 猫を積んだ軽トラ、首、台帳)+ 解説文
 26. タイトルの到達エンディング一覧から、到達済みの結末の解説を読める
+
+---
+
+# E. 実装仕様(推奨セット、2026-09-24 決定)
+
+採用: 謎解き 1・2・5 / ギミック 7・9・10・12 / 恐怖 15・16・18・20 / ストーリー 21〜25。テキストは `docs/script.md` の「v0.3 追加」節が正本。
+
+## E-1 金庫は 4 桁ダイヤル(謎解き 1)
+- 社長の机(`BossDesk`)は鍵ではなく **メモ**(Note)を出す: 「金庫の番号は婆さんの命日。忘れるな。」(21:00 から読める、鍵の出番待ちは廃止)
+- 遺影(`Iei`)に「遺影の裏を見る」(hold 0.8)→ Note「春日 キヨ　令和×年十月九日 没　行年八十八」→ 番号 **1009**
+- 金庫(`Safe`)「金庫を開ける」→ `await Dialogue.code_input("金庫", 4)` → 一致で開く(`safe_open`)、不一致で「違う。」+ `safe_wrong`。3 回連続で外すと棺から `coffin_knock` と独白「……急かされている。」
+- 正解は director が `Game.set_flag(&"safe_code", "1009")`。autoplay は `Dialogue.auto_code` で入力。
+- 中身は従来どおり台帳(収集④)。金庫は 21:00 から挑戦できる(番号を知っていれば早く開けられる=謎解きの報酬)。
+
+## E-2 分電盤は 3 本のレバー(謎解き 2)
+- `Breaker` に子レバー 3 本(`Lever_Main` 主幹 / `Lever_Hall` 廊下・事務所 / `Lever_Shikijo` 式場)。各レバーは Interactable「レバーを上げる」(hold 0.6)。
+- 停電(23:30)で 3 本とも落ちる。**正しい順は 主幹 → 廊下 → 式場**(分電盤の横の掲示「復旧手順」に書いてある)。順を間違えると `spark` が鳴ってそのレバーが再び落ち、別の部屋の灯りが 1 つ消え(director が `Building.set_room_lights`)、独白「跳ねた。順番がある。」
+- イベント `breaker_lever{name, ok}`。3 本正しく上がれば `breaker_on`。
+
+## E-3 自分から電話をかける(謎解き 5)
+- 事務所の壁の貼り紙(level)に短縮番号: 「社長 0246 / 春日 ひかり 3175 / 春日(キヨ)宅 4419」
+- `Phone`: 鳴っていない時「受話器を取る」→ `await Dialogue.code_input("番号", 4)` → `Events.phone_dialed{number}`。応答は director が `Phone.play_remote(sound)` と字幕で:
+  - 0246 社長: 呼び出し音 ×3 → 留守電 → 息づかい → 切れる
+  - 3175 ひかり: 出る。台詞(script.md)。02:00 以降にかけると「……父は、まだそこに?」の後に猫の声。
+  - 4419 キヨ宅: 呼び出し音 → 猫の鳴き声が何匹も → 「……かえして……」→ 異変度 +1、最寄りの窓に猫。
+  - それ以外: 「現在使われておりません」(`phone_voicemail` 流用)
+- 各番号は一夜に何度でもかけられるが、応答は 2 回目以降短くなる。
+
+## E-4 押入れと障子(ギミック 7)
+- 押入れ(`Door_Oshiire`)を開けると中に前任者の鞄(`Anchor_OshiireBag` に Note)。収集⑤「前任者の走り書き」。
+- 障子(`Window_Hikaeshitsu`)を 23:00 以降に開けると、駐車場の猫が一斉にこちらを向き目が光る(`cat_meow` 合唱、`stinger_2`)。1 回だけ。
+
+## E-5 血の手形(ギミック 9)
+- 03:00 以降、式場の入口 → 廊下 → 事務所 → 金庫の扉、の順に血の手形(`blood_handprint.png` デカール)が増える。プレイヤーが廊下に入るたびに 3 枚ずつ、計 15 枚。金庫の扉には引きずった血痕(`blood_smear.png`)。
+- 独白(初回)「手形だ。……小さい。」(女性の手)。金庫まで辿り着いた時「金庫の前で途切れている。」
+
+## E-6 事務所のラジオ(ギミック 10)
+- `Anchor_Radio`(事務所の棚)に `Radio`(systems)。「ラジオを消す/つける」。
+- 01:30(日誌の後)に勝手につく(`radio_talk`=深夜放送の呟き)。消すと 20 秒後に再びつき、今度は途中で `phone_voice_wet` に変わる。2 回目に消すと止まり、遺影が伏せる。
+
+## E-7 冷凍庫の奥の袋(ギミック 12)
+- 03:40(冷凍庫が空)以降、庫内の奥に黒い袋(`body_bag.glb`)。「袋を調べる」→ Note 収集⑥「動物愛護センター 収容票」。読了で独白「十月九日。おばあちゃんが死んだ日だ。」
+
+## E-8 遺影が家族写真に(恐怖 15)
+- 異変度 3 以上で式場に入ると、遺影が 2 秒だけ家族写真(`family_photo.png`: キヨ・誠・ひかり・もう一人は顔が潰れている)に変わって戻る。03:40 以降はその「もう一人」が自分の後ろ姿(`family_photo_player.png`)。遺影エンドの前振り。
+
+## E-9 廊下の猫の目(恐怖 16)
+- 00:00 以降、廊下の暗がり(突き当たり・北枝・式場の戸の陰)に光る目のペアが現れる。数は 2 → 6 → 12 と増え、近づくと消える。`cat_purr` を極小音で。
+
+## E-10 窓の外の猫の群れ(恐怖 18)
+- 03:50、式場の窓と控室の障子の外に猫 20 匹以上(静的な `cat.glb`、`sit`)が窓を向いて並ぶ。見ると `cat_chorus`(低い合唱)。04:00 の全消灯で消える。
+
+## E-11 小窓の隣の顔(恐怖 20)
+- 03:40 以降の顔ビュー(`show_face`)で、故人の顔の隣に**もう一つの顔**(`body_face_second.png`、目を見開いた青白い顔)が 0.5 秒だけ映って消える。`breath_close`。
+
+## E-12 ストーリーの見せ方(21〜25)
+- 21: 導入の社長と孫娘に 1 行ずつ(script.md)。
+- 22: 収集物①〜⑥を読んだ直後の独白 1 行(script.md)。
+- 23: 01:30 以降、息子が寝ている控室の戸の前(1.5m)に立つと寝言(字幕、`snore` の合間)。3 種を順に。
+- 24: 02:30 の電話の後、猫の合唱 → 独白「猫を、返せと言っている。」
+- 25: エンディング文の**前**に「真相」の回想: 静止画 3 枚(`recap_truck.png` 猫を積んだ軽トラ / `recap_cats.png` 集まる猫の目 / `recap_ledger.png` 台帳)を各 4 秒、1 行ずつ。読んだ収集物に対応する行だけ文が出て、未読は「……」。
+
+## 担当割り
+- player: `HUD.show_code_input(title, length) -> String`(ダイヤル UI)、`Ending.show_recap(images, lines)`
+- systems: Safe(ダイヤル)、BossDesk(メモ)、Iei(裏の Note)、Breaker(3 レバー+順序)、Phone(発信)、Radio、Freezer(袋+Note)、Coffin(第二の顔)
+- level: `Anchor_Radio`、`Anchor_OshiireBag`、分電盤横の「復旧手順」掲示、電話番号の貼り紙の文言
+- models: `radio.glb`、`body_bag.glb`、`family_photo.png`、`family_photo_player.png`、`body_face_second.png`、`recap_truck.png`、`recap_cats.png`、`recap_ledger.png`、`blood_handprint.png`、`blood_smear.png`
+- audio: `radio_talk`(ループ)、`radio_on`、`radio_off`、`phone_dial`、`phone_ringback`(ループ)、`phone_voicemail`、`phone_unavailable`、`cat_chorus`、`spark`、`safe_wrong`
+- director: 上記すべての発火・字幕・autoplay 対応、time table v0.3 への統合
