@@ -14,6 +14,7 @@ var busy: bool = false
 var auto_advance: bool = false
 var auto_line_seconds: float = 0.15
 var auto_chooser: Callable = Callable()   # func(prompt: String, options: Array) -> int
+var auto_code: String = ""                # 自動プレイ時に code_input が返す文字列(空なら "")
 
 func register_ui(node: Node) -> void:
 	ui = node
@@ -76,6 +77,21 @@ func note(title: String, body: String) -> void:
 		print("[note] %s\n%s" % [title, body])
 		await get_tree().create_timer(0.1).timeout
 	_release()
+
+## 数字入力(金庫のダイヤル、電話の番号)。キャンセルは "" を返す。UI は HUD の show_code_input(title, length) -> String。
+func code_input(title: String, length: int = 4) -> String:
+	await _acquire()
+	var result := ""
+	if auto_advance:
+		result = auto_code
+		await get_tree().create_timer(auto_line_seconds, false).timeout
+	elif ui and ui.has_method("show_code_input"):
+		result = await ui.show_code_input(title, length)
+	else:
+		print("[code_input] %s (%d) -> ''" % [title, length])
+		await get_tree().create_timer(0.1, false).timeout
+	_release()
+	return result
 
 ## 画面中央に短く出る独白(モノローグ)。話者なし。
 func monologue(text: String) -> void:
