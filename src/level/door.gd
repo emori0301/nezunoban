@@ -95,7 +95,7 @@ func open(force: bool = false) -> void:
 	if auto_close_after > 0.0:
 		_auto_id += 1
 		var my := _auto_id
-		await get_tree().create_timer(auto_close_after).timeout
+		await get_tree().create_timer(auto_close_after, false).timeout
 		if my == _auto_id and is_open:
 			close()
 

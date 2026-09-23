@@ -241,7 +241,7 @@ func flicker(room: StringName, duration: float = 2.0) -> void:
 	var t := 0.0
 	while t < duration:
 		var step := randf_range(0.04, 0.16)
-		await get_tree().create_timer(step).timeout
+		await get_tree().create_timer(step, false).timeout
 		if not is_inside_tree():
 			return
 		t += step
