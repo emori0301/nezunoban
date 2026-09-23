@@ -20,6 +20,12 @@ func _ready() -> void:
 	var b: Node3D = load("res://src/level/building.tscn").instantiate()
 	add_child(b)
 	Game.level = b
+	# 本編と同じ条件で確かめたいとき: systems のプレハブを載せてからナビを焼き直す
+	if args.has("systems") and ResourceLoader.exists("res://src/systems/installer.tscn"):
+		add_child(load("res://src/systems/installer.tscn").instantiate())
+		await get_tree().process_frame
+		if b.has_method("rebake_navmesh"):
+			b.rebake_navmesh()
 
 	cam = Camera3D.new()
 	cam.fov = 70.0
@@ -276,6 +282,8 @@ func _check(b: Node3D) -> void:
 	for np in [["Spawn_Boss → Anchor_BossDesk", &"Spawn_Boss", &"Anchor_BossDesk"],
 			["Spawn_Boss → Anchor_Altar", &"Spawn_Boss", &"Anchor_Altar"],
 			["Spawn_Granddaughter → Anchor_Coffin", &"Spawn_Granddaughter", &"Anchor_Coffin"],
+			["Spawn_Granddaughter → Spawn_Player", &"Spawn_Granddaughter", &"Spawn_Player"],
+			["Spawn_Boss → Spawn_Player", &"Spawn_Boss", &"Spawn_Player"],
 			["Spawn_Son → Spawn_Player", &"Spawn_Son", &"Spawn_Player"],
 			["Spawn_Kasha → Anchor_Coffin", &"Spawn_Kasha", &"Anchor_Coffin"]]:
 		var a: Node3D = b.get_anchor(np[1])
@@ -307,6 +315,32 @@ func _check(b: Node3D) -> void:
 		var ok: bool = pth.size() >= 2 and off < 0.6 and hit == 0
 		print("  [%s] %-36s %5.1f m  投影ずれ %.2f m  家具に当たる点 %d" % [
 			"OK " if ok else "NG ", np[0], dd, off, hit])
+
+	# 椅子のブロックの中に立たされても通路へ出られるか(autoplay で実際に起きた位置)
+	print("--- 椅子の間から脱出 ---")
+	for pair2 in [[Vector3(12.157, 0.0, 0.65), Vector3(-9.6, 0.0, 0.0)],
+			[Vector3(11.15, 0.0, -1.65), Vector3(-9.6, 0.0, 0.0)],
+			[Vector3(13.55, 0.0, 0.65), Vector3(-9.6, 0.0, 0.0)],
+			[Vector3(3.946, 0.0, -0.553), Vector3(0.916, 0.0, -6.931)]]:
+		var trapped: Vector3 = pair2[0]
+		var pth2 := NavigationServer3D.map_get_path(map, trapped, pair2[1], true)
+		var off2 := 99.0 if pth2.size() == 0 else pth2[0].distance_to(trapped)
+		var d2 := 0.0
+		for i in range(1, pth2.size()):
+			d2 += pth2[i].distance_to(pth2[i - 1])
+		# 経路が壁を突っ切っていないか、カプセルで舐めて確かめる
+		var h2 := 0
+		for i in range(1, pth2.size()):
+			var sg := pth2[i] - pth2[i - 1]
+			var st := maxi(1, int(sg.length() / 0.2))
+			for k in st + 1:
+				navparams.transform = Transform3D(Basis(),
+					pth2[i - 1] + sg * (float(k) / st) + Vector3(0, 0.78, 0))
+				if space.intersect_shape(navparams, 1).size() > 0:
+					h2 += 1
+		print("  [%s] %s → %s  %5.1f m  投影ずれ %.2f m  当たり %d  経由点 %d" % [
+			"OK " if (pth2.size() >= 2 and off2 < 0.6 and h2 == 0) else "NG ",
+			trapped, pair2[1], d2, off2, h2, pth2.size()])
 
 	# アンカーの高さ。モデルの原点は底面中央なので、真下の面と一致しているか見る。
 	# 壁付け(分電盤)と天井付け(CCTV)は床までの距離が出るので別扱い。

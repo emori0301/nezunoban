@@ -142,11 +142,14 @@ static func _shikijo(b: Building) -> void:
 		Vector3(0.55, 1.75, 0.55), Color(0.55, 0.52, 0.45))
 
 	# 折りたたみ椅子 5 列 x 4 行。中央(z = -0.5)は焼香の通路として空ける。
+	# 中央(z = -0.5)は焼香の通路。行の間にも 1.0m の横通路を入れて 4 ブロックに割る。
+	# 椅子はナビの障害物なので、通路が無いと人が椅子の間に閉じ込められる。
 	const CHAIR_Z := [-3.0, -2.1, -1.2, 0.2, 1.1]
-	for row in 4:
+	const CHAIR_X := [10.7, 11.6, 13.1, 14.0]
+	for row in CHAIR_X.size():
 		for col in CHAIR_Z.size():
 			b.add_prop(R, "Chair_%d_%d" % [row, col], "folding_chair",
-				Vector3(10.9 + row * 1.0, 0.0, CHAIR_Z[col]), -90.0,
+				Vector3(CHAIR_X[row], 0.0, CHAIR_Z[col]), -90.0,
 				Vector3(0.46, 0.86, 0.5), Color(0.20, 0.20, 0.22))
 
 	# 窓
@@ -160,7 +163,7 @@ static func _shikijo(b: Building) -> void:
 	_aim(cam, Vector3(16.9, 0.7, -0.5))
 
 	# 孫娘は後列に残っている
-	b.add_anchor(R, "Spawn_Granddaughter", Vector3(10.35, 0.0, 1.1), -90.0)
+	b.add_anchor(R, "Spawn_Granddaughter", Vector3(9.8, 0.0, 1.3), -90.0)
 
 	# 祭壇スポット(天井の埋め込みダウンライト2灯)。蛍光灯とは別系統で、
 	# set_room_lights では消えず set_all_lights(false) でだけ落ちる。影は出さない。

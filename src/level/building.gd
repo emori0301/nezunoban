@@ -12,6 +12,7 @@ extends Node3D
 ##   set_aux_lights(room, on) / get_aux_light_state(room)  … 祭壇スポットなど別系統
 ##   set_emergency_lights(on) / get_emergency_light_state()  … 非常口サイン(全消灯でも残る)
 ##   hide_anchor_prop(anchor)   … systems が実物を置くとき、level のプレースホルダを消す
+##   rebake_navmesh()           … systems/npc の配置後に main が呼ぶ。navsource グループを含めて焼き直す
 
 const OUTSIDE := &"Room_Outside"
 
@@ -247,6 +248,21 @@ func flicker(room: StringName, duration: float = 2.0) -> void:
 		_apply_lights(room, randf() < 0.42)
 	_flickering[room] = false
 	_apply_lights(room, get_light_state(room))
+
+
+## ナビメッシュを焼き直す。systems / npc がプレハブを置いた「後」に main が呼ぶ。
+## navsource グループに入っているノードはすべて障害物として拾う(扉は入れていないので通れる)。
+## 本編では systems のプロップが初回ベイクより後に生えるので、これを呼ばないと
+## NPC が「ナビ上は歩ける家具の中」に立ってしまう。
+func rebake_navmesh() -> void:
+	if nav == null or nav.navigation_mesh == null:
+		return
+	var map := get_world_3d().navigation_map
+	NavigationServer3D.map_set_cell_size(map, 0.1)
+	NavigationServer3D.map_set_cell_height(map, 0.1)
+	nav.bake_navigation_mesh(false)
+	if Game.debug:
+		print("[level] navmesh rebaked: %d polygons" % nav.navigation_mesh.get_polygon_count())
 
 
 ## systems が実物のインタラクト可能オブジェクトを置くとき、level のプレースホルダを消す。
@@ -657,3 +673,5 @@ func _build_nav() -> void:
 	nm.filter_ledge_spans = true
 	nav.navigation_mesh = nm
 	nav.bake_navigation_mesh(false)
+	if Game.debug:
+		print("[level] navmesh baked (level only): %d polygons" % nm.get_polygon_count())
