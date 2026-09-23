@@ -7,7 +7,10 @@ const DIR := "res://assets/audio/"
 ## 音ごとの推奨ゲイン(docs/previews/audio_report.md の最終列から生成)。play/play_at の volume_db に加算される。
 const GAIN_DB := {
 	&"breath_close": -12.0,
+	&"car_arrive": -4.0,
+	&"cat_jump": -6.0,
 	&"cat_purr": -16.0,
+	&"cloth_drop": -6.0,
 	&"coffin_scratch": -6.0,
 	&"footstep_ceiling_1": -8.0,
 	&"footstep_ceiling_2": -8.0,
@@ -17,6 +20,8 @@ const GAIN_DB := {
 	&"page_turn": -10.0,
 	&"paper_rustle": -10.0,
 	&"phone_breath": -8.0,
+	&"snore_1": -14.0,
+	&"snore_2": -14.0,
 	&"step_concrete_1": -14.0,
 	&"step_concrete_2": -14.0,
 	&"step_concrete_3": -14.0,
