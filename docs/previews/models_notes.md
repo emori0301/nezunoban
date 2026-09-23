@@ -697,3 +697,32 @@ blender --background --python tools/blender/build_humans_mpfb.py -- npc_boss   #
 | `npc_boss` | 4477 | 1.71 m | Belt / Cloth / Collar / Hair / Hem / body / Trouser |
 | `npc_son` | 4392 | 1.75 m | 同上 |
 | `npc_granddaughter` | 4097 | 1.62 m | Cloth / Hair / body / Skirt / Trouser |
+
+### in-game での見え方
+
+`out/models/boss.png`(受付、PM 9:00、正面 2m)で、社長がゲーム内でも人物として
+読めることを確認しました。640x360 + VHS でも、髪・顔・首・スーツ・腕の
+シルエットが人間として成立しています。
+
+撮影コマンド:
+
+```bash
+godot --path . res://src/level/_test_tour.tscn -- --api      # Spawn 座標を確認
+godot --path . -- --skip-title --time=21:00 \
+  --screenshot=out/models/boss.png --pos=-9.6,1.6,-2.2 --yaw=-90 --wait=1.5
+```
+
+**yaw の向き**: `docs/viewpoints.json` と突き合わせた結果、**yaw=-90 が +X、
+yaw=90 が -X** です。
+
+孫娘と息子は撮れませんでした。モデル側の問題ではなく、以下のためです。
+
+- **息子**: `src/npc/installer.gd` で `active: false`。開始時は居ません
+  (00:30 の来館イベントで有効になる想定)
+- **孫娘**: `active: true` ですが、21:12 に Spawn 位置(9.80, 0, 1.30)へ
+  カメラを向けても写りません。式場の照明も消えたままです。
+  director の autoplay 経由(`out/director/night/*.png`)では式場が点灯しているので、
+  `--screenshot` だけでは照明とNPCの配置が走らない可能性があります(未確認)
+
+孫娘と息子の in-game 確認が要る場合は、**その時刻にどこに立つか**と
+**照明を点ける手順**を npc / director 側から教えてください。
