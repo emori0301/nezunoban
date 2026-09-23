@@ -52,6 +52,7 @@ func run() -> int:
 	await t_installer_find()
 	await t_moving_parts()
 	await t_review_fixes()
+	await t_blocked_text()
 
 	print("")
 	if failures.is_empty():
@@ -318,6 +319,91 @@ func t_clock_events() -> void:
 	ok(fired[0], "Clock.skip_to で 23:00 のイベントが出る")
 	eq(Clock.hhmm(), "23:01", "時刻表示")
 	Clock.game_minutes = 0.0
+
+## 押しても反応しないとき、理由の文が必ず出ること(ユーザー指摘「E を押しても反応しない」)
+func t_blocked_text() -> void:
+	print("\n-- blocked のときの理由文")
+	player.items.clear()
+	player.carried_item = &""
+
+	# 実際に can_interact が false になる状態
+	var sf := spawn("res://src/systems/safe.tscn") as Safe
+	ok(not sf.can_interact(player) and sf.get_blocked_text() != "", "金庫(鍵なし): %s" % sf.get_blocked_text())
+	sf.queue_free()
+
+	var br := spawn("res://src/systems/breaker.tscn") as Breaker
+	ok(not br.can_interact(player) and br.get_blocked_text() != "", "分電盤(落ちていない): %s" % br.get_blocked_text())
+	br.queue_free()
+
+	var cnd := spawn("res://src/systems/candle.tscn") as Candle
+	cnd.require_matches = true
+	cnd.light()
+	ok(not cnd.can_interact(player) and cnd.get_blocked_text() != "", "ロウソク(燃えている): %s" % cnd.get_blocked_text())
+	cnd.queue_free()
+
+	var nt := spawn("res://src/systems/note.tscn") as Note
+	nt.enabled = false
+	ok(not nt.can_interact(player) and nt.get_blocked_text() != "", "手紙(未有効): %s" % nt.get_blocked_text())
+	nt.queue_free()
+
+	var fl := spawn("res://src/systems/flower_stand.tscn") as FlowerStand
+	ok(not fl.can_interact(player) and fl.get_blocked_text() != "", "供花(水なし): %s" % fl.get_blocked_text())
+	fl.queue_free()
+
+	var iei := spawn("res://src/systems/iei.tscn") as Iei
+	ok(not iei.can_interact(player) and iei.get_blocked_text() != "", "遺影(伏せていない): %s" % iei.get_blocked_text())
+	iei.queue_free()
+
+	var cof := spawn("res://src/systems/coffin.tscn") as Coffin
+	ok(cof.get_blocked_text() != "", "棺(開けてはいけない): %s" % cof.get_blocked_text())
+	cof.set_open(true)
+	ok(not cof.can_interact(player) and cof.get_blocked_text() != "", "棺(蓋が開いている): %s" % cof.get_blocked_text())
+	cof.queue_free()
+
+	# 両手が塞がっている系
+	var sk := spawn("res://src/systems/sink.tscn") as Sink
+	var fz := spawn("res://src/systems/freezer.tscn") as Freezer
+	var mt := spawn("res://src/systems/matches.tscn") as Pickup
+	mt.carried = true
+	player.give_item(&"dry_ice", true)
+	ok(not sk.can_interact(player) and sk.get_blocked_text() != "", "流し(両手が塞がり): %s" % sk.get_blocked_text())
+	ok(not mt.can_interact(player) and mt.get_blocked_text() != "", "拾い物(両手が塞がり): %s" % mt.get_blocked_text())
+	ok(fz.get_blocked_text() != "", "冷凍庫(既に持っている): %s" % fz.get_blocked_text())
+	player.take_item(&"dry_ice")
+	fz.set_empty(true)
+	ok(fz.get_blocked_text() != "", "冷凍庫(空): %s" % fz.get_blocked_text())
+	sk.queue_free()
+	fz.queue_free()
+	mt.queue_free()
+
+	# 押せるが空振りする状態にも理由を用意してある
+	var ph := spawn("res://src/systems/phone.tscn") as Phone
+	ok(ph.get_blocked_text() != "", "電話(鳴っていない): %s" % ph.get_blocked_text())
+	ph.queue_free()
+
+	var inc := spawn("res://src/systems/incense_stand.tscn") as IncenseStand
+	Game.set_flag(&"incense_sticks", 0)
+	ok(inc.get_blocked_text() != "", "線香(在庫0): %s" % inc.get_blocked_text())
+	inc.queue_free()
+
+	var bd := spawn("res://src/systems/boss_desk.tscn") as BossDesk
+	ok(bd.get_blocked_text() != "", "社長の机(鍵の出番前): %s" % bd.get_blocked_text())
+	bd.queue_free()
+
+	var ft := spawn("res://src/systems/futon.tscn") as Futon
+	ok(ft.get_blocked_text() != "", "布団: %s" % ft.get_blocked_text())
+	ft.queue_free()
+
+	# 常に操作できるもの(blocked 状態が無いこと自体を確認する)
+	var gb := spawn("res://src/systems/guest_book.tscn") as GuestBook
+	ok(gb.can_interact(player), "芳名帳は常に見られる(読んでいる最中だけ塞がる)")
+	gb.queue_free()
+	var tv := spawn("res://src/systems/tv.tscn") as TV
+	ok(tv.can_interact(player), "TV は常に操作できる")
+	tv.queue_free()
+	var mon := spawn("res://src/systems/monitor.tscn") as Monitor
+	ok(mon.can_interact(player), "モニターは常に見られる")
+	mon.queue_free()
 
 ## review_1.md の指摘(M1 受話器置き忘れ / M2 運搬物の上書き / M3 モニター描画 / L2 Clock.speed)
 func t_review_fixes() -> void:

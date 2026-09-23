@@ -11,6 +11,7 @@ signal watered
 @export var change_prompt: String = "水を替える"
 @export var idle_prompt: String = "供花"
 @export var change_hold_time: float = 1.5
+@export var need_water_text: String = "水が要る。流しか。"
 @export var is_wilted: bool = true
 @export var flower_count: int = 7
 @export var stem_height: float = 0.34
@@ -104,6 +105,11 @@ func change_water(player: Node3D) -> void:
 # --------------------------------------------------------------------------
 # Interactable
 # --------------------------------------------------------------------------
+
+func get_blocked_text() -> String:
+	if not SystemUtil.has_item(Game.player, water_item):
+		return need_water_text
+	return super.get_blocked_text()
 
 func get_prompt() -> String:
 	if not SystemUtil.has_item(Game.player, water_item):

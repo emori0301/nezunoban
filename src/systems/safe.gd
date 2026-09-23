@@ -21,6 +21,9 @@ const NOTE_SCENE := "res://src/systems/note.tscn"
 @export var door_size: Vector3 = Vector3(0.44, 0.50, 0.04)
 ## safe.glb の "Door"(原点 (-0.205, 0.050, 0.254)、Y 回転で開く)
 @export var door_open_degrees: float = -108.0
+@export var locked_text: String = "鍵がかかっている。社長の机か。"
+@export var emptied_text: String = "もう何もない。"
+@export var busy_text: String = "いま開けている。"
 
 var is_open: bool = false
 
@@ -134,6 +137,15 @@ func get_prompt() -> String:
 	if required_item != &"" and not SystemUtil.has_item(Game.player, required_item):
 		return locked_prompt
 	return open_prompt
+
+func get_blocked_text() -> String:
+	if _busy:
+		return busy_text
+	if is_open:
+		return emptied_text
+	if required_item != &"" and not SystemUtil.has_item(Game.player, required_item):
+		return locked_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not is_open and not _busy

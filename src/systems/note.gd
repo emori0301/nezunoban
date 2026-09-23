@@ -21,6 +21,8 @@ signal read_again
 @export var read_prompt: String = "読む"
 @export var paper_size: Vector2 = Vector2(0.21, 0.29)
 @export var show_paper: bool = true      # 紙の板ポリを出す(モデルが無いとき用)
+@export var blank_text: String = "白紙だ。"
+@export var reading_text: String = "……読んでいる。"
 
 var has_been_read: bool = false
 
@@ -72,6 +74,13 @@ func read() -> void:
 # --------------------------------------------------------------------------
 # Interactable
 # --------------------------------------------------------------------------
+
+func get_blocked_text() -> String:
+	if _reading:
+		return reading_text
+	if not enabled or body == "":
+		return blank_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not _reading

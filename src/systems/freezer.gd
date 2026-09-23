@@ -16,6 +16,8 @@ signal found_empty
 @export var empty_line: String = "……空だ。もう無い。"
 @export var hands_full_prompt: String = "両手が塞がっている"
 @export var already_line: String = "ドライアイスはもう持っている。"
+@export var empty_text: String = "空だ。"
+@export var busy_text: String = "いま開けている。"
 @export var open_seconds: float = 2.2
 @export var keep_open: bool = false       # 確認用: 蓋を開けっぱなしにする
 ## freezer_chest.glb の "Lid"(原点 (0, 0.785, -0.342)、X 回転の - で開く)
@@ -155,6 +157,17 @@ func _can_interact(player: Node3D) -> bool:
 
 func _blocked_by_other_item(p: Node) -> bool:
 	return carried and SystemUtil.is_carrying(p) and not SystemUtil.has_item(p, item_name)
+
+func get_blocked_text() -> String:
+	if _busy:
+		return busy_text
+	if _blocked_by_other_item(Game.player):
+		return hands_full_prompt + "。"
+	if SystemUtil.has_item(Game.player, item_name):
+		return already_line
+	if is_empty:
+		return empty_text
+	return super.get_blocked_text()
 
 func _interact(player: Node3D) -> void:
 	take(player)

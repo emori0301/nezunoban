@@ -31,6 +31,9 @@ signal cat_crossed
 
 @export var allow_open_window: bool = false
 @export var refuse_line: String = "……開けてはいけない。"
+@export var blocked_open_text: String = "開けてはいけない。"
+@export var blocked_lid_open_text: String = "もう開いている。"
+@export var blocked_viewing_text: String = "……見ている。"
 @export var peek_prompt: String = "小窓を覗く"
 @export var dry_ice_prompt: String = "ドライアイスを交換する"
 @export var dry_ice_hold_time: float = 2.0
@@ -398,6 +401,15 @@ func get_prompt() -> String:
 	if _has_dry_ice():
 		return dry_ice_prompt
 	return peek_prompt
+
+func get_blocked_text() -> String:
+	if is_showing_face:
+		return blocked_viewing_text
+	if is_open:
+		return blocked_lid_open_text
+	if not allow_open_window and not _has_dry_ice():
+		return blocked_open_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not is_showing_face and not is_open

@@ -19,6 +19,7 @@ signal picked_up(item: StringName)
 @export var take_prompt: String = "拾う"
 @export var disappear: bool = true          # 拾ったら消える
 @export var hands_full_prompt: String = "両手が塞がっている"
+@export var hands_full_text: String = "両手が塞がっている。"
 
 func _ready() -> void:
 	super._ready()
@@ -29,6 +30,11 @@ func get_prompt() -> String:
 	if carried and SystemUtil.is_carrying(Game.player):
 		return hands_full_prompt
 	return take_prompt
+
+func get_blocked_text() -> String:
+	if carried and SystemUtil.is_carrying(Game.player):
+		return hands_full_text
+	return super.get_blocked_text()
 
 ## 運搬物として持つ拾い物は、すでに両手が塞がっていたら拾えない。
 func _can_interact(player: Node3D) -> bool:

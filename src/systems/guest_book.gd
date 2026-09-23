@@ -12,6 +12,7 @@ signal viewed
 @export var book_title: String = "芳名帳"
 @export var view_prompt: String = "芳名帳を見る"
 @export var lines: PackedStringArray = PackedStringArray()
+@export var reading_text: String = "……見ている。"
 
 var _viewing: bool = false
 
@@ -43,6 +44,11 @@ func view() -> void:
 	Audio.play_at(&"book_close", global_position, -6.0)
 	_viewing = false
 	viewed.emit()
+
+func get_blocked_text() -> String:
+	if _viewing:
+		return reading_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not _viewing

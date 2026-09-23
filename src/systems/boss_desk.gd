@@ -14,6 +14,7 @@ signal key_taken
 @export var nothing_line: String = "めぼしいものは無い。"
 @export var key_line: String = "引き出しの奥に鍵があった。"
 @export var has_key: bool = false
+@export var papers_text: String = "書類ばかりだ。"
 
 var key_given: bool = false
 
@@ -26,6 +27,11 @@ func enable_key(on: bool = true) -> void:
 	has_key = on
 	key_given = false
 	prompt = key_prompt if on else search_prompt
+
+func get_blocked_text() -> String:
+	if not has_key or key_given:
+		return papers_text
+	return super.get_blocked_text()
 
 func get_prompt() -> String:
 	return key_prompt if (has_key and not key_given) else search_prompt

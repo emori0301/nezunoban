@@ -12,6 +12,7 @@ signal fixed
 
 @export var fix_prompt: String = "遺影を直す"
 @export var idle_prompt: String = "遺影"
+@export var upright_text: String = "そのままでいい。"
 @export var photo_size: Vector2 = Vector2(0.22, 0.30)
 ## モデルは +Z が正面。
 @export var photo_offset: Vector3 = Vector3(0, 0.33, 0.058)
@@ -129,6 +130,11 @@ func set_portrait(texture: Texture2D) -> void:
 
 func get_prompt() -> String:
 	return fix_prompt if is_face_down else idle_prompt
+
+func get_blocked_text() -> String:
+	if not is_face_down:
+		return upright_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return is_face_down

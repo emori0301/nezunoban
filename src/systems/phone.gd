@@ -22,6 +22,7 @@ signal call_ended(was_answered: bool)
 @export var idle_prompt: String = "受話器を取る"
 @export var hangup_prompt: String = "受話器を置く"
 @export var shake_while_ringing: bool = true
+@export var dial_tone_text: String = "発信音だけだ。"
 
 var is_ringing: bool = false
 var off_hook: bool = false
@@ -161,6 +162,11 @@ func get_prompt() -> String:
 	if is_ringing:
 		return ring_prompt
 	return idle_prompt
+
+func get_blocked_text() -> String:
+	if not is_ringing:
+		return dial_tone_text
+	return super.get_blocked_text()
 
 func _interact(_player: Node3D) -> void:
 	if off_hook:

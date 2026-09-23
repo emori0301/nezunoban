@@ -15,6 +15,7 @@ signal restored
 @export var is_on: bool = true
 @export var restore_prompt: String = "ブレーカーを上げる"
 @export var idle_prompt: String = "分電盤"
+@export var normal_text: String = "異常はない。"
 @export var restore_hold_time: float = 1.0
 @export var panel_size: Vector3 = Vector3(0.30, 0.40, 0.12)
 ## レバーの位置(breaker_box.glb の前面に合わせてある)
@@ -100,6 +101,11 @@ func restore() -> void:
 
 func get_prompt() -> String:
 	return restore_prompt if not is_on else idle_prompt
+
+func get_blocked_text() -> String:
+	if is_on:
+		return normal_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not is_on

@@ -28,6 +28,8 @@ signal relight_failed
 @export var light_color: Color = Color(1.0, 0.72, 0.42)
 @export var relight_hold_time: float = 1.2
 @export var fail_line: String = "……つかない。"
+@export var still_burning_text: String = "まだ燃えている。"
+@export var need_matches_text: String = "マッチが要る。事務所か。"
 
 ## 終盤に director が true にすると、マッチが無いと点け直せなくなる。
 @export var require_matches: bool = false:
@@ -222,6 +224,13 @@ func _extinguish(_reason: StringName, smoke_scale: float = 1.0) -> void:
 # --------------------------------------------------------------------------
 # Interactable
 # --------------------------------------------------------------------------
+
+func get_blocked_text() -> String:
+	if is_lit and require_matches:
+		return still_burning_text
+	if require_matches and not SystemUtil.has_item(Game.player, &"matches"):
+		return need_matches_text
+	return super.get_blocked_text()
 
 func _can_interact(_player: Node3D) -> bool:
 	return not is_lit or not require_matches

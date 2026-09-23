@@ -9,6 +9,7 @@ signal declined
 @export var question: String = "少し休むか"
 @export var option_no: String = "休まない"
 @export var option_yes: String = "休む"
+@export var not_yet_text: String = "まだ休めない。"
 
 var _asking: bool = false
 
@@ -28,6 +29,9 @@ func ask() -> void:
 		rested.emit()
 	else:
 		declined.emit()
+
+func get_blocked_text() -> String:
+	return not_yet_text
 
 func _can_interact(_player: Node3D) -> bool:
 	return not _asking
