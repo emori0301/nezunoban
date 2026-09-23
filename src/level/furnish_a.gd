@@ -60,11 +60,33 @@ static func _genkan(b: Building) -> void:
 	LevelBuild.sign_text(node, "故 春日 キヨ 儀\n葬儀式場", Vector3(-8.58, 1.55, 1.4), -90.0,
 		0.165, Color(0.03, 0.03, 0.04), true, 384)
 
+	# 「忌中」の半紙(玄関を入ってすぐ、西の壁)
+	LevelBuild.box(node, Vector3(-10.90, 1.72, -1.45), Vector3(0.02, 0.44, 0.31),
+		LevelMaterials.plain(Color(0.88, 0.87, 0.83)), false, "", false)
+	LevelBuild.sign_text(node, "忌中", Vector3(-10.885, 1.72, -1.45), 90.0,
+		0.17, Color(0.06, 0.06, 0.07), true, 320)
+
 	# 受付まわりの小物
 	b.add_prop(R, "ReceptionFlower", "flower_stand", Vector3(-6.3, 0.0, -3.3), 180.0,
 		Vector3(0.5, 1.1, 0.5), Color(0.5, 0.45, 0.4))
 	LevelBuild.box(node, Vector3(-9.4, 1.07, -2.9), Vector3(0.22, 0.04, 0.3),
 		LevelMaterials.plain(Color(0.8, 0.78, 0.72)), false)
+
+	# 受付台の上。香典盆・筆ペン・記帳の敷き物・立札
+	LevelBuild.box(node, Vector3(-8.75, 1.065, -2.86), Vector3(0.36, 0.04, 0.27),
+		LevelMaterials.plain(Color(0.07, 0.07, 0.08)), false, "", false)
+	LevelBuild.box(node, Vector3(-8.75, 1.075, -2.86), Vector3(0.30, 0.02, 0.21),
+		LevelMaterials.plain(Color(0.12, 0.11, 0.12)), false, "", false)
+	LevelBuild.box(node, Vector3(-7.45, 1.049, -2.86), Vector3(0.52, 0.006, 0.34),
+		LevelMaterials.plain(Color(0.20, 0.14, 0.18)), false, "", false)
+	LevelBuild.box(node, Vector3(-7.15, 1.06, -2.78), Vector3(0.015, 0.015, 0.14),
+		LevelMaterials.plain(Color(0.09, 0.09, 0.10)), false, "", false)
+	LevelBuild.box(node, Vector3(-9.45, 1.10, -2.82), Vector3(0.16, 0.10, 0.05), wood, false, "", false)
+	LevelBuild.box(node, Vector3(-9.45, 1.32, -2.82), Vector3(0.22, 0.34, 0.03), wood, false, "", false)
+	LevelBuild.box(node, Vector3(-9.45, 1.32, -2.804), Vector3(0.18, 0.29, 0.008),
+		LevelMaterials.plain(Color(0.88, 0.87, 0.82)), false, "", false)
+	LevelBuild.sign_text(node, "受付", Vector3(-9.45, 1.32, -2.796), 0.0,
+		0.1, Color(0.08, 0.08, 0.09), true, 256)
 
 	# 照明(電球色。切ると真っ暗)
 	b.add_fluorescent(R, Vector3(-9.2, 2.6, -1.6), 1.2, WARM, 0.85, 6.2, true)
@@ -286,6 +308,17 @@ static func _hikaeshitsu(b: Building) -> void:
 		LevelBuild.box(node, Vector3(gx, 1.25, 4.62), Vector3(0.025, 1.38, 0.02), wood, false, "", false)
 	for gy in [0.72, 1.25, 1.78]:
 		LevelBuild.box(node, Vector3(-3.0, gy, 4.62), Vector3(1.38, 0.025, 0.02), wood, false, "", false)
+
+	# 湯呑みと急須
+	var cup := LevelMaterials.plain(Color(0.72, 0.70, 0.64))
+	for cp in [[-1.62, 2.76], [-1.08, 2.82], [-1.38, 3.28]]:
+		LevelBuild.box(node, Vector3(cp[0], 0.375, cp[1]), Vector3(0.07, 0.07, 0.07), cup, false, "", false)
+	b.add_prop(R, "Kyusu", "kettle", Vector3(-1.60, 0.34, 3.22), 200.0,
+		Vector3(0.17, 0.15, 0.17), Color(0.32, 0.28, 0.24), false, false)
+	# 座布団の山(テレビ台の脇)
+	for si in 4:
+		b.add_prop(R, "ZabutonStack_%d" % si, "zabuton", Vector3(-0.78, si * 0.075, 2.45),
+			si * 7.0, Vector3(0.55, 0.08, 0.55), Color(0.35, 0.16, 0.16), false, false)
 
 	b.add_fluorescent(R, Vector3(-2.0, 2.3, 2.9), 0.9, Color(1.0, 0.93, 0.79), 0.8, 4.6, true)
 
