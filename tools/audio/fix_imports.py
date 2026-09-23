@@ -41,6 +41,7 @@ def main():
         return 1
     changed = 0
     total = 0
+    dropped = 0
     for f in sorted(os.listdir(AUDIO)):
         if not f.endswith(".wav.import"):
             continue
@@ -57,8 +58,29 @@ def main():
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
             changed += 1
-    print("import 設定: %d / %d 件を更新 (compress/mode=0 PCM)" % (changed, total))
+            dropped += _drop_cache(text)
+    print("import 設定: %d / %d 件を更新 (compress/mode=0 PCM)、キャッシュ破棄 %d 件"
+          % (changed, total, dropped))
     return 0
+
+
+def _drop_cache(import_text):
+    """.godot/imported/ の古い変換結果を消す。
+
+    Godot は .import の params だけが変わっても再インポートしてくれない
+    (ソース wav の md5 が同じなので「最新」と判断する)。
+    変換済みファイルと md5 を消しておけば、次の --import で作り直される。
+    .godot/ は生成物なので消して問題ない。
+    """
+    n = 0
+    targets = set(re.findall(r'res://(\.godot/imported/[^"\]]+)', import_text))
+    for rel in targets:
+        f = os.path.join(ROOT, rel)
+        for cand in (f, os.path.splitext(f)[0] + ".md5"):
+            if os.path.exists(cand):
+                os.remove(cand)
+                n += 1
+    return n
 
 
 if __name__ == "__main__":

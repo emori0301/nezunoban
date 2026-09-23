@@ -32,6 +32,7 @@ CLAUDE_MD = os.path.join(ROOT, "CLAUDE.md")
 
 # 波形を目で見る音 (依頼された 5 つ + 各系統から代表)
 PNG_NAMES = [
+    "door_lock", "door_unlock",
     "amb_morning", "car_arrive",
     "door_swing_open", "cat_meow_2", "cat_meow_3", "stinger_3",
     "snore_1", "snore_2", "cat_jump", "cloth_drop",
@@ -206,6 +207,11 @@ def write_report(rows, exp, not_written, orphan):
     lines.append("**順序に注意**: `.import` ファイルは Godot が import したときに初めて作られるので、")
     lines.append("新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。")
     lines.append("必ず **import -> fix_imports -> import** の順で回すこと。\n")
+    lines.append("また Godot は `.import` の params だけが変わっても再インポートしない"
+                 "(ソース wav の md5 が同じなので「最新」と判断する)。そのため `fix_imports.py` は")
+    lines.append("設定を書き換えたファイルについて `.godot/imported/` の変換済みデータも捨てる。")
+    lines.append("`verify_audio.gd` が `format=3` を報告したら QOA のまま入っているということなので、")
+    lines.append("`fix_imports.py` -> `--import` をもう一度回せば直る。\n")
 
     lines.append("## 照合結果\n")
     lines.append("- CLAUDE.md「音名一覧」: **%d** 個" % len(exp))

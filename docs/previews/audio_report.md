@@ -3,7 +3,7 @@
 `tools/audio/gen_audio.py` が自動生成する。手で編集しない。
 
 - 形式: WAV 44.1kHz / mono / 16bit。素材は一切使わず numpy で合成している。
-- 本数 **103**、合計 **357.0 秒**、**30.0 MB**(ループ 18 / 単発 85)。
+- 本数 **105**、合計 **358.3 秒**、**30.1 MB**(ループ 18 / 単発 87)。
 - ピーク正規化: 単発 -3 dBFS / 環境ループ -12 dBFS / ドローン -15 dBFS。全ファイル DC 除去済み。
 - ループ音には WAV の `smpl` チャンクを書いてある。インポータの `edit/loop_mode` は 既定の `Detect From WAV` のままでよく、ループ点は自動で付く。
 
@@ -25,9 +25,14 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 新しい wav を足した直後に `fix_imports.py` を先に走らせても効かない。
 必ず **import -> fix_imports -> import** の順で回すこと。
 
+また Godot は `.import` の params だけが変わっても再インポートしない(ソース wav の md5 が同じなので「最新」と判断する)。そのため `fix_imports.py` は
+設定を書き換えたファイルについて `.godot/imported/` の変換済みデータも捨てる。
+`verify_audio.gd` が `format=3` を報告したら QOA のまま入っているということなので、
+`fix_imports.py` -> `--import` をもう一度回せば直る。
+
 ## 照合結果
 
-- CLAUDE.md「音名一覧」: **103** 個
+- CLAUDE.md「音名一覧」: **105** 個
 - 欠け: **0** 
 - 一覧に無い余分な wav: **0** 
 
@@ -134,12 +139,14 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 | `door_knock_1` | 1.38 | -3.0 | -23.3 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_knock_2` | 1.27 | -3.0 | -22.6 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_knock_3` | 1.52 | -3.0 | -22.7 | — | 0.00000 | 0.00 | 0 | 0 |
+| `door_lock` | 0.70 | -3.0 | -24.5 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_locked` | 1.52 | -3.0 | -27.9 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_open` | 1.90 | -3.0 | -22.5 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_steel_close` | 3.04 | -3.0 | -20.0 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_steel_open` | 3.17 | -3.0 | -22.2 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_swing_close` | 1.14 | -3.0 | -26.1 | — | 0.00000 | 0.00 | 0 | 0 |
 | `door_swing_open` | 2.13 | -3.0 | -21.3 | — | 0.00000 | 0.00 | 0 | 0 |
+| `door_unlock` | 0.60 | -3.0 | -24.8 | — | 0.00000 | 0.00 | 0 | 0 |
 | `dry_ice_sizzle` | 2.67 | -3.0 | -18.7 | — | 0.00000 | 0.00 | 0 | 0 |
 | `fluorescent_flicker` | 1.76 | -3.0 | -29.5 | — | 0.00000 | 0.00 | 0 | 0 |
 | `footstep_ceiling_1` | 0.95 | -3.0 | -25.9 | — | 0.00000 | 0.00 | 0 | -8 |
@@ -197,6 +204,8 @@ godot --headless --path . --script res://tools/audio/make_bus_layout.gd   # バ�
 
 上半分が波形(横線は -3 dBFS と -12 dBFS の目安、クリップした列は赤)、下半分がスペクトログラム(縦軸は 30Hz〜20kHz の対数、上が高域、ダイナミックレンジ 78dB)。
 
+- `door_lock` — ![door_lock](audio_door_lock.png)
+- `door_unlock` — ![door_unlock](audio_door_unlock.png)
 - `amb_morning` — ![amb_morning](audio_amb_morning.png)
 - `car_arrive` — ![car_arrive](audio_car_arrive.png)
 - `door_swing_open` — ![door_swing_open](audio_door_swing_open.png)

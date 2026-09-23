@@ -2090,3 +2090,74 @@ def car_arrive():
 
     out = room(out, ROOM_OUT, wet=0.30)[:total]
     return norm_peak(dc_kill(out), -0.5)
+
+
+# ==========================================================================
+# 追加分: 施錠 / 解錠 (鉄扉寄り)
+# ==========================================================================
+def _key_turn(n, seed, count=5, base=2300.0, spread=1500.0):
+    """シリンダが回る「カチャ」。小さな金属の当たりが数個と、回転の擦れ。"""
+    r = rng(seed)
+    out = zeros(n)
+    t = 0.006
+    for k in range(count):
+        nc = min(N(0.05), n - N(t) - 1)
+        if nc < 64:
+            break
+        c = metal_hit(nc, seed + k, base=base + spread * r.random(), decay=0.007, count=4, bright=1.2)
+        c *= env_ar(nc, 0.00008, 0.0028, 8.0)
+        place(out, norm_peak(c, -1.0 - 6.0 * r.random()), t)
+        t += 0.026 + 0.026 * r.random()
+    scr = band(white(n, seed + 40), 900.0, 6500.0, order=2)
+    scr *= grain_env(n, max(10, int(n / SR * 110)), seed + 41, dur_sec=0.0026, jitter=0.9) * 0.28
+    return out + scr
+
+
+def _bolt_slide(n, seed, rev=False):
+    """デッドボルトが金物の中を滑る短い擦れ。"""
+    pts = [(0, 70.0), (0.4, 150.0), (1, 95.0)] if rev else [(0, 95.0), (0.4, 150.0), (1, 70.0)]
+    sc = scrape(n, seed, 600.0, 5200.0, segments(pts, n), rough=0.8, jitter=0.5, sharp=130.0)
+    sc *= segments([(0.0, 0.0), (0.15, 1.0), (0.8, 0.8), (1.0, 0.2)], n)
+    sc += 0.30 * bandpass(white(n, seed + 1), 1500.0, 2.0, 1) * segments([(0, 0.0), (0.3, 1.0), (1, 0.3)], n)
+    return sc
+
+
+def _bolt_hit(n, seed, heavy=1.0, bright=1.0, ring_dec=0.040, thud_dec=0.014):
+    """受け金に当たる金属の塊。鉄枠の中なので響かずすぐ死ぬ。"""
+    exc = white(n, seed) * env_ar(n, 0.00012, 0.0022, 8.0)
+    thud = lowpass(white(n, seed + 1) * env_ar(n, 0.0004, thud_dec, 5.0), 250.0, order=3) * 1.7 * heavy
+    thud += resonators(exc, [98.0, 172.0, 296.0], [8, 7, 6], [1.0, 0.50, 0.22]) * 1.2 * heavy
+    ring = metal_hit(n, seed + 2, base=880.0 * bright, decay=ring_dec, count=7, bright=1.1)
+    ring += metal_hit(n, seed + 3, base=2450.0 * bright, decay=ring_dec * 0.35, count=5, bright=1.0) * 0.5
+    return thud + 0.9 * ring
+
+
+LOCK_ROOM = dict(dur=0.22, decay=0.048, damp_hz=5200.0, predelay=0.005, seed=120)
+
+
+@reg("door_lock")
+def door_lock():
+    """鍵を回してデッドボルトが入る「カチャ、ガチン」。0.7 秒。"""
+    total = N(0.70)
+    out = zeros(total)
+    place(out, norm_peak(_key_turn(N(0.20), 3401, count=5), -7.0), 0.0)
+    place(out, norm_peak(_bolt_slide(N(0.16), 3402), -9.0), 0.20)
+    place(out, norm_peak(_bolt_hit(N(0.33), 3403, heavy=1.0, bright=1.0), -0.5), 0.36)
+    out = room(out, LOCK_ROOM, wet=0.24)[:total]
+    return norm_peak(dc_kill(out), -0.5)
+
+
+@reg("door_unlock")
+def door_unlock():
+    """逆順。ボルトが抜けてから鍵が戻る。0.6 秒。"""
+    total = N(0.60)
+    out = zeros(total)
+    # 抜ける方は軽くて硬い (受け金に押し付けられていない)
+    place(out, norm_peak(_bolt_hit(N(0.22), 3451, heavy=0.55, bright=1.18, ring_dec=0.026, thud_dec=0.009), -0.5), 0.0)
+    place(out, norm_peak(_bolt_slide(N(0.16), 3452, rev=True), -9.0), 0.05)
+    place(out, norm_peak(_key_turn(N(0.22), 3453, count=4, base=2500.0), -7.0), 0.22)
+    nt = N(0.10)
+    tick = metal_hit(nt, 3454, base=1900.0, decay=0.010, count=4, bright=1.0) * env_ar(nt, 0.0001, 0.004, 8.0)
+    place(out, norm_peak(tick, -8.0), 0.46)
+    out = room(out, LOCK_ROOM, wet=0.24)[:total]
+    return norm_peak(dc_kill(out), -0.5)
