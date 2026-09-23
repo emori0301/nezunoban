@@ -11,7 +11,9 @@ signal finished(ending_id: StringName)
 @export var to_title_text: String = "タイトルへ"
 ## 回想の静止画 1 枚あたりの表示秒数(advance で早送りできる)
 @export var recap_seconds: float = 4.0
-@export var recap_image_size: Vector2 = Vector2(512, 288)
+## 画面が 640x360 なので、下の 1 行ぶんを空けた 16:9 の枠に収める
+## (素材は 512x288 程度で作ってよい。ここには合わせて縮む)
+@export var recap_image_size: Vector2 = Vector2(464, 261)
 @export var line_fade: float = 1.4          ## 1行がフェードインする秒数
 @export var line_gap: float = 1.1           ## 行と行の間
 
@@ -128,8 +130,9 @@ func _build() -> void:
 	_recap_frame.anchor_bottom = 0.5
 	_recap_frame.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_recap_frame.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_recap_frame.offset_top = -46.0
-	_recap_frame.offset_bottom = -46.0
+	# 下の文のぶんだけ上に寄せる(中心 y = 180 - 32 = 148)
+	_recap_frame.offset_top = -32.0
+	_recap_frame.offset_bottom = -32.0
 	var rsb := StyleBoxFlat.new()
 	rsb.bg_color = Color(0.02, 0.02, 0.025)
 	rsb.border_color = Color(0.10, 0.10, 0.11)
@@ -147,7 +150,7 @@ func _build() -> void:
 	_recap_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_recap_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	# VHS 越しに見るので少し暗く落とす
-	_recap_image.modulate = Color(0.68, 0.68, 0.70)
+	_recap_image.modulate = Color(0.60, 0.60, 0.63)
 	_recap_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_recap_frame.add_child(_recap_image)
 
@@ -201,6 +204,13 @@ func show_recap(images: Array, lines: Array) -> void:
 		var line: String = String(lines[i]) if i < lines.size() else ""
 		_recap_image.texture = tex
 		_recap_frame.visible = tex != null
+		# 画像が無いときは文を画面中央に置く(下端に張り付くと据わりが悪い)
+		if tex != null:
+			_recap_line.offset_top = -74.0
+			_recap_line.offset_bottom = -24.0
+		else:
+			_recap_line.offset_top = -205.0
+			_recap_line.offset_bottom = -155.0
 		_recap_line.text = line
 		var fade_in := create_tween()
 		fade_in.tween_property(_recap, "modulate:a", 1.0, 0.7)
