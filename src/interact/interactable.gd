@@ -17,6 +17,8 @@ signal unfocused
 @export var required_item: StringName = &""
 @export var one_shot: bool = false
 @export var interact_distance: float = 2.2
+## 押しても何も起きないとき(can_interact が false)に HUD へ出す短い文。空なら共通の文。
+@export var blocked_text: String = ""
 
 var _used: bool = false
 
@@ -34,6 +36,12 @@ func get_prompt() -> String:
 
 func _missing_item_prompt() -> String:
 	return prompt
+
+## 押しても反応しない理由の文。派生は状況に応じて上書きしてよい(例: 「鍵がかかっている。」「空だ。」)。
+func get_blocked_text() -> String:
+	if required_item != &"" and not _player_has(required_item):
+		return blocked_text if blocked_text != "" else "何かが要る。"
+	return blocked_text
 
 func can_interact(player: Node3D) -> bool:
 	if not enabled or (one_shot and _used):
