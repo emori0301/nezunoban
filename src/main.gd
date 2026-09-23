@@ -33,7 +33,11 @@ func _ready() -> void:
 		add_child(_vhs)
 		if _vhs.has_method("attach"):
 			_vhs.attach(%GameViewportContainer)
-	if args.has("skip-title") or args.has("screenshot") or args.has("tour") or not ResourceLoader.exists(TITLE_PATH):
+	if args.has("title-shot"):
+		# QA: タイトル画面そのものを撮る(--title-shot=out/x.png)
+		_show_title()
+		_do_screenshot(String(args["title-shot"]))
+	elif args.has("skip-title") or args.has("screenshot") or args.has("tour") or not ResourceLoader.exists(TITLE_PATH):
 		start_game()
 	else:
 		_show_title()
