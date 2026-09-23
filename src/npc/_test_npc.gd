@@ -58,7 +58,7 @@ func _ready() -> void:
 	# ナビマップの同期を待つ
 	for i in 4:
 		await get_tree().physics_frame
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5, false).timeout
 
 	var scenario := String(args.get("scenario", "api"))
 	print("=== scenario: %s ===" % scenario)
@@ -71,6 +71,7 @@ func _ready() -> void:
 		"api": await _api()
 		"facing": await _facing()
 		"cat_all": await _cat_all()
+		"dir_repro": await _dir_repro()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			return
@@ -91,7 +92,7 @@ func _cat_enter() -> void:
 	building.get_door(&"Door_Shikijo").open()   # 式場の戸。猫は扉を開けられない
 	print("勝手口 is_open=%s / 式場 is_open=%s" % [door.is_open, building.get_door(&"Door_Shikijo").is_open])
 	cat.activate()
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5, false).timeout
 	await _shot("cat_01_outside", cat.global_position + Vector3(1.3, 0.85, -1.9),
 		cat.global_position + Vector3(0, 0.2, 0))
 
@@ -103,7 +104,7 @@ func _cat_enter() -> void:
 	# うろつきを飛ばして棺へ
 	cat._set_state(Cat.State.TO_COFFIN)
 	await _wait_state(cat, Cat.State.ON_COFFIN, 40.0)
-	await get_tree().create_timer(1.5).timeout
+	await get_tree().create_timer(1.5, false).timeout
 	print("猫の状態=%s  pos=%v  棺の上面 y=%.3f" % [cat.state_name(), cat.global_position, cat.coffin_top_y()])
 	await _shot("cat_03_on_coffin", Vector3(14.4, 1.35, -2.4), cat.global_position)
 	await _shot("cat_04_coffin_wide", Vector3(11.0, 2.2, -2.8), Vector3(16.9, 0.8, -0.5))
@@ -117,16 +118,16 @@ func _cat_shoo() -> void:
 	building.get_door(&"Door_Shikijo").open()
 	cat.activate()
 	cat.go_inside_now(&"Door_Backyard")
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	cat._set_state(Cat.State.TO_COFFIN)
 	await _wait_state(cat, Cat.State.ON_COFFIN, 40.0)
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	await _shot("shoo_01_before", Vector3(14.4, 1.35, -2.4), cat.global_position)
 
 	print("追い払う prompt=%s enabled=%s" % [cat.talk.get_prompt(), cat.talk.enabled])
 	cat.shoo()
 	print("猫の状態=%s" % cat.state_name())
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(2.0, false).timeout
 	print("追い払われた直後 pos=%v 速度=%.2f" % [cat.global_position,
 		Vector2(cat.velocity.x, cat.velocity.z).length()])
 	await _shot("shoo_02_running", Vector3(11.0, 1.5, -2.6), cat.global_position + Vector3(0, 0.2, 0))
@@ -146,7 +147,7 @@ func _boss_leave() -> void:
 	var t0 := Time.get_ticks_msec()
 	boss.leave_via_genkan()
 	for i in 7:
-		await get_tree().create_timer(0.5).timeout
+		await get_tree().create_timer(0.5, false).timeout
 		_dump(boss)
 		if i == 5:
 			await _shot("boss_02_walking", Vector3(-6.9, 1.7, 1.6), Vector3(-10.15, 0.95, -2.3))
@@ -166,7 +167,7 @@ func _kasha_chase() -> void:
 	building.set_room_lights(&"Room_Hall", true)
 	building.set_room_lights(&"Room_Shikijo", true)
 	building.set_room_lights(&"Room_Yukan", true)
-	await get_tree().create_timer(0.3).timeout
+	await get_tree().create_timer(0.3, false).timeout
 
 	kasha.activate()
 	print("火車 pos=%v" % kasha.global_position)
@@ -187,7 +188,7 @@ func _kasha_chase() -> void:
 
 	# 天井を這う
 	kasha.set_ceiling_mode(true)
-	await get_tree().create_timer(1.2).timeout
+	await get_tree().create_timer(1.2, false).timeout
 	print("天井モード y=%.2f (廊下の天井 2.5)" % kasha.global_position.y)
 	await _shot("kasha_03_ceiling", Vector3(6.4, 1.2, -0.4), kasha.global_position + Vector3(0, 0.2, 0))
 	kasha.set_ceiling_mode(false)
@@ -201,14 +202,14 @@ func _kasha_chase() -> void:
 
 	# 灯し直し成功 → 退却 → 再追跡
 	Events.emit_event(&"relight_success", {"n": 1})
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.5, false).timeout
 	print("退却 is_retreating=%s is_chasing=%s" % [kasha.is_retreating, kasha.is_chasing])
 	await _wait_until(func() -> bool: return kasha.global_position.z < -4.0, 15.0)
 	print("退却中 pos=%v 速度=%.2f" % [kasha.global_position,
 		Vector2(kasha.velocity.x, kasha.velocity.z).length()])
 	await _shot("kasha_05_retreat", Vector3(6.4, 1.5, -0.6), kasha.global_position + Vector3(0, 0.4, 0))
 	kasha.stop_chase()
-	await get_tree().create_timer(0.4).timeout
+	await get_tree().create_timer(0.4, false).timeout
 	print("stop_chase 後 is_chasing=%s 速度=%.2f" % [kasha.is_chasing,
 		Vector2(kasha.velocity.x, kasha.velocity.z).length()])
 
@@ -226,12 +227,12 @@ func _son_sleep() -> void:
 	print("控室に到着 pos=%v / 戸 is_open=%s / 詰まった=%s" % [son.global_position, door.is_open, son.last_move_failed])
 	await _shot("son_01_walk", Vector3(-1.1, 1.6, 4.3), son.global_position + Vector3(0, 1.0, 0))
 	son.drink_on_zabuton()
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(2.0, false).timeout
 	print("あぐら posture=%s anim=%s pos=%v" % [son.posture, son.current_anim(), son.global_position])
 	await _shot("son_02_drinking", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
 	await _shot("son_02b_drinking_side", Vector3(-3.45, 1.15, 2.30), Vector3(-1.35, 0.45, 3.8))
 	son.sleep()
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(2.0, false).timeout
 	print("is_sleeping=%s posture=%s anim=%s speed=%.2f フラグ=%s pos=%v yaw=%.1f" % [son.is_sleeping,
 		son.posture, son.current_anim(), son.anim.speed_scale,
 		Game.get_flag(&"son_asleep"), son.global_position, rad_to_deg(son.rotation.y)])
@@ -241,10 +242,10 @@ func _son_sleep() -> void:
 	# 孫娘が椅子に座る(sit アニメ)ところも一緒に見る
 	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
 	gd.sit_on_chair(Vector3(10.9, 0.0, 1.1), -90.0)
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	print("孫娘 posture=%s anim=%s" % [gd.posture, gd.current_anim()])
 	await _shot("son_05_granddaughter_sit", Vector3(13.2, 1.35, 1.1), Vector3(10.9, 0.85, 1.1))
-	await get_tree().create_timer(5.0).timeout
+	await get_tree().create_timer(5.0, false).timeout
 	print("5 秒後も寝ている=%s 頭=%v" % [son.is_sleeping, son.head_position()])
 
 
@@ -278,7 +279,7 @@ func _api() -> void:
 	for i in cats.size():
 		var c := cats[i] as Cat
 		c.sit_at(Vector3(-12.5, 0.0, 4.9 + i * 0.62), Vector3(-11.5, 0.2, 4.9 + i * 0.62))
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(0.8, false).timeout
 	print("  sit_at: 猫 %d 匹  state=%s  先頭 pos=%v" % [cats.size(),
 		(cats[0] as Cat).state_name(), (cats[0] as Node3D).global_position])
 	await _shot("api_01_cats_vending", Vector3(-14.6, 1.3, 5.9), Vector3(-11.8, 0.6, 6.0))
@@ -301,16 +302,59 @@ func _api() -> void:
 	await _shot("api_02_kasha_takes_son", Vector3(-3.45, 1.15, 1.55), Vector3(-1.5, 0.4, 2.25))
 
 
+## review_1.md M4 の再現。director と同じ順番で孫娘と息子を動かし、
+## 「到達できないので打ち切り」が出ないことを確かめる。
+func _dir_repro() -> void:
+	building.set_all_lights(true)
+	# --- 孫娘: face_off で棺の前まで teleport されたあと玄関から帰る ---
+	var gd := NpcInstaller.find(&"granddaughter") as NpcGranddaughter
+	player.teleport(Vector3(15.2, 0.0, -0.5), -90.0, 0.0)
+	await get_tree().create_timer(0.3, false).timeout
+	# director.face_off 相当: プレイヤーから 1.8m 離れた点へ teleport
+	var away := (gd.global_position - player.global_position)
+	away.y = 0.0
+	gd.teleport_to(player.global_position + away.normalized() * 1.8)
+	gd.face_player()
+	print("孫娘 face_off 後 pos=%v (棺の前)" % gd.global_position)
+	await _shot("m4_01_granddaughter_at_coffin", Vector3(12.4, 1.55, -2.6),
+		gd.global_position + Vector3(0, 1.2, 0))
+	var t0 := Time.get_ticks_msec()
+	await gd.leave_via_genkan()
+	print("孫娘 帰宅 pos=%v active=%s 所要 %.1f 秒" % [gd.global_position, gd.is_active,
+		(Time.get_ticks_msec() - t0) / 1000.0])
+	await _shot("m4_02_granddaughter_gone", Vector3(-7.6, 1.6, 0.0), Vector3(-11.6, 1.1, 0.0))
+
+	# --- 息子: 玄関から入って控室の座布団へ(director と同じ座標) ---
+	var son := NpcInstaller.find(&"son") as NpcSon
+	son.set_active(true)
+	await son.enter_from_genkan(Vector3(-9.2, 0.0, 0.0))
+	print("息子 玄関 pos=%v failed=%s" % [son.global_position, son.last_move_failed])
+	await son.go_to(Vector3(-1.35, 0.0, 3.8))
+	print("息子 控室 pos=%v failed=%s blocked=%s" % [son.global_position,
+		son.last_move_failed, son.last_move_blocked])
+	son.drink_on_zabuton()
+	await get_tree().create_timer(1.0, false).timeout
+	await _shot("m4_03_son_zabuton", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
+	print("息子 posture=%s pos=%v" % [son.posture, son.global_position])
+
+
 ## 猫 5 匹を同時に勝手口へ向かわせ、どの個体が詰まるかを測る。
 func _cat_all() -> void:
 	building.get_door(&"Door_Backyard").open()
 	building.get_door(&"Door_Shikijo").open()
 	var cats := NpcInstaller.find_all(&"cat")
 	for c in cats:
+		var k := c as Cat
+		var line := "  %s@(%.1f,%.1f) 経路長: " % [k.name, k.global_position.x, k.global_position.z]
+		for o in NpcUtil.OPENINGS:
+			line += "%s=%.1f " % [String(o).replace("Door_", "D_").replace("Window_", "W_"),
+				NpcUtil.path_length(get_world_3d(), k.global_position, NpcUtil.OPENINGS[o]["outside"], 1.2)]
+		print(line)
+	for c in cats:
 		(c as Cat).activate()
 		(c as Cat).set_target_entry(&"Door_Backyard")
 	for step in 16:
-		await get_tree().create_timer(2.0).timeout
+		await get_tree().create_timer(2.0, false).timeout
 		var line := "t=%2ds " % ((step + 1) * 2)
 		for c in cats:
 			var k := c as Cat
@@ -333,7 +377,7 @@ func _facing() -> void:
 	boss.set_active(true)
 	boss.teleport_to(Vector3(12.0, 0.0, 0.6))
 	boss.face_now(Vector3(19.0, 0.0, 0.6))
-	await get_tree().create_timer(1.0).timeout
+	await get_tree().create_timer(1.0, false).timeout
 	print("猫 rot.y=%.1f 社長 rot.y=%.1f (どちらも +X を向けと指示)" % [
 		rad_to_deg(cat.rotation.y), rad_to_deg(boss.rotation.y)])
 	await _shot("facing_cat_from_minus_x", Vector3(10.6, 0.35, -0.5), Vector3(12.0, 0.2, -0.5))
@@ -348,7 +392,7 @@ func _facing() -> void:
 	son.set_active(true)
 	son.teleport_to(Vector3(12.0, 0.0, -2.6))
 	son.face_now(Vector3(19.0, 0.0, -2.6))
-	await get_tree().create_timer(0.6).timeout
+	await get_tree().create_timer(0.6, false).timeout
 	await _shot("facing_others_from_plus_x", Vector3(15.2, 1.35, -0.1), Vector3(12.0, 1.10, -0.1))
 
 
@@ -372,7 +416,7 @@ func _wait_until(cond: Callable, timeout: float) -> void:
 	while t < timeout:
 		if bool(cond.call()):
 			return
-		await get_tree().create_timer(0.1).timeout
+		await get_tree().create_timer(0.1, false).timeout
 		t += 0.1
 	print("!! タイムアウト(%.1f 秒)" % timeout)
 

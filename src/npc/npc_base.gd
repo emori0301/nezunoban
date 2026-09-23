@@ -252,13 +252,28 @@ func retarget(pos: Vector3) -> void:
 
 
 ## 到着まで待つコルーチン。`await npc.go_to(pos)`
+## 起動 1 フレーム目に呼ばれても NavigationServer がエラーを出さないよう、
+## マップが同期されるまで待ってから経路を引く。
 func go_to(pos: Vector3, tolerance: float = -1.0) -> void:
 	if not is_active:
+		return
+	await wait_for_nav()
+	if not is_active or not is_inside_tree():
 		return
 	walk_to(pos, tolerance)
 	if not is_moving:
 		return
 	await arrived
+
+
+## NavigationServer のマップが同期されるまで待つ(最大 60 物理フレーム)。
+func wait_for_nav() -> void:
+	var guard := 0
+	while not NpcUtil.is_nav_ready(get_world_3d()) and guard < 60:
+		guard += 1
+		await get_tree().physics_frame
+		if not is_inside_tree():
+			return
 
 
 ## その場で止まる。移動中だったら待っている go_to() を返すために arrived も出す。
@@ -378,16 +393,22 @@ func current_speed() -> float:
 	return _speed_override if _speed_override >= 0.0 else move_speed
 
 
-## 位置をそのまま動かす(演出・デバッグ)。
-func teleport_to(pos: Vector3, yaw_deg: float = NAN) -> void:
-	global_position = pos
+## 位置を直接動かす(演出・デバッグ)。
+## 既定でナビメッシュ上の最寄り点へ寄せる。寄せないと、祭壇の前などナビの外に降りた NPC が
+## 以後どこへも歩けなくなる(review_1.md M4)。高さは呼び出し側の値を保つ。
+func teleport_to(pos: Vector3, yaw_deg: float = NAN, snap_to_nav: bool = true) -> void:
+	if snap_to_nav:
+		var p := NpcUtil.snap(get_world_3d(), pos)
+		global_position = Vector3(p.x, pos.y, p.z)
+	else:
+		global_position = pos
 	if not is_nan(yaw_deg):
 		rotation.y = deg_to_rad(yaw_deg)
 		_target_yaw = rotation.y
 	_cancel_move()
 	velocity = Vector3.ZERO
 	if agent:
-		agent.target_position = pos
+		agent.target_position = global_position
 
 
 func head_position() -> Vector3:

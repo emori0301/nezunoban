@@ -29,6 +29,9 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 @export var meow_interval: Vector2 = Vector2(20.0, 40.0)
 @export var see_player_distance: float = 16.0
 @export var hide_seconds: float = 20.0
+## 指示された開口部までのナビ経路がこれより長く、かつ半分以下で着ける開口部があるなら
+## そちらへ回る。建物の裏の猫が 37m かけて反対側の勝手口へ向かうのを防ぐ。
+@export var max_approach_path: float = 30.0
 
 var state: State = State.OUTSIDE_IDLE
 var is_inside: bool = false
@@ -253,10 +256,19 @@ func _state_approach(g: int) -> void:
 	# (建物の裏に居る猫が反対側の勝手口を目指して詰まるのを防ぐ)
 	var tries := 2
 	while tries > 0:
+		# 歩き出す前に経路を確かめる。届かない扉や、遠回りしすぎる扉には向かわない。
+		var picked := _pick_entry(target_entry)
+		if picked != target_entry:
+			if Game.debug:
+				print("[cat] %s: %s は遠いので %s から入る" % [name, target_entry, picked])
+			target_entry = picked
 		var o: Dictionary = NpcUtil.OPENINGS[target_entry]
-		await go_to(o["outside"])
-		if not _alive(g):
-			return
+		if not NpcUtil.can_reach(get_world_3d(), global_position, o["outside"], 1.2):
+			last_move_failed = true
+		else:
+			await go_to(o["outside"])
+			if not _alive(g):
+				return
 		if not (last_move_failed or last_move_blocked or last_move_cancelled):
 			break
 		tries -= 1
@@ -330,13 +342,15 @@ func _state_inside_wander(g: int) -> void:
 	for _i in n:
 		if not _alive(g):
 			return
-		var p: Vector3 = NpcUtil.WANDER_POINTS[_rng.randi_range(0, NpcUtil.WANDER_POINTS.size() - 1)]
+		var p := _pick_wander_point()
+		if p == Vector3.INF:
+			break
 		await go_to(p)
 		if not _alive(g):
 			return
 		_free_anim = true
 		play_anim(anim_idle)
-		await get_tree().create_timer(_rng.randf_range(0.8, 2.2)).timeout
+		await get_tree().create_timer(_rng.randf_range(0.8, 2.2), false).timeout
 		_free_anim = false
 	if not _alive(g):
 		return
@@ -359,6 +373,36 @@ func _state_to_coffin(g: int) -> void:
 			_set_state(State.INSIDE_WANDER)
 			return
 	_set_state(State.ON_COFFIN)
+
+
+## 指示された開口部が遠すぎる / 届かないときに、近い開口部へ差し替える。
+func _pick_entry(want: StringName) -> StringName:
+	var world := get_world_3d()
+	if not NpcUtil.OPENINGS.has(want):
+		return want
+	var want_len := NpcUtil.path_length(world, global_position,
+		NpcUtil.OPENINGS[want]["outside"], 1.2)
+	if not is_inf(want_len) and want_len <= max_approach_path:
+		return want
+	var alt := NpcUtil.nearest_reachable_entry(world, global_position)
+	if alt == &"" or alt == want:
+		return want
+	var alt_len := NpcUtil.path_length(world, global_position,
+		NpcUtil.OPENINGS[alt]["outside"], 1.2)
+	if is_inf(want_len) or alt_len < want_len * 0.5:
+		return alt
+	return want
+
+
+## 歩いて行けるうろつき先をランダムに選ぶ。どれにも行けなければ Vector3.INF。
+func _pick_wander_point() -> Vector3:
+	var n: int = NpcUtil.WANDER_POINTS.size()
+	var start := _rng.randi_range(0, n - 1)
+	for k in n:
+		var p: Vector3 = NpcUtil.WANDER_POINTS[(start + k) % n]
+		if NpcUtil.can_reach(get_world_3d(), global_position, p, 1.0):
+			return p
+	return Vector3.INF
 
 
 ## 閉まっていて開けられなかった扉を引っ掻く。

@@ -118,6 +118,34 @@ static func opening_center(opening: StringName) -> Vector3:
 	return mid
 
 
+## from から to までのナビ経路長。届かなければ INF。
+static func path_length(world: World3D, from: Vector3, to: Vector3,
+		tolerance: float = 1.0) -> float:
+	if world == null or not is_nav_ready(world):
+		return 0.0
+	var path := NavigationServer3D.map_get_path(world.navigation_map, from, to, true)
+	if path.size() < 2:
+		return INF
+	if Vector2(path[-1].x - to.x, path[-1].z - to.z).length() > tolerance:
+		return INF
+	var total := 0.0
+	for i in range(1, path.size()):
+		total += path[i].distance_to(path[i - 1])
+	return total
+
+
+## from から to まで歩いて行けるか。歩く前に確かめて、無駄に詰まってから
+## 打ち切るのを避けるために使う。
+static func can_reach(world: World3D, from: Vector3, to: Vector3,
+		tolerance: float = 1.0) -> bool:
+	if world == null or not is_nav_ready(world):
+		return true          # まだ判定できないので止めない
+	var path := NavigationServer3D.map_get_path(world.navigation_map, from, to, true)
+	if path.size() < 2:
+		return false
+	return Vector2(path[-1].x - to.x, path[-1].z - to.z).length() <= tolerance
+
+
 ## from から実際に歩いて行ける開口部のうち、経路が一番短いもの。無ければ &""。
 ## 直線距離ではなくナビ経路長で選ぶので、建物の裏に居る猫が反対側の扉を目指して
 ## 詰まることがない。only_open = true なら開いているものだけを見る。
@@ -163,9 +191,17 @@ static func nearest_open_opening(from: Vector3, only_open: bool = true) -> Strin
 
 # ---------------------------------------------------------------- ナビ
 
+## NavigationServer のマップが 1 度でも同期されたか。
+## 起動 1 フレーム目に経路を引くとサーバがエラーを出すので、その前に確かめる。
+static func is_nav_ready(world: World3D) -> bool:
+	if world == null:
+		return false
+	return NavigationServer3D.map_get_iteration_id(world.navigation_map) != 0
+
+
 ## ナビメッシュ上の一番近い点に寄せる。マップが未同期なら元の座標を返す。
 static func snap(world: World3D, pos: Vector3) -> Vector3:
-	if world == null:
+	if world == null or not is_nav_ready(world):
 		return pos
 	var p := NavigationServer3D.map_get_closest_point(world.navigation_map, pos)
 	if p.is_equal_approx(Vector3.ZERO) and pos.length() > 1.0:

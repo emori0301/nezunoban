@@ -33,6 +33,10 @@ signal fell_asleep
 @export var snore_interval: float = 4.0
 @export var snore_pitch: float = 1.0
 
+## 座卓(x -1.93〜-0.78, z 2.64〜3.36)と布団(x -3.78〜-2.73)の隙間。
+## 座布団へはここを通って西から回り込む。
+const TABLE_DETOUR := Vector3(-2.33, 0.0, 3.70)
+
 var is_sleeping: bool = false
 var is_drinking: bool = false
 
@@ -60,7 +64,26 @@ func _ready() -> void:
 
 ## 控室の座布団まで歩く。座卓を回り込めるよう、西(-X)側から寄る。
 func go_to_hikaeshitsu() -> void:
-	await go_to(Vector3(-2.45, 0.0, 3.8))
+	await go_to(drink_position)
+
+
+## 座布団(座卓の向こう側)へは、まず座卓の西を回る。
+## director が座布団の座標を直接渡してきても詰まらないようにするため、go_to を包む。
+func go_to(pos: Vector3, tolerance: float = -1.0) -> void:
+	if _needs_table_detour(pos):
+		await super.go_to(TABLE_DETOUR, 0.45)
+		if not is_active or last_move_cancelled:
+			return
+	await super.go_to(pos, tolerance)
+
+
+## 目的地が座布団まわりで、いま座卓の手前(または部屋の外)に居るか。
+func _needs_table_detour(pos: Vector3) -> bool:
+	if _flat_distance(pos, drink_position) > 0.9:
+		return false
+	if _flat_distance(global_position, TABLE_DETOUR) < 0.6:
+		return false
+	return global_position.z < 3.4
 
 
 ## 座布団にあぐらで座って飲み続ける(00:30 で「断る」を選んだあと)。

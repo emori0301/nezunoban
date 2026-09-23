@@ -80,7 +80,8 @@ NpcInstaller.all()                    # -> 置かれている NPC 全部
 | `retarget(pos)` | 追跡中に目標だけ差し替える(詰まり判定をリセットしない) |
 | `walk_route(points, tolerance := -1.0)` | 経由点を順に歩く |
 | `stop()` | その場で止まる |
-| `teleport_to(pos, yaw_deg := NAN)` | 位置と向きを直接入れる |
+| `teleport_to(pos, yaw_deg := NAN, snap_to_nav := true)` | 位置と向きを直接入れる。**既定でナビメッシュ上の最寄り点へ寄せる**(高さは渡した値のまま)。寄せないとナビの外に降りた NPC が以後どこへも歩けない(review_1.md M4)。演出でナビ外に置きたいときだけ `snap_to_nav = false` |
+| `wait_for_nav()` | NavigationServer のマップ同期を待つ。`go_to()` が内部で呼ぶので、起動 1 フレーム目に歩かせてもエラーにならない |
 | `set_speed_override(v)` / `current_speed()` | 一時的な速度上書き。負で解除 |
 
 `tolerance` は狭い通路の経由点用。既定の到着判定は `arrive_distance`(0.45)。
@@ -142,7 +143,10 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 | `state` / `state_name()` | 現在の状態 |
 | `coffin_position()` / `coffin_top_y()` | 棺の座標と蓋の上面(実測 0.884) |
 
-`set_target_entry()` の開口部へ歩いて行けないときは、**ナビ経路で一番近い開口部に切り替えます**
+`set_target_entry()` の開口部までのナビ経路が `max_approach_path`(既定 30m)より長く、
+半分以下で着ける開口部があるときは、**歩き出す前に**そちらへ切り替えます
+(式場の東裏の Spawn_Cat5 から勝手口までは 36.9m、式場の窓までは 2.0m)。
+歩いた結果どうしても行けないときも、**ナビ経路で一番近い開口部に切り替えます**
 (例: 式場の東裏にスポーンする Spawn_Cat5 は勝手口に届かないので `Window_Shikijo` に回る)。
 切り替え先も無ければ `OUTSIDE_IDLE` に戻ります。開口部の外側 1.6m 以内に着けていないときは
 引っ掻き音を鳴らしません(遠くの扉から音だけ鳴るのを防ぐため)。
@@ -179,7 +183,8 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 
 | メソッド / 変数 | 備考 |
 |---|---|
-| `go_to_hikaeshitsu()` | 控室の座布団の脇まで歩く |
+| `go_to_hikaeshitsu()` | 控室の座布団まで歩く(座卓の西 `TABLE_DETOUR` を経由) |
+| `drink_position` (-1.35, 0, 3.8) / `sleep_position` (-2.05, 0, 2.05) | 飲む位置と寝る位置。**`go_to()` を包んで座卓を回り込むので、director が座布団の座標を直接渡しても詰まらない** |
 | `drink_on_zabuton()` | 座卓の向こう側の座布団にあぐら(`sit_floor`) |
 | `sleep()` | 横になっていびき。`Game` フラグ `son_asleep`、シグナル `fell_asleep` |
 | `wake()` | 起こす |
@@ -207,7 +212,9 @@ await br.rise()                          # rise アニメ 1 回 + body_rise 音 
 | `nearest_open_opening(from, only_open := true)` | 直線距離 |
 | `nearest_reachable_entry(world, from, only_open := false)` | **ナビ経路長**で選ぶ。建物の裏に居る猫が反対側の扉を目指して詰まらない |
 | `grab_materials(root, name)` / `apply_emission(mats, energy, color)` | 毎フレーム触る発光用。`_ready` で 1 回拾って以降は直接書き換える |
-| `snap(world, pos)` | ナビメッシュ上の最寄り点 |
+| `snap(world, pos)` | ナビメッシュ上の最寄り点。未同期なら元の座標 |
+| `is_nav_ready(world)` | マップが 1 度でも同期されたか |
+| `can_reach(world, from, to, tol)` / `path_length(world, from, to, tol)` | 歩く前の経路チェック。届かなければ `path_length` は `INF` |
 | `clear_line(world, a, b, exclude)` / `visible_through_openings(...)` | 視線判定。後者は閉じた窓のガラス越しも「見えている」扱い |
 | `set_emission(root, material_name, energy, color)` | マテリアルを複製してから emission を差し替える |
 | `COFFIN_ROUTE` / `WANDER_POINTS` / `HIDE_SPOTS` / `DARK_SPOTS` | 経由点の表 |
@@ -318,7 +325,11 @@ godot --path . res://src/npc/_test_npc.tscn -- --no-capture --scenario=cat_enter
 
 `BodyRisen` は棺と同じ向き(yaw 90)だと祭壇のほうを向くので、部屋側へ向けるなら yaw -90 にしてください。
 
+`src/npc` の `create_timer()` はすべて `process_always = false` で作っているので、
+ポーズ中はいびき・引っ掻き・退却待ちのタイマーが進みません。
+
 `godot --headless --path . --import` ×2 と `--quit` はエラーなし。
+9 シナリオすべてで `到達できないので打ち切り` のログは 0 件です。
 `--quit` に残る `ObjectDB 2 件` の警告は npc を作る前から出ているもの(models 申し送り 2 番)。
 
 ---
