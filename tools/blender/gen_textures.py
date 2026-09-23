@@ -722,10 +722,17 @@ def t_body_face_turned():
 
 
 def t_body_face_second():
-    """二人目の死者。青白く、目を見開き、口は閉じている。"""
-    return _face_plate("open", "closed", 0.0, 450,
-                       skin=(0.645, 0.635, 0.650), shade=(0.40, 0.40, 0.45),
-                       cool=1.0)
+    """二人目の死者。青白く、目を見開き、口は閉じている。
+    顔の外側(白布)は透明。小窓の中で板の四角い輪郭が出ないようにする。"""
+    img = _face_plate("open", "closed", 0.0, 450,
+                      skin=(0.645, 0.635, 0.650), shade=(0.40, 0.40, 0.45),
+                      cool=1.0)
+    # _face_plate の布の開口と同じ楕円で切り抜く
+    gx, gy = np.meshgrid(np.arange(S), np.arange(S), indexing="ij")
+    d = np.sqrt(((gx - 130) / 100.0) ** 2 + ((gy - 128) / 74.0) ** 2)
+    feather = 6.0 / 74.0                       # 顔の縁で約 6px ぼかす
+    a = np.clip((0.88 - d) / feather, 0.0, 1.0)
+    return np.concatenate([img, a[..., None]], axis=2)
 
 
 def t_iei_photo():
