@@ -79,6 +79,7 @@ func _ready() -> void:
 		"cat_all": await _cat_all()
 		"cat_wait_door": await _cat_wait_door()
 		"cat_flee": await _cat_flee()
+		"cat_show": await _cat_show()
 		"dir_repro": await _dir_repro()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -385,6 +386,40 @@ func _dir_repro() -> void:
 	await get_tree().create_timer(1.0, false).timeout
 	await _shot("m4_03_son_zabuton", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
 	print("息子 posture=%s pos=%v" % [son.posture, son.global_position])
+
+
+## 新しい猫モデルの見た目確認: sit の接地・walk・目の発光・棺の上。
+func _cat_show() -> void:
+	building.set_all_lights(true)
+	var cat := NpcInstaller.find(&"cat", 0) as Cat
+	cat.set_active(true)
+	print("猫 当たり判定 高さ=%.2f 半径=%.2f  Head=%v" % [cat.body_height, cat.body_radius,
+		cat.head_position() - cat.global_position])
+
+	# 廊下の南枝(家具の無い開けた床)で見る
+	var spot := Vector3(6.4, 0.0, -3.0)
+	cat.sit_at(spot, spot + Vector3(0, 0.2, 2.0))
+	cat.play_anim(&"sit")
+	await get_tree().create_timer(1.2, false).timeout
+	await _shot("show_01_sit_ground", spot + Vector3(0.0, 0.07, 1.1), spot + Vector3(0, 0.09, 0))
+	await _shot("show_02_sit_side", spot + Vector3(0.95, 0.28, 0.75), spot + Vector3(0, 0.15, 0))
+
+	# walk(歩かせて横から)
+	cat.activate()
+	cat.walk_to(Vector3(6.4, 0.0, -6.4))
+	await get_tree().create_timer(1.6, false).timeout
+	await _shot("show_03_walk", cat.global_position + Vector3(1.05, 0.3, 0.0),
+		cat.global_position + Vector3(0, 0.15, 0))
+	cat.stop()
+
+	# 目の発光(消灯して正面から)
+	building.set_all_lights(false)
+	var spot2 := Vector3(6.4, 0.0, -4.0)
+	cat.sit_at(spot2, spot2 + Vector3(0, 0.2, 2.0))
+	cat.set_eye_glow(cat.eye_energy * 1.6)
+	await get_tree().create_timer(0.8, false).timeout
+	await _shot("show_04_eyes_dark", spot2 + Vector3(0.0, 0.20, 1.3), spot2 + Vector3(0, 0.18, 0))
+	building.set_all_lights(true)
 
 
 ## 館内の猫にプレイヤーが近づくと、威嚇して自分から逃げることを見る。

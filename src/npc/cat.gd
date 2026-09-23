@@ -40,6 +40,9 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 ## 館内をうろついている猫が、プレイヤーがこの距離まで近づくと威嚇して逃げる。
 @export var flee_distance: float = 1.5
 
+## 式場を出るときに通る中央通路の点(椅子の列 z = -3.0/-2.1/-1.2/0.2/1.1 の隙間)。
+const SHIKIJO_EXIT := Vector3(9.0, 0.0, -0.5)
+
 var state: State = State.OUTSIDE_IDLE
 var is_inside: bool = false
 var target_entry: StringName = &"Door_Backyard"
@@ -62,9 +65,10 @@ func _init() -> void:
 	npc_id = &"cat"
 	move_speed = 1.6
 	agent_radius = 0.20
-	body_radius = 0.13
-	body_height = 0.36
-	head_height = 0.30
+	body_radius = 0.11
+	body_height = 0.33
+	head_height = 0.27
+	head_bone = &"Head"        # 猫のリグは Head(大文字)
 	arrive_distance = 0.40
 	can_open_doors = false
 	talk_prompt = "追い払う"
@@ -611,6 +615,13 @@ func _state_shooed(g: int) -> void:
 		_set_state(State.HIDING)
 		return
 	var o: Dictionary = NpcUtil.OPENINGS[exit_name]
+	# 式場から出るときは、椅子の格子に突っ込まないよう中央通路(z = -0.5)を経由する。
+	# 3.0 m/s で椅子の間に入ると自力で出られなくなる。
+	if global_position.x > 8.0 and absf(global_position.z) < 4.0 \
+			and NpcUtil.OPENINGS[exit_name]["room"] != &"Room_Shikijo":
+		await go_to(SHIKIJO_EXIT, 0.9)
+		if not _alive(g):
+			return
 	await go_to(o["inside"])
 	if not _alive(g):
 		return
