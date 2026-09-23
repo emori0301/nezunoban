@@ -45,6 +45,11 @@ func _show_title() -> void:
 		t.start_requested.connect(func():
 			t.queue_free()
 			start_game())
+	# QA: タイトル経由の開始を自動化(--auto-start=秒)
+	if args.has("auto-start"):
+		await get_tree().create_timer(float(args.get("auto-start", "1.5"))).timeout
+		if is_instance_valid(t) and t.has_signal("start_requested"):
+			t.start_requested.emit()
 
 func start_game() -> void:
 	Game.reset()
