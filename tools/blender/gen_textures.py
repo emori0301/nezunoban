@@ -926,6 +926,9 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
         # ここを地肌のままにすると、髪との境に肌色の帯が出る。
         g = np.clip(1.0 - np.arange(R)[:, None] / 24.0, 0, 1) * np.ones((1, R))
         img = mix(img, rgb(R, hair_top), g * 0.92)
+    # 下端 16px(出力 8px)は首の影へ。顎の投影の継ぎ目を目立たなくする。
+    gb = np.clip((np.arange(R)[:, None] - (R - 16)) / 16.0, 0, 1) * np.ones((1, R))
+    img = mix(img, rgb(R, tuple(c * 0.55 for c in skin)), gb * 0.85)
     # 端はごく軽く落とすだけにする。強く落とすと頭の側面との境が目立ち、
     # 顔がシールを貼ったように見える。
     gx, gy = np.meshgrid(np.arange(R), np.arange(R), indexing="ij")
