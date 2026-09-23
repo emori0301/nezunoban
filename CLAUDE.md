@@ -74,7 +74,7 @@ godot --path . -- --skip-title --time=01:00 --debug   # デバッグ: F2/F3 で�
 部屋: `Room_Genkan`(玄関/受付) `Room_Office`(事務所) `Room_Hall`(廊下) `Room_Shikijo`(式場) `Room_Hikaeshitsu`(控室・和室) `Room_Toilet` `Room_Backyard`(バックヤード) `Room_Yukan`(湯灌室) `Room_Outside`(外周)
 各 Room_* は `Area3D`(layer 0 / mask 4=player) を持ち、プレイヤー侵入で `Events.emit_event(&"player_entered_room", {"room": name})`。
 照明: `Building.set_room_lights(room: StringName, on: bool)` / `Building.set_all_lights(on)` / `Building.flicker(room, duration)`。
-扉: `Door`(Interactable)`open()` `close()` `locked` `is_open`、名前 `Door_Genkan` `Door_Backyard`(勝手口) `Door_Shikijo` `Door_Office` `Door_Hikaeshitsu` `Door_Toilet` `Door_Yukan`。窓: `Window_Shikijo` `Window_Toilet` `Window_Office`。
+扉: `Door`(Interactable)`open()` `close()` `locked` `is_open`、名前 `Door_Genkan` `Door_Backyard`(勝手口) `Door_Shikijo` `Door_Office` `Door_Hikaeshitsu` `Door_Toilet` `Door_Yukan` `Door_Oshiire`(控室の押入れ)。窓: `Window_Shikijo` `Window_Toilet` `Window_Office` `Window_Hikaeshitsu`(控室の障子)。施錠: `Door.lockable` の扉は枠脇の `DoorLock`(Interactable)で `lock()`/`unlock()`、イベント `door_locked{door}`。
 ナビ: `NavigationRegion3D` を持ち、起動時に bake 済み(猫/火車/NPC が NavigationAgent3D で歩く)。
 
 ## 音名一覧(audio が生成、他はこの名前で呼ぶ)
