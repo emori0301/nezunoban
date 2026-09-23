@@ -50,6 +50,12 @@ godot --path . -- --skip-title --time=01:00 --debug   # デバッグ: F2/F3 で�
 - `await Dialogue.say("社長", "…")` / `var i := await Dialogue.choose("…", ["断る", "開けさせる"])` / `await Dialogue.note("日記 1", body)` / `await Dialogue.monologue("…")`
 - `Tasks.set_task(&"incense", "線香を立てる")` / `Tasks.complete(&"incense")`
 
+## タイマーとポーズの約束
+
+- `get_tree().create_timer(sec)` は**使わない**(既定でポーズを無視して進む)。`Events.after(sec, callable)` か `await Events.wait(sec)`、どうしても直接使うなら `create_timer(sec, false)`。
+- 1回だけのイベント購読は `Events.once(name, callable)`、待ちは `await Events.wait_event(name, timeout)`(接続を自分で外す)。
+- `Dialogue.say/choose/note` は内部で順番待ちする(同時に呼んでも片方が消えない)。
+
 ## Interactable の約束
 
 - `Interactable extends Area3D`(layer 2)。子に `CollisionShape3D` を必ず持つ。派生は `_can_interact(player)` と `_interact(player)` を実装。
