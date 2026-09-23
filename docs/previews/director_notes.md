@@ -53,9 +53,19 @@
 godot --headless --path . -- --skip-title --autoplay=morning|kasha|substitute|portrait [--speed=8]
 ```
 
-- `Dialogue.auto_advance = true`、`Clock.speed = speed`、`IncenseStand.burn_seconds` と
-  `Candle.burn_seconds` を speed で割る(ゲーム内の長さを保つため)。
-- 3 秒 / speed ごとに判断する。優先順は 布団 → 控室の戸 → 電話 → 線香 → 猫 → 現在タスク → ロウソク。
+- `Dialogue.auto_advance = true`、`Clock.speed = speed`。
+  **`burn_seconds` はいじらない。** 線香とロウソクの減りは systems が `delta * Clock.speed` で
+  進めるので、ここで speed で割ると二重に効いて一瞬で尽きる。
+- 3 秒 / speed ごとに判断する。優先順は 布団 → 控室の戸 → 電話 → 線香 → 猫 → タスク → ロウソク。
+- タスクは `Tasks.current()`(先頭固定)ではなく優先順表 `TASK_ORDER` から選ぶ。
+  先頭に居座るタスクで以後の用事に進めなくなるのを避けるため。
+- モードごとに触らないタスクがある。猫の経路(`cat_entered` → `cat_crossed_coffin` → `cat_shooed`)を
+  QA で通すための仕込み(reviewer H7)。
+
+| モード | 無視するタスク | ねらい |
+|---|---|---|
+| `kasha` | 線香3種 / `backdoor` / `window` / `cat` | 線香を絶やし、勝手口と窓を開けたままにして猫を入れ、棺をまたがせる |
+| `substitute` | `backdoor` | 猫を入れてから追い払う(`cat_shooed` を通す) |
 - 歩かせず `Player.teleport` + `Interactable.interact()` で用事をこなす。経路探索に依存しない。
 - 終了時に `AUTOPLAY RESULT ending=<id> dread=<n> minutes=<n>` を出し、
   期待と違えば exit code 1。ログは `user://autoplay_<mode>.log`。

@@ -108,6 +108,8 @@ var _blocked_t: float = 0.0
 var _nudge_angle: float = 78.0
 var _best_progress: float = INF
 var _unstuck_count: int = 0
+var _repath_t2: float = 0.0
+var _steer_cache: Vector3 = Vector3.INF
 var _arrive_dist: float = 0.45
 var _last_pos: Vector3 = Vector3.ZERO
 var _cur_anim: StringName = &""
@@ -179,9 +181,12 @@ func _build_agent() -> void:
 	agent.name = "Agent"
 	agent.radius = agent_radius
 	agent.height = body_height
-	agent.path_desired_distance = 0.30
-	agent.target_desired_distance = maxf(arrive_distance - 0.1, 0.2)
-	agent.path_max_distance = 4.0
+	# 経路の後処理は既定(CORRIDORFUNNEL)のまま。EDGECENTERED は戸口の真ん中を通るが、
+	# 外周のような広いポリゴンでは経由点が大きく脇へ飛んで遠回りになる(実測で打ち切り 11 件)。
+	# 角で壁を突っ切る問題は _steer() 側で「経由点との間に壁があれば引き直す」で対処する。
+	agent.path_desired_distance = 0.25
+	agent.target_desired_distance = 0.25
+	agent.path_max_distance = 3.0
 	agent.avoidance_enabled = false
 	agent.debug_enabled = false
 	add_child(agent)
@@ -221,7 +226,7 @@ func walk_to(pos: Vector3, tolerance: float = -1.0) -> Signal:
 	if not is_active:
 		return arrived
 	_arrive_dist = tolerance if tolerance > 0.0 else arrive_distance
-	agent.target_desired_distance = maxf(_arrive_dist - 0.1, 0.15)
+	agent.target_desired_distance = clampf(_arrive_dist - 0.15, 0.15, 0.4)
 	_nav_target = NpcUtil.snap(get_world_3d(), pos)
 	agent.target_position = _nav_target
 	is_moving = true
@@ -584,7 +589,7 @@ func _steer(delta: float) -> Vector3:
 		last_steer_reason = "arrived"
 		_finish_move()
 		return Vector3.ZERO
-	var next := agent.get_next_path_position()
+	var next := _steer_point(delta)
 	var to := next - global_position
 	to.y = 0.0
 	if to.length_squared() < 0.0004:
@@ -674,6 +679,41 @@ func _check_stuck(delta: float) -> void:
 		_stuck_t = 0.0
 		last_move_failed = true
 		_finish_move()
+
+
+## 次に向かう点。経路から外れて「経由点との間に壁がある」状態になったら、
+## いまの位置から経路を引き直してその 1 点目を返す。
+## (funnel 経路は角に吸い付くので、経路から外れた位置から次の経由点へ直進すると
+##  戸口の脇の壁を突っ切ってしまう)
+func _steer_point(delta: float) -> Vector3:
+	var next := agent.get_next_path_position()
+	_repath_t2 -= delta
+	if _repath_t2 > 0.0:
+		return _steer_cache if _steer_cache != Vector3.INF else next
+	_repath_t2 = 0.25
+	_steer_cache = Vector3.INF
+	if not _wall_between(global_position, next):
+		return next
+	var world := get_world_3d()
+	if world == null or not NpcUtil.is_nav_ready(world):
+		return next
+	var p := NavigationServer3D.map_get_path(world.navigation_map, global_position, _nav_target, true)
+	if p.size() >= 2:
+		_steer_cache = p[1]
+		return p[1]
+	return next
+
+
+## a → b の間に world(layer 1)の壁があるか。腰の高さで見る。
+func _wall_between(a: Vector3, b: Vector3) -> bool:
+	var world := get_world_3d()
+	if world == null:
+		return false
+	var up := Vector3(0, minf(body_height * 0.45, 0.6), 0)
+	var q := PhysicsRayQueryParameters3D.create(a + up, Vector3(b.x, a.y, b.z) + up, 1)
+	q.collide_with_areas = false
+	q.exclude = [get_rid()]
+	return not world.direct_space_state.intersect_ray(q).is_empty()
 
 
 ## いま当たっている壁(垂直面)の法線。無ければ Vector3.ZERO。

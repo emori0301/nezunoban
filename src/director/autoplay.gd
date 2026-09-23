@@ -50,13 +50,8 @@ func begin() -> void:
 	Dialogue.auto_line_seconds = 0.08
 	Dialogue.auto_chooser = Callable(self, "choose")
 	Clock.speed = maxf(speed, 0.1)
-	# 線香・ロウソクは実秒タイマーなので、倍速ぶんだけ短くする(ゲーム内の長さを保つ)
-	var inc: Node = dir.sys(&"incense_stand")
-	if inc:
-		inc.set(&"burn_seconds", 180.0 / maxf(speed, 0.1))
-	var cnd: Node = dir.sys(&"candle")
-	if cnd:
-		cnd.set(&"burn_seconds", 720.0 / maxf(speed, 0.1))
+	# 線香・ロウソクの減りは systems 側が delta * Clock.speed で進めるので、
+	# ここで burn_seconds を speed で割ると二重に効いて一瞬で尽きる。何もしない。
 	var a: Dictionary = dir.args
 	shots_dir = String(a.get("shots", ""))
 	shot_interval = float(a.get("shot-interval", "20"))
@@ -143,8 +138,8 @@ func _act() -> void:
 	if mode != &"kasha" or not Game.get_flag(&"intro_done", false):
 		if await _keep_incense():
 			return
-	# 5. 猫
-	if await _shoo_cat():
+	# 5. 猫(kasha モードは棺をまたがせたいので追い払わない)
+	if mode != &"kasha" and await _shoo_cat():
 		return
 	# 6. いまのタスク(モードによっては線香を無視する)
 	var id := _pick_task()
@@ -202,15 +197,26 @@ const TASK_ORDER := [
 	&"talk_boss", &"relight", &"cat", &"breaker", &"backdoor", &"window",
 	&"dry_ice", &"flowers", &"candle", &"incense_stock", &"incense", &"last_incense",
 ]
-## kasha モード(導入後)は線香に触らない。異変度を溜めるのが目的。
-const KASHA_IGNORE := [&"incense", &"incense_stock", &"last_incense"]
+## kasha モード(導入後)が触らないタスク。
+## 線香を放置して異変度を溜め、勝手口と式場の窓を開けたままにして猫を入れる
+## (`cat_entered` → `cat_crossed_coffin` の経路を QA で通すため)。
+const KASHA_IGNORE := [
+	&"incense", &"incense_stock", &"last_incense",
+	&"backdoor", &"window", &"cat",
+]
+
+## 代わりエンドの回では勝手口を開けたままにして、猫を入れてから追い払う。
+## こうしないと cat_entered → cat_shooed の経路が QA で一度も通らない。
+const SUBSTITUTE_IGNORE := [&"backdoor"]
 
 func _pick_task() -> StringName:
-	var ignore_incense: bool = mode == &"kasha" and bool(Game.get_flag(&"intro_done", false))
+	var after_intro: bool = bool(Game.get_flag(&"intro_done", false))
 	for id in TASK_ORDER:
 		if not Tasks.has(id):
 			continue
-		if ignore_incense and KASHA_IGNORE.has(id):
+		if after_intro and mode == &"kasha" and KASHA_IGNORE.has(id):
+			continue
+		if after_intro and mode == &"substitute" and SUBSTITUTE_IGNORE.has(id):
 			continue
 		return id
 	return &""
