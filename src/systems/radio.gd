@@ -19,15 +19,26 @@ signal turned_off
 @export var voice_name: StringName = &"radio_talk"
 @export var volume_db: float = -12.0
 @export var max_distance: float = 14.0
+## radio.glb の "Dial"。つまみは Godot ローカルの Z 回転で回る。
+@export var dial_on_degrees: float = -38.0
 
 var is_on: bool = false
 
 var _loop: AudioStreamPlayer3D
 var _current_voice: StringName = &""
+var _dial: Node3D
+var _dial_rest: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	super._ready()
 	_loop = _make_loop_player()
+	var prop := get_node_or_null(^"Prop") as Prop
+	if prop:
+		var inst := prop.get_instance()
+		if inst:
+			_dial = inst.find_child("Dial", true, false) as Node3D
+			if _dial:
+				_dial_rest = _dial.rotation_degrees
 	if start_on:
 		turn_on()
 
@@ -75,6 +86,7 @@ func turn_on() -> void:
 	if is_on:
 		return
 	is_on = true
+	_apply_dial()
 	Audio.play_at(&"radio_on", global_position)
 	_set_stream(voice_name)
 	if _loop and _loop.stream:
@@ -86,6 +98,7 @@ func turn_off() -> void:
 	if not is_on:
 		return
 	is_on = false
+	_apply_dial()
 	Audio.play_at(&"radio_off", global_position)
 	if _loop:
 		_loop.stop()
@@ -100,6 +113,17 @@ func play_voice(sound: StringName) -> void:
 	_set_stream(sound)
 	if _loop and _loop.stream:
 		_loop.play()
+
+## つまみを回す。
+func _apply_dial() -> void:
+	if _dial == null:
+		return
+	var target := _dial_rest
+	if is_on:
+		target.z += dial_on_degrees
+	var tw := create_tween()
+	tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(_dial, "rotation_degrees", target, 0.22)
 
 func current_voice() -> StringName:
 	return _current_voice

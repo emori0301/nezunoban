@@ -27,7 +27,7 @@ signal found_empty
 ## 庫内のドライアイス箱の位置(庫内は Y 0.285..0.785)
 @export var ice_offset: Vector3 = Vector3(0.0, 0.30, 0.0)
 ## 03:40 以降、庫内の奥に黒い袋(E-7)。収容票は収集⑥。
-@export var bag_offset: Vector3 = Vector3(0.0, 0.33, -0.16)
+@export var bag_offset: Vector3 = Vector3(0.0, 0.287, -0.09)
 @export var bag_prompt: String = "袋を調べる"
 @export var bag_note_title: String = "動物愛護センター 収容票"
 @export_multiline var bag_note_body: String = "動物愛護センター 収容票\n種別 猫　頭数 十九\n依頼者 春日 誠\n受付 十月九日"

@@ -42,8 +42,8 @@ signal cat_crossed
 @export var second_face_seconds: float = 0.5
 @export var second_face_texture: String = "body_face_second"
 ## もう一つの顔の位置(棺ローカル)。故人の顔の隣、小窓の端に来るようにする。
-@export var second_face_offset: Vector3 = Vector3(0.62, 0.305, 0.088)
-@export var second_face_size: Vector2 = Vector2(0.115, 0.145)
+@export var second_face_offset: Vector3 = Vector3(0.628, 0.338, 0.084)
+@export var second_face_size: Vector2 = Vector2(0.085, 0.108)
 @export var peek_prompt: String = "小窓を覗く"
 @export var dry_ice_prompt: String = "ドライアイスを交換する"
 @export var dry_ice_hold_time: float = 2.0
@@ -338,7 +338,7 @@ func set_second_face(on: bool) -> void:
 		m.emission_enabled = true
 		m.emission = Color(1, 1, 1)
 		m.emission_texture = tex
-		m.emission_energy_multiplier = 0.18
+		m.emission_energy_multiplier = 0.06
 		m.render_priority = 1
 		_second_face.material_override = m
 		add_child(_second_face)

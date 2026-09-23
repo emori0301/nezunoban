@@ -46,6 +46,7 @@ const STATIONS := [
 	["note", "res://src/systems/note.tscn", 0.85],
 	["incense_box", "res://src/systems/incense_box.tscn", 0.85],
 	["matches", "res://src/systems/matches.tscn", 0.85],
+	["radio", "res://src/systems/radio.tscn", 0.85],
 ]
 
 var args: Dictionary = {}
@@ -249,6 +250,22 @@ func _setup_state() -> void:
 	var fl := nodes.get("flower_stand") as FlowerStand
 	if fl and args.has("fresh"):
 		fl.set_wilted(false)
+	if args.has("radioon"):
+		var rd2 := nodes.get("radio") as Radio
+		if rd2:
+			rd2.turn_on()
+	if args.has("bag"):
+		var fz2 := nodes.get("freezer") as Freezer
+		if fz2:
+			fz2.set_empty(true)
+			fz2.set_bag(true)
+	if args.has("secondface"):
+		var cf3 := nodes.get("coffin") as Coffin
+		if cf3:
+			cf3.set_second_face(true)
+			cf3.second_face_delay = 0.4
+			cf3.second_face_seconds = 60.0
+			cf3.show_face(90.0, "test")
 	if args.has("dial"):
 		var sf3 := nodes.get("safe") as Safe
 		if sf3:
