@@ -19,8 +19,8 @@ signal caught                                   ## プレイヤーを捕まえ�
 signal took_target(target: Node3D)               ## go_to_and_take の到着
 
 @export_group("火車")
-@export var chase_speed: float = 3.0             ## 見られている間
-@export var unseen_speed: float = 1.2            ## 見失われている間
+@export var chase_speed: float = 3.2             ## 見られている間(プレイヤーは 2.5)
+@export var unseen_speed: float = 1.4            ## 見失われている間
 @export var retreat_speed: float = 4.0
 @export var catch_distance: float = 1.2
 @export var catch_freeze: float = 1.0

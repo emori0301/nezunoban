@@ -34,6 +34,11 @@ enum State { OUTSIDE_IDLE, APPROACH, ENTERING, INSIDE_WANDER, TO_COFFIN, ON_COFF
 @export var max_approach_path: float = 30.0
 ## 閉まった戸の前で待つ秒数。これを過ぎたらうろつきに戻る。
 @export var wait_door_seconds: float = 90.0
+## 未施錠の扉を押し開けるまでの引っ掻き回数と間隔(合計 8 秒ほど)。
+@export var door_push_scratches: int = 2
+@export var door_push_interval: float = 3.8
+## 館内をうろついている猫が、プレイヤーがこの距離まで近づくと威嚇して逃げる。
+@export var flee_distance: float = 1.5
 
 var state: State = State.OUTSIDE_IDLE
 var is_inside: bool = false
@@ -44,6 +49,7 @@ var waiting_door: StringName = &""
 var _gen: int = 0
 var _free_anim: bool = false      ## true の間は idle/walk の自動切り替えをしない
 var _shoo_hiss: bool = false
+var _shoo_auto: bool = false      ## プレイヤーの「追い払う」ではなく自分から逃げた
 var _cross_marker: Area3D = null
 var _on_perch: bool = false       ## 棺の蓋の上に乗っているか
 var _move_tween: Tween = null     ## 飛び乗り/またぎの tween。状態が変わったら kill する
@@ -100,6 +106,20 @@ func _locomotion_anim_enabled() -> bool:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if state == State.INSIDE_WANDER:
+		_check_player_too_close()
+
+
+## 館内でうろついている猫にプレイヤーが近づきすぎたら、威嚇して自分から逃げる。
+func _check_player_too_close() -> void:
+	var p := Game.player
+	if p == null:
+		return
+	if global_position.distance_to(p.global_position) > flee_distance:
+		return
+	Audio.play_at(&"cat_hiss", global_position + Vector3(0, 0.25, 0), 0.0, 1.0, 20.0)
+	_shoo_auto = true
+	flee()
 
 
 # ============================================================ 公開 API
@@ -150,6 +170,7 @@ func flee() -> void:
 func shoo() -> void:
 	if state == State.SHOOED:
 		return
+	_shoo_auto = false
 	_shoo_hiss = true
 	_set_state(State.SHOOED)
 
@@ -306,9 +327,36 @@ func _state_approach(g: int) -> void:
 		_set_state(State.ENTERING)
 		return
 
-	# 閉まっている: 3 回引っ掻いて、窓を叩いて、しばらくしたら諦める
 	_free_anim = true
 	play_anim(anim_idle)
+
+	# 閉まっているが施錠されていない扉は、しばらく引っ掻いたあと体で押し開ける。
+	# 窓は押し開けられない(director が独りでに開ける)。施錠された扉も開けられない。
+	var node := NpcUtil.opening_node(target_entry)
+	var door := node as Door
+	if door != null and not door.locked:
+		for i in door_push_scratches:
+			if not _alive(g):
+				return
+			if door.is_open:
+				_set_state(State.ENTERING)
+				return
+			Audio.play_at(StringName("cat_scratch_%d" % (i + 1)),
+				NpcUtil.opening_center(target_entry), 0.0, _rng.randf_range(0.95, 1.05), 22.0)
+			await get_tree().create_timer(door_push_interval, false).timeout
+		if not _alive(g):
+			return
+		if not door.is_open:
+			if Game.debug:
+				print("[cat] %s: %s を押し開けた" % [name, target_entry])
+			door.open()
+			await get_tree().create_timer(0.7, false).timeout
+			if not _alive(g):
+				return
+		_set_state(State.ENTERING)
+		return
+
+	# 施錠された扉 / 窓: 3 回引っ掻いて、窓を叩いて、しばらくしたら諦める
 	for i in 3:
 		if not _alive(g):
 			return
@@ -372,6 +420,10 @@ func _state_inside_wander(g: int) -> void:
 
 
 func _state_to_coffin(g: int) -> void:
+	# 外に居るのに棺へ向かわせようとしたら、外で待たせる(director の呼び間違い対策)
+	if not is_inside:
+		_set_state(State.OUTSIDE_IDLE)
+		return
 	set_talkable(true)
 	set_speed_override(-1.0)
 	var base := coffin_position()
@@ -572,7 +624,8 @@ func _state_shooed(g: int) -> void:
 		return
 	is_inside = false
 	set_speed_override(-1.0)
-	Events.emit_event(&"cat_shooed", {"exit": exit_name})
+	Events.emit_event(&"cat_shooed", {"exit": exit_name, "auto": _shoo_auto})
+	_shoo_auto = false
 	_set_state(State.OUTSIDE_IDLE)
 
 

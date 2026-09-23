@@ -78,6 +78,7 @@ func _ready() -> void:
 		"facing": await _facing()
 		"cat_all": await _cat_all()
 		"cat_wait_door": await _cat_wait_door()
+		"cat_flee": await _cat_flee()
 		"dir_repro": await _dir_repro()
 		"free":
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -95,9 +96,16 @@ func _cat_enter() -> void:
 	var cat := NpcInstaller.find(&"cat", 2) as Cat      # Spawn_Cat3 = 勝手口のそば
 	assert(cat != null, "cat が置かれていない")
 	var door := building.get_door(&"Door_Backyard")
-	door.open()
-	building.get_door(&"Door_Shikijo").open()   # 式場の戸。猫は扉を開けられない
-	print("勝手口 is_open=%s / 式場 is_open=%s" % [door.is_open, building.get_door(&"Door_Shikijo").is_open])
+	# --locked=1 で施錠、既定は「閉まっているが未施錠」(猫が押し開けられる)
+	if args.has("open"):
+		door.open()
+	else:
+		if door.is_open:
+			door.close()
+		door.locked = args.has("locked")
+	building.get_door(&"Door_Shikijo").open()
+	print("勝手口 is_open=%s locked=%s / 式場 is_open=%s" % [door.is_open, door.locked,
+		building.get_door(&"Door_Shikijo").is_open])
 	cat.activate()
 	await get_tree().create_timer(0.5, false).timeout
 	await _shot("cat_01_outside", cat.global_position + Vector3(1.3, 0.85, -1.9),
@@ -108,8 +116,9 @@ func _cat_enter() -> void:
 	print("猫の状態=%s  pos=%v  is_inside=%s" % [cat.state_name(), cat.global_position, cat.is_inside])
 	await _shot("cat_02_inside", Vector3(3.2, 1.55, -3.2), cat.global_position + Vector3(0, 0.2, 0))
 
-	# うろつきを飛ばして棺へ
-	cat._set_state(Cat.State.TO_COFFIN)
+	# うろつきを飛ばして棺へ(中に入れていないときは飛ばす)
+	if cat.is_inside:
+		cat._set_state(Cat.State.TO_COFFIN)
 	await _wait_state(cat, Cat.State.ON_COFFIN, 40.0)
 	await get_tree().create_timer(1.5, false).timeout
 	print("猫の状態=%s  pos=%v  棺の上面 y=%.3f" % [cat.state_name(), cat.global_position, cat.coffin_top_y()])
@@ -138,7 +147,7 @@ func _cat_shoo() -> void:
 	print("追い払われた直後 pos=%v 速度=%.2f" % [cat.global_position,
 		Vector2(cat.velocity.x, cat.velocity.z).length()])
 	await _shot("shoo_02_running", Vector3(11.0, 1.5, -2.6), cat.global_position + Vector3(0, 0.2, 0))
-	await _wait_state(cat, Cat.State.OUTSIDE_IDLE, 45.0)
+	await _wait_state(cat, Cat.State.OUTSIDE_IDLE, 75.0)
 	print("猫の状態=%s  pos=%v  is_inside=%s" % [cat.state_name(), cat.global_position, cat.is_inside])
 	await _shot("shoo_03_outside", cat.global_position + Vector3(1.6, 1.1, -2.2), cat.global_position + Vector3(0, 0.2, 0))
 	print("cat_shooed が出たか: %s" % events_seen.has("cat_shooed"))
@@ -376,6 +385,33 @@ func _dir_repro() -> void:
 	await get_tree().create_timer(1.0, false).timeout
 	await _shot("m4_03_son_zabuton", Vector3(-1.35, 1.05, 1.90), Vector3(-1.35, 0.45, 3.8))
 	print("息子 posture=%s pos=%v" % [son.posture, son.global_position])
+
+
+## 館内の猫にプレイヤーが近づくと、威嚇して自分から逃げることを見る。
+func _cat_flee() -> void:
+	building.get_door(&"Door_Backyard").open()
+	building.get_door(&"Door_Shikijo").open()
+	var cat := NpcInstaller.find(&"cat", 2) as Cat
+	cat.activate()
+	cat.go_inside_now(&"Door_Backyard")
+	await _wait_state(cat, Cat.State.INSIDE_WANDER, 20.0)
+	await get_tree().create_timer(1.0, false).timeout
+	print("猫 state=%s pos=%v  逃げる距離=%.2fm" % [cat.state_name(), cat.global_position,
+		cat.flee_distance])
+	await _shot("flee_01_before", cat.global_position + Vector3(-2.2, 1.3, -1.6),
+		cat.global_position + Vector3(0, 0.2, 0))
+	# プレイヤーを猫の 1.0m 手前へ
+	var to := cat.global_position + Vector3(1.0, 0.0, 0.0)
+	player.teleport(to, -90.0, -20.0)
+	print("プレイヤーを %v へ(距離 %.2fm)" % [to, cat.global_position.distance_to(to)])
+	await _wait_state(cat, Cat.State.SHOOED, 8.0)
+	print("猫 state=%s(威嚇して逃げたか)" % cat.state_name())
+	await get_tree().create_timer(2.0, false).timeout
+	await _shot("flee_02_running", cat.global_position + Vector3(0.0, 2.2, -3.0),
+		cat.global_position + Vector3(0, 0.2, 0))
+	await _wait_state(cat, Cat.State.OUTSIDE_IDLE, 40.0)
+	print("猫 state=%s pos=%v is_inside=%s" % [cat.state_name(), cat.global_position, cat.is_inside])
+	print("cat_shooed が出たか: %s" % events_seen.has("cat_shooed"))
 
 
 ## 式場の戸を閉めたまま猫を入れ、戸の前で待つこと・開けたら棺に乗ることを見る(review_2 N4)。
