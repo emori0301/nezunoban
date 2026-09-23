@@ -244,13 +244,13 @@ static func _backyard(b: Building) -> void:
 	b.add_anchor_prop(R, "Anchor_Sink", "sink", Vector3(-3.55, 0.0, -3.2), -90.0,
 		Vector3(0.95, 0.85, 0.55), Color(0.55, 0.57, 0.6))
 	# 復旧手順の掲示(script.md E-2)。分電盤の横、読める大きさの枠付きの紙。
-	LevelBuild.box(node, Vector3(5.20, 1.36, -5.25), Vector3(0.02, 0.62, 0.50),
+	LevelBuild.box(node, Vector3(5.20, 1.36, -5.25), Vector3(0.02, 0.60, 0.62),
 		LevelMaterials.plain(Color(0.28, 0.26, 0.22)), false, "", false)
-	LevelBuild.box(node, Vector3(5.192, 1.36, -5.25), Vector3(0.012, 0.56, 0.44),
+	LevelBuild.box(node, Vector3(5.192, 1.36, -5.25), Vector3(0.012, 0.54, 0.56),
 		LevelMaterials.plain(Color(0.84, 0.83, 0.78)), false, "", false)
 	var proc := LevelBuild.sign_text(node,
 		"停電時の復旧手順\n一、主幹\n二、廊下・事務所\n三、式場\n順序厳守 やすらぎ会館",
-		Vector3(5.182, 1.36, -5.25), -90.0, 0.042, Color(0.09, 0.09, 0.11), true, 384)
+		Vector3(5.182, 1.38, -5.25), -90.0, 0.036, Color(0.09, 0.09, 0.11), true, 384)
 	proc.autowrap_mode = TextServer.AUTOWRAP_OFF
 	proc.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 

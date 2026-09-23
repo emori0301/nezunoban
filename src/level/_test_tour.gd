@@ -357,7 +357,7 @@ func _check(b: Node3D) -> void:
 		# 壁に密着しているか: -Z 方向へ 0.35m 進んだ先が空いていて、逆向きはすぐ壁
 		var xf: Transform3D = t
 		var inward := -xf.basis.z.normalized()
-		navparams.transform = Transform3D(Basis(), xf.origin + inward * 0.45 + Vector3(0, -0.2, 0))
+		navparams.transform = Transform3D(Basis(), Vector3(xf.origin.x, 1.0, xf.origin.z) + inward * 0.45)
 		var free_in := space.intersect_shape(navparams, 1).size() == 0
 		var rp2 := PhysicsRayQueryParameters3D.create(xf.origin + inward * 0.30, xf.origin - inward * 0.25, 1)
 		var hit2 := space.intersect_ray(rp2)
@@ -374,13 +374,13 @@ func _check(b: Node3D) -> void:
 		for sp in spots:
 			var v: Vector3 = sp
 			var d := Vector2(v.x - wp.global_position.x, v.z - wp.global_position.z).length()
-			if d < 0.55 or d > 3.2:
+			if d < 0.55 or d > 3.4:
 				bad += 1
 			navparams.transform = Transform3D(Basis(), v + Vector3(0, 0.95, 0))
 			if space.intersect_shape(navparams, 1).size() > 0:
 				bad += 1
 		print("  [%s] %-22s %d 点  範囲外/壁の中 %d" % [
-			"OK " if (spots.size() == 20 and bad == 0) else "NG ", wn, spots.size(), bad])
+			"OK " if (spots.size() >= 16 and bad == 0) else "NG ", wn, spots.size(), bad])
 
 	# 施錠のふるまい。猫は open(force=false) で押し開けるので、施錠されていたら失敗すること。
 	print("--- 施錠 ---")

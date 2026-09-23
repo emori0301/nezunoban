@@ -261,10 +261,10 @@ func handprint_path() -> Array[Transform3D]:
 		[7.58, 1.22, 0.95, -90.0], [7.58, 1.06, -1.05, -90.0],
 		[6.20, 1.26, 1.00, 0.0], [4.90, 1.10, 1.00, 0.0], [3.60, 1.31, 1.00, 0.0],
 		[2.40, 1.15, -1.00, 180.0], [1.10, 1.29, -1.00, 180.0], [-0.20, 1.04, -1.00, 180.0],
-		[-1.40, 1.23, 1.00, 0.0], [-2.60, 1.08, 1.00, 0.0], [-3.60, 1.31, 1.00, 0.0],
+		[-1.40, 1.23, 1.00, 0.0], [-2.60, 1.08, -1.00, 180.0], [-3.30, 1.31, 1.00, 0.0],
 		[-4.05, 1.18, 2.20, 90.0],
 		[-7.20, 1.15, 3.90, 0.0],
-		[-10.90, 1.20, 8.90, -90.0],
+		[-9.60, 1.20, 9.92, 0.0],
 		[-10.40, 0.46, 9.13, 0.0],
 	]
 	var out: Array[Transform3D] = []
@@ -274,22 +274,36 @@ func handprint_path() -> Array[Transform3D]:
 	return out
 
 
-## 窓の外に散らす座標(猫の群れ用)。窓から 0.6〜2.5m、床の高さで 20 点。
-## 未知の窓名なら空配列を返す。
+## 窓の外に散らす座標(猫の群れ用)。窓から 0.6〜2.5m、床の高さで最大 20 点。
+## 窓の向きによっては外側に別の部屋が回り込むので、候補を広めに作って
+## 物理で塞がっていない点だけを返す。未知の窓名なら空配列。
 func window_outside_spots(window_name: StringName) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	var w: WindowPane = _windows.get(window_name, null)
 	if w == null:
 		return out
-	# 窓はすべて壁の外側が +Z(ローカル)。外向きの法線と横方向を transform から取る。
 	var xf := w.global_transform
 	var outward := xf.basis.z.normalized()
 	var side := xf.basis.x.normalized()
 	var base := Vector3(xf.origin.x, 0.0, xf.origin.z)
-	for i in 20:
-		var d := 0.6 + float(i % 5) * 0.475
-		var lat := (float(i / 5) - 1.5) * 0.8 + (0.18 if i % 2 == 0 else -0.18)
-		out.append(base + outward * d + side * lat)
+	var space := get_world_3d().direct_space_state
+	var shape := SphereShape3D.new()
+	shape.radius = 0.28
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.collision_mask = 1
+	q.collide_with_areas = false
+	# 距離 5 段 x 横 8 列の候補から、空いているものを順に拾う
+	for di in 5:
+		for li in 8:
+			if out.size() >= 20:
+				return out
+			var d := 0.6 + float(di) * 0.475
+			var lat := (float(li) - 3.5) * 0.42
+			var p := base + outward * d + side * lat
+			q.transform = Transform3D(Basis(), p + Vector3(0, 0.9, 0))
+			if space.intersect_shape(q, 1).is_empty():
+				out.append(p)
 	return out
 
 
