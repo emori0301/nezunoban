@@ -219,7 +219,7 @@ func ev_monitor_figure() -> void:
 ## Director が player_entered_room{Room_Shikijo} で呼ぶ
 func on_shikijo_reveal() -> void:
 	if _monitor_ghost and is_instance_valid(_monitor_ghost):
-		_monitor_ghost.queue_free()
+		Scares.free_visual(_monitor_ghost)
 		_monitor_ghost = null
 	var mon: Node = dir.sys(&"monitor")
 	if mon:
@@ -726,7 +726,7 @@ func _push_lid_back(_p: Node3D) -> void:
 	if _finale_running and cnd and not Dread.is_doomed():
 		cnd.set(&"fail_next", false)
 	if _lid_spot and is_instance_valid(_lid_spot):
-		_lid_spot.queue_free()
+		Scares.free_visual(_lid_spot)
 		_lid_spot = null
 
 
@@ -883,7 +883,7 @@ func _finish_finale() -> void:
 
 func _restore_hikaeshitsu_door() -> void:
 	if _hikaeshitsu_spot and is_instance_valid(_hikaeshitsu_spot):
-		_hikaeshitsu_spot.queue_free()
+		Scares.free_visual(_hikaeshitsu_spot)
 	_hikaeshitsu_spot = null
 	var b: Building = dir.building()
 	var d: Door = b.get_door(&"Door_Hikaeshitsu") if b else null

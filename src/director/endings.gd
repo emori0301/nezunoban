@@ -181,7 +181,7 @@ func _roll_credits(vp: Node) -> void:
 	c.name = "Credits"
 	vp.add_child(c)
 	await c.play()
-	c.queue_free()
+	Scares.free_visual(c)
 
 
 func _show_screen(id: StringName) -> void:

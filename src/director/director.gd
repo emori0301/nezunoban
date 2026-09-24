@@ -181,7 +181,7 @@ func _show_credits_only() -> void:
 	c.name = "Credits"
 	ui_parent().add_child(c)
 	await c.play()
-	c.queue_free()
+	Scares.free_visual(c)
 
 
 func _reload_loop(sec: float) -> void:
@@ -708,8 +708,7 @@ func _altar_figure() -> void:
 	scares.stinger(-2.0)
 	monologue(ScriptText.ADDED_M_FIGURE)
 	await Events.wait(1.0)
-	if is_instance_valid(fig):
-		fig.queue_free()
+	Scares.free_visual(fig)
 
 
 func _on_incense_lit() -> void:

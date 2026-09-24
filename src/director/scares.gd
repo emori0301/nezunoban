@@ -75,10 +75,18 @@ func attach(n: Node3D) -> Node3D:
 	return n
 
 
+## 動的に作ったメッシュを消す。マテリアルを外してから free しないと
+## レンダラが解放済みマテリアルを触って "material is null" を出す。
+static func free_visual(n: Node) -> void:
+	if n == null or not is_instance_valid(n):
+		return
+	SystemUtil.detach_materials(n)
+	n.queue_free()
+
+
 func clear_spawned() -> void:
 	for n in _spawned:
-		if is_instance_valid(n):
-			n.queue_free()
+		free_visual(n)
 	_spawned.clear()
 
 
@@ -247,7 +255,7 @@ func set_moonlight(on: bool) -> void:
 	elif not on:
 		for l in _moon:
 			if is_instance_valid(l):
-				l.queue_free()
+				free_visual(l)
 				_spawned.erase(l)
 		_moon.clear()
 
@@ -590,7 +598,7 @@ func hall_flicker_shadow() -> bool:
 		fig.visible = not fig.visible
 	await Events.wait(1.2)
 	if is_instance_valid(fig):
-		fig.queue_free()
+		free_visual(fig)
 		_spawned.erase(fig)
 	return true
 
@@ -602,7 +610,7 @@ func hall_figure(model: String = "kasha", seconds: float = 1.4) -> void:
 	Audio.play_at(&"kasha_growl", fig.global_position, -8.0)
 	await Events.wait(seconds)
 	if is_instance_valid(fig):
-		fig.queue_free()
+		free_visual(fig)
 		_spawned.erase(fig)
 	stinger(-8.0)
 
@@ -738,7 +746,7 @@ func monitor_ghost_genkan() -> bool:
 	mon.call(&"glitch", 0.7)
 	await Events.wait(9.0)
 	if is_instance_valid(fig):
-		fig.queue_free()
+		free_visual(fig)
 		_spawned.erase(fig)
 	if is_instance_valid(mon):
 		mon.set(&"auto_switch", true)
@@ -978,7 +986,7 @@ func cat_eyes(n: int) -> void:
 func clear_eyes() -> void:
 	for e in _eyes:
 		if is_instance_valid(e):
-			e.queue_free()
+			free_visual(e)
 			_spawned.erase(e)
 	_eyes.clear()
 
