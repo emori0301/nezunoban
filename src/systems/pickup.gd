@@ -56,7 +56,8 @@ func take(player: Node3D) -> void:
 	picked_up.emit(item_name)
 	if disappear:
 		enabled = false
-		visible = false
+		# マテリアルを外してから消す(レンダラが解放済みマテリアルを掴まないように)
+		SystemUtil.detach_materials(self)
 		queue_free()
 
 func _interact(player: Node3D) -> void:

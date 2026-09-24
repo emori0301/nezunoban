@@ -305,6 +305,8 @@ func set_open(open: bool) -> void:
 		tw.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 		tw.tween_property(_lid_node, "rotation_degrees:x", lid_open_degrees if open else 0.0, 1.8)
 	elif _prop:
+		# model_name を変えると Prop が古い glb を queue_free するので、先に外す
+		SystemUtil.detach_materials(_prop.get_instance())
 		_prop.model_name = "coffin_lid_open" if open else "coffin"
 	if open:
 		set_window_open(false)

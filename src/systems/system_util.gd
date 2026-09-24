@@ -156,6 +156,29 @@ static func override_surfaces(root: Node, material_name: String, mat: Material) 
 		(s["mi"] as MeshInstance3D).set_surface_override_material(s["index"], mat)
 	return found.size()
 
+## queue_free() の前に呼ぶ。マテリアルの参照を外し、見えなくしてから消すと、
+## レンダラが解放済みマテリアルを掴んだまま次のフレームを描いて
+## "Parameter \"material\" is null" を出すのを防げる。
+static func detach_materials(root: Node) -> void:
+	if root == null:
+		return
+	var targets: Array[Node] = [root]
+	targets.append_array(root.find_children("*", "GeometryInstance3D", true, false))
+	for n in targets:
+		if n is GPUParticles3D:
+			(n as GPUParticles3D).emitting = false
+		if n is MeshInstance3D:
+			var mi := n as MeshInstance3D
+			if mi.mesh:
+				for i in mi.mesh.get_surface_count():
+					mi.set_surface_override_material(i, null)
+			mi.material_override = null
+			mi.material_overlay = null
+		if n is GeometryInstance3D:
+			(n as GeometryInstance3D).material_override = null
+		if n is Node3D:
+			(n as Node3D).visible = false
+
 ## 名前でメッシュを探し、その AABB を reference のローカル座標で返す。
 ## 見つからなければ size が 0。モデルの小窓や画面の実寸に合わせるために使う。
 static func part_bounds(root: Node, node_name: String, reference: Node3D) -> AABB:
