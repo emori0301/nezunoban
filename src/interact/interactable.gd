@@ -22,6 +22,15 @@ signal unfocused
 
 var _used: bool = false
 
+## 導入などで操作を絞るゲート。Game.get_flag(&"interact_gate") が true の間は、
+## group "gate_allowed" に入っている Interactable 以外は押せず、gate_text を返す。
+const GATE_FLAG := &"interact_gate"
+const GATE_GROUP := &"gate_allowed"
+static var gate_text: String = "先に社長に話さないと。"
+
+func _gated() -> bool:
+	return bool(Game.get_flag(GATE_FLAG, false)) and not is_in_group(GATE_GROUP)
+
 func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 0
@@ -39,12 +48,16 @@ func _missing_item_prompt() -> String:
 
 ## 押しても反応しない理由の文。派生は状況に応じて上書きしてよい(例: 「鍵がかかっている。」「空だ。」)。
 func get_blocked_text() -> String:
+	if _gated():
+		return gate_text
 	if required_item != &"" and not _player_has(required_item):
 		return blocked_text if blocked_text != "" else "何かが要る。"
 	return blocked_text
 
 func can_interact(player: Node3D) -> bool:
 	if not enabled or (one_shot and _used):
+		return false
+	if _gated():
 		return false
 	if required_item != &"" and not _player_has(required_item):
 		return false
