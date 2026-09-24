@@ -170,7 +170,7 @@ def blacken(objs, col=(0.020, 0.020, 0.024)):
 def veranda():
     wood = material("PhWood", "wood_dark", color=(0.34, 0.24, 0.16), rough=0.62)
     dark = material("PhBeam", "wall_wood", color=(0.16, 0.12, 0.09), rough=0.8)
-    paper = material("PhShoji", "shoji", color=(0.56, 0.54, 0.48), rough=0.95)
+    paper = material("PhShoji", "shoji", color=(0.38, 0.37, 0.33), rough=0.95)
     grass = material("PhGarden", "leaves_dark", color=(0.20, 0.24, 0.14), rough=0.95)
 
     b = Builder("set")
@@ -199,19 +199,20 @@ def veranda():
 def daylight():
     world_color((0.52, 0.58, 0.66), 0.55)
     add_area("key", (0.9, -3.2, 2.4), (math.radians(60), 0, math.radians(12)),
-             5.0, 300.0, (1.0, 0.96, 0.88))
+             5.0, 210.0, (1.0, 0.96, 0.88))
     add_area("fill", (-2.4, -2.4, 1.7), (math.radians(78), 0, math.radians(-40)),
              4.0, 95.0, (0.82, 0.88, 1.0))
     add_area("back", (0.0, 2.6, 2.1), (math.radians(-64), 0, 0),
              4.0, 12.0, (1.0, 0.94, 0.86))
     add_area("floor", (0.0, -1.2, 0.9), (math.radians(96), 0, 0),
-             3.0, 22.0, (1.0, 0.92, 0.80))
+             3.0, 14.0, (1.0, 0.92, 0.80))
 
 
 # ---------------------------------------------------------------- 写真の劣化
 
 def degrade_photo(img, seed, out_w, out_h, fade=0.34, warm=True,
-                  grain=0.10, mono=False, corner=0.035, bleed=2):
+                  grain=0.10, mono=False, corner=0.035, bleed=2,
+                  soft_edge=0.0):
     """レンダリングを古い写真にする。退色・粒子・角の丸み・にじみ。"""
     H0, W0 = img.shape[0], img.shape[1]
     img = blur(img, bleed)
@@ -221,6 +222,11 @@ def degrade_photo(img, seed, out_w, out_h, fade=0.34, warm=True,
     H, W = img.shape[0], img.shape[1]
     gx, gy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
 
+    if soft_edge > 0:                       # ピントは中央、端はわずかに甘く
+        rr = np.sqrt(((gx - H * 0.5) / (H * 0.62)) ** 2 +
+                     ((gy - W * 0.5) / (W * 0.62)) ** 2)
+        img = mix(img, blur(img, 2), np.clip((rr - 0.72) * 1.9, 0, 1) * soft_edge)
+
     lum = img.mean(axis=2, keepdims=True)
     if mono:
         img = np.repeat(lum, 3, axis=2)
@@ -228,7 +234,7 @@ def degrade_photo(img, seed, out_w, out_h, fade=0.34, warm=True,
     else:
         img = mix(img, np.repeat(lum, 3, axis=2), fade)
         if warm:
-            img = img * np.array([1.07, 1.00, 0.84])
+            img = img * np.array([1.10, 1.00, 0.79])   # セピア寄り
     con = 1.16 if mono else 1.02
     img = np.clip((img - 0.5) * con + (0.49 if mono else 0.50), 0, 1)
 
@@ -296,29 +302,31 @@ def head_screen_pos(scene, cam, world_pos):
 def make_family(variant, out_name):
     build_family(variant)
     W, H = 1024, 768
-    sc = scene_setup(W, H, exposure=0.10, samples=48)
+    sc = scene_setup(W, H, exposure=-0.20, samples=48)
     print("  objects in scene:", len(bpy.context.scene.objects))
-    cam = add_camera((0.06, -3.70, 1.22), (0.06, 0.42, 0.97), lens=60.0,
-                     dof_at=(0.06, 0.42, 1.12), fstop=6.3)
+    cam = add_camera((0.00, -2.52, 1.40), (0.00, 0.42, 1.30), lens=60.0,
+                     dof_at=(0.00, 0.42, 1.34), fstop=6.3)
     img = render_np(W, H)
     write_png(os.path.join(PREVIEW_DIR, "_raw_family_%s.png" % variant),
               img * 255.0)
 
     if variant == "smudge":
         # 4 人目の顔だけを擦って潰す
-        hx, hy = head_screen_pos(sc, cam, (0.74, 0.42, 1.51))
+        hx, hy = head_screen_pos(sc, cam, (0.55, 0.42, 1.53))
         cx, cy = hy * H, hx * W
         gx, gy = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
-        m = np.clip(1.0 - np.sqrt(((gx - cx) / (H * 0.085)) ** 2
-                                  + ((gy - cy) / (W * 0.055)) ** 2), 0, 1)
+        m = np.clip(1.0 - np.sqrt(((gx - cx) / (H * 0.155)) ** 2
+                                  + ((gy - cy) / (W * 0.085)) ** 2), 0, 1)
         m = np.clip(m * 2.0, 0, 1)
-        sm = blur(img.copy(), 14)
+        sm = blur(img.copy(), 18)
         img = mix(img, sm, m)
         scr = white(max(H, W), 9911)[:H, :W]
-        img = mix(img, rgb(H, (0.80, 0.77, 0.72), width=W),
-                  m * (0.34 + scr * 0.42))
+        streak = norm(fbm(max(H, W), 22, 3, 9912))[:H, :W]
+        img = mix(img, rgb(H, (0.88, 0.85, 0.79), width=W),
+                  np.clip(m * 1.25, 0, 1) * (0.52 + scr * 0.30 + streak * 0.22))
 
-    out = degrade_photo(img, 6100 if variant == "smudge" else 6200, 256, 192)
+    out = degrade_photo(img, 6100 if variant == "smudge" else 6200, 256, 192,
+                        fade=0.50, soft_edge=0.55)
     save_tex(out_name, out)
     return out
 
@@ -326,24 +334,28 @@ def make_family(variant, out_name):
 # ---------------------------------------------------------------- 遺影
 
 def make_iei():
+    """遺影。胸から上、正面、わずかに微笑。淡いグレー背景のグレースケール。
+    黒い額と黒リボンは iei_frame.glb 側にあるので、写真には入れない。"""
     reset_scene()
-    world_color((0.10, 0.10, 0.11), 0.30)
-    # 写真館: 斜め上から柔らかい主光 + 背景を分ける弱い逆光
-    add_area("key", (-1.30, -2.10, 2.55), (math.radians(52), 0, math.radians(-28)),
-             2.0, 420.0, (1.0, 0.97, 0.93))
-    add_area("fill", (1.55, -1.80, 1.55), (math.radians(82), 0, math.radians(40)),
-             1.6, 70.0, (0.88, 0.92, 1.0))
-    add_area("rim", (0.85, 1.35, 2.00), (math.radians(-52), 0, math.radians(18)),
-             1.2, 40.0)
-    # 背景の暗い幕
+    world_color((0.14, 0.14, 0.15), 0.25)
+    # 写真館: 斜め上から柔らかい主光。顔の陰影が残るよう控えめにする
+    add_area("key", (-1.20, -2.05, 2.35), (math.radians(54), 0, math.radians(-26)),
+             2.2, 150.0, (1.0, 0.98, 0.95))
+    add_area("fill", (1.50, -1.75, 1.50), (math.radians(82), 0, math.radians(40)),
+             1.8, 26.0, (0.90, 0.93, 1.0))
+    add_area("rim", (0.80, 1.30, 2.05), (math.radians(-52), 0, math.radians(18)),
+             1.2, 14.0)
+    # 背景の幕(中間のグレー。グラデーションは後処理で足す)
     b = Builder("bg")
     b.add(box_mm(-2.4, 2.4, 1.85, 1.90, 0.00, 2.60),
-          material("IeiBg", "wall_plaster", color=(0.085, 0.085, 0.090), rough=0.98), 2.0)
+          material("IeiBg", "wall_plaster", color=(0.60, 0.60, 0.61), rough=0.98),
+          2.0)
+    add_area("bg", (0.0, 0.70, 2.05), (math.radians(-104), 0, 0),
+             2.6, 235.0, (1.0, 1.0, 1.0))
     b.build()
 
     objs, _ = place("npc_kiyo", (0.0, 0.0, 0.0), yaw_deg=180.0,
                     action="idle", frame=5)
-    # 微笑んだ顔に差し替える
     for o in objs:
         if o.type != 'MESH':
             continue
@@ -353,12 +365,31 @@ def make_iei():
     matte(objs)
 
     R = 768
-    scene_setup(R, R, exposure=0.14, samples=64)
-    add_camera((0.015, -1.02, 1.399), (0.0, 0.0, 1.318), lens=76.0,
-               dof_at=(0.0, 0.0, 1.37), fstop=3.6)
+    scene_setup(R, R, exposure=-1.05, samples=64)      # 白飛びしない露出
+    add_camera((0.015, -1.14, 1.372), (0.0, 0.0, 1.258), lens=70.0,
+               dof_at=(0.0, 0.0, 1.37), fstop=4.0)
     img = render_np(R, R)
-    out = degrade_photo(img, 6300, 256, 256, mono=True, grain=0.085,
-                        corner=0.0, bleed=1)
+    write_png(os.path.join(PREVIEW_DIR, "_raw_iei.png"), img * 255.0)
+
+    S = 256
+    img = blur(img, 1).reshape(S, 3, S, 3, 3).mean(axis=(1, 3))
+    lum = img.mean(axis=2)
+    gx, gy = np.meshgrid(np.arange(S), np.arange(S), indexing="ij")
+
+    # 顔の陰影を出す。白飛びさせないよう上を抑える
+    lum = np.clip((lum - 0.42) * 1.30 + 0.53, 0.0, 0.91)
+    # 淡いグラデーション(上が明るく、下と左右がわずかに落ちる)
+    grad = 1.05 - (gx / float(S)) * 0.12 - np.abs(gy - S * 0.5) / S * 0.09
+    lum = np.clip(lum * grad, 0.0, 0.93)
+    img = np.stack([lum, lum * 0.992, lum * 0.966], axis=2)
+
+    # 周辺減光と軽い粒子
+    d = np.sqrt(((gx - S * 0.46) / (S * 0.78)) ** 2 +
+                ((gy - S * 0.50) / (S * 0.80)) ** 2)
+    img = mul_gray(img, np.clip(1.05 - d * 0.42, 0, 1.1))
+    img = mul_gray(img, 0.955 + white(S, 6301) * 0.09)
+    img = mul_gray(img, 0.97 + norm(fbm(S, 8, 3, 6302)) * 0.06)
+    out = finish(img, 6303, noise=0.028, levels=30)
     save_tex("iei_photo", out)
     return out
 
