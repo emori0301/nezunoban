@@ -339,6 +339,7 @@ func on_tv_approach() -> void:
 
 func ev_blackout() -> void:
 	dir.log_event("ev_blackout")
+	dir.release_genkan()       # ここから外へ出られる
 	var b: Building = dir.building()
 	var br: Node = dir.sys(&"breaker")
 	if b:

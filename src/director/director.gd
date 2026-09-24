@@ -569,6 +569,11 @@ func _apply_state_body(m: int) -> void:
 	# --- 導入の結果 ---
 	Game.set_flag(&"has_clipboard", true)
 	Game.set_flag(&"intro_done", true)
+	set_gate(false)
+	if m >= 180:
+		release_genkan()
+	else:
+		lock_genkan()
 	if inc:
 		inc.call(&"light")
 	if cnd:
@@ -1292,6 +1297,8 @@ func _on_night_ended(id: StringName) -> void:
 func play_intro() -> void:
 	intro_running = true
 	log_event("intro")
+	set_gate(true)
+	lock_genkan()
 	var h := hud()
 	var p := Game.player
 	if h and h.has_method(&"set_fade"):
@@ -1307,6 +1314,11 @@ func play_intro() -> void:
 
 	var boss := npc(&"boss")
 	var hikari := npc(&"granddaughter")
+	# 社長に付いて歩く経路だけ開けておく
+	allow_door(&"Door_Office")
+	allow_door(&"Door_Shikijo")
+	if boss:
+		allow(boss.get(&"talk"))
 
 	# --- 受付 ---
 	if boss:
@@ -1338,11 +1350,17 @@ func play_intro() -> void:
 	await face_off(boss)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_INCENSE)
 	Tasks.set_task(&"incense", ScriptText.TASK_INCENSE)
+	var inc_stand := sys(&"incense_stand")
+	allow(inc_stand)
 	await _wait_event(&"incense_lit", 600.0)
+	allow(inc_stand, false)
 	Tasks.complete(&"incense")
+	# 灯明はこの場で社長が点け方を見せる
 	var cnd := sys(&"candle")
+	allow(cnd)
 	if cnd:
 		cnd.call(&"light")
+	allow(cnd, false)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_RULES)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_CATS)
 
@@ -1365,6 +1383,7 @@ func play_intro() -> void:
 	await face_off(boss)
 	# 「勝手口の鍵」→「式場の蛍光灯」→「じゃあな」の順で言わせる
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[0]))
+	set_gate(false)                       # ここから自由に動ける
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.BOSS_LOCK)
 	await _say_lines(ScriptText.SPEAKER_BOSS, ScriptText.ADDED_BOSS_LIGHTS)
 	await Dialogue.say(ScriptText.SPEAKER_BOSS, String(ScriptText.BOSS_LEAVE[1]))
@@ -1382,6 +1401,8 @@ func play_intro() -> void:
 			d.close()
 
 	# --- 勝手口 ---
+	await Events.wait(2.0)
+	lock_genkan()                         # 社長が出たら玄関はまた閉まる
 	Tasks.set_task(&"backdoor", ScriptText.TASK_BACKDOOR)
 	_arm_incense_dread()
 	Game.set_flag(&"intro_done", true)
@@ -1392,6 +1413,54 @@ func play_intro() -> void:
 func _say_lines(speaker: String, lines: Array) -> void:
 	for l in lines:
 		await Dialogue.say(speaker, String(l))
+
+
+## 導入中の操作制限。group "gate_allowed" のものだけ押せる。
+func set_gate(on: bool) -> void:
+	Game.set_flag(&"interact_gate", on)
+	if not on:
+		for n in get_tree().get_nodes_in_group(Interactable.GATE_GROUP):
+			n.remove_from_group(Interactable.GATE_GROUP)
+
+
+func allow(node: Variant, on: bool = true) -> void:
+	var n: Node = node as Node
+	if n == null:
+		return
+	if on:
+		n.add_to_group(Interactable.GATE_GROUP)
+	else:
+		n.remove_from_group(Interactable.GATE_GROUP)
+
+
+func allow_door(door_name: StringName, on: bool = true) -> void:
+	var b := building()
+	if b:
+		allow(b.get_door(door_name), on)
+
+
+## 玄関は社長が鍵を持っている。00:00 の停電まで外へは出られない。
+func lock_genkan() -> void:
+	var b := building()
+	var d: Door = b.get_door(&"Door_Genkan") if b else null
+	if d == null:
+		return
+	d.locked_prompt = ScriptText.GENKAN_LOCKED
+	if not d.is_open:
+		d.lock()
+	else:
+		d.set_locked(true)
+
+
+## 00:00 以降。鍵は開けられるようになる。
+func release_genkan() -> void:
+	var b := building()
+	var d: Door = b.get_door(&"Door_Genkan") if b else null
+	if d == null:
+		return
+	d.locked_prompt = "鍵がかかっている"
+	if d.find_child("DoorLock", true, false) == null:
+		d.unlock()               # 締り金具が無い扉なら director が開けておく
 
 
 ## 導入が終わったら、線香を絶やした罰を有効にする。

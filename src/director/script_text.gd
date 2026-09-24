@@ -218,6 +218,8 @@ const CHOICE_HIKAESHITSU_SPOT := "控室の戸を調べる"
 const TASK_INCENSE := "線香を立てる"
 const TASK_BACKDOOR := "勝手口を閉めて鍵をかける"
 const TASK_LID := "棺の蓋を戻す"
+## 玄関が施錠されているときの表示(00:00 まで)
+const GENKAN_LOCKED := "鍵がかかっている。社長が持っている。"
 const TASK_FLOWERS := "供花の水を替える"
 const TASK_WINDOW := "式場の窓を閉める"
 const TASK_CANDLE := "灯明を替える"
