@@ -326,9 +326,27 @@ func rebake_navmesh() -> void:
 ## systems が実物のインタラクト可能オブジェクトを置くとき、level のプレースホルダを消す。
 func hide_anchor_prop(anchor: StringName) -> void:
 	var p: Prop = _anchor_props.get(anchor, null)
-	if p and is_instance_valid(p):
-		p.queue_free()
-		_anchor_props.erase(anchor)
+	if p == null or not is_instance_valid(p):
+		return
+	# queue_free() はフレーム末に走るので、マテリアルを付けたまま消すと
+	# レンダラが解放済みの material_override を引いて
+	# 「Parameter "material" is null」を吐く。先に外して隠してから捨てる。
+	_detach_materials(p)
+	p.queue_free()
+	_anchor_props.erase(anchor)
+
+
+static func _detach_materials(root: Node) -> void:
+	if root is MeshInstance3D:
+		var mi := root as MeshInstance3D
+		mi.material_override = null
+		for i in mi.get_surface_override_material_count():
+			mi.set_surface_override_material(i, null)
+		mi.visible = false
+	if root is GeometryInstance3D:
+		(root as GeometryInstance3D).visible = false
+	for c in root.get_children():
+		_detach_materials(c)
 
 
 # ============================================================ 組み立て用ヘルパ
