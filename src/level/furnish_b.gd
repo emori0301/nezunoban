@@ -99,7 +99,8 @@ static func _shikijo(b: Building) -> void:
 		Vector3(0.52, 0.62, 0.07), Color(0.10, 0.09, 0.09), false, -90.0)
 
 	# 棺と棺台
-	LevelBuild.box(node, Vector3(16.9, 0.22, -0.5), Vector3(2.15, 0.44, 0.98), cloth)
+	# 棺台。棺(glb の長辺は yaw 90 で世界 Z)と長辺を揃え、一回り小さくして上面 0.44 に棺を乗せる。
+	LevelBuild.box(node, Vector3(16.9, 0.22, -0.5), Vector3(0.60, 0.44, 1.76), cloth)
 	b.add_anchor_prop(R, "Anchor_Coffin", "coffin", Vector3(16.9, 0.44, -0.5), 90.0,
 		Vector3(0.58, 0.52, 1.92), Color(0.76, 0.74, 0.70))
 
@@ -149,7 +150,7 @@ static func _shikijo(b: Building) -> void:
 	for row in CHAIR_X.size():
 		for col in CHAIR_Z.size():
 			b.add_prop(R, "Chair_%d_%d" % [row, col], "folding_chair",
-				Vector3(CHAIR_X[row], 0.0, CHAIR_Z[col]), -90.0,
+				Vector3(CHAIR_X[row], 0.0, CHAIR_Z[col]), 90.0,
 				Vector3(0.46, 0.86, 0.5), Color(0.20, 0.20, 0.22))
 
 	# 窓
@@ -244,13 +245,13 @@ static func _backyard(b: Building) -> void:
 	b.add_anchor_prop(R, "Anchor_Sink", "sink", Vector3(-3.55, 0.0, -3.2), -90.0,
 		Vector3(0.95, 0.85, 0.55), Color(0.55, 0.57, 0.6))
 	# 復旧手順の掲示(script.md E-2)。分電盤の横、読める大きさの枠付きの紙。
-	LevelBuild.box(node, Vector3(5.20, 1.36, -5.25), Vector3(0.02, 0.60, 0.62),
+	LevelBuild.box(node, Vector3(5.20, 1.36, -5.25), Vector3(0.02, 0.66, 0.72),
 		LevelMaterials.plain(Color(0.28, 0.26, 0.22)), false, "", false)
-	LevelBuild.box(node, Vector3(5.192, 1.36, -5.25), Vector3(0.012, 0.54, 0.56),
+	LevelBuild.box(node, Vector3(5.192, 1.36, -5.25), Vector3(0.012, 0.60, 0.66),
 		LevelMaterials.plain(Color(0.84, 0.83, 0.78)), false, "", false)
 	var proc := LevelBuild.sign_text(node,
 		"停電時の復旧手順\n一、主幹\n二、廊下・事務所\n三、式場\n順序厳守 やすらぎ会館",
-		Vector3(5.182, 1.38, -5.25), -90.0, 0.036, Color(0.09, 0.09, 0.11), true, 384)
+		Vector3(5.182, 1.38, -5.545), -90.0, 0.038, Color(0.09, 0.09, 0.11), true, 384)
 	proc.autowrap_mode = TextServer.AUTOWRAP_OFF
 	proc.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 

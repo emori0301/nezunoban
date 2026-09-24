@@ -53,12 +53,12 @@ static func _genkan(b: Building) -> void:
 		Vector3(1.3, 0.95, 0.07), Color(0.32, 0.3, 0.26), false)
 
 	# 案内看板「故 春日 キヨ 儀 葬儀式場」。入ってすぐ正面に見える向き(西向き)。
-	LevelBuild.box(node, Vector3(-8.5, 0.45, 1.4), Vector3(0.09, 0.9, 0.85), wood)
-	LevelBuild.box(node, Vector3(-8.5, 1.52, 1.4), Vector3(0.09, 1.25, 1.62), wood)
-	LevelBuild.box(node, Vector3(-8.56, 1.52, 1.4), Vector3(0.02, 1.08, 1.48),
-		LevelMaterials.plain(Color(0.88, 0.86, 0.8)), false)
-	LevelBuild.sign_text(node, "故 春日 キヨ 儀\n葬儀式場", Vector3(-8.58, 1.55, 1.4), -90.0,
-		0.165, Color(0.03, 0.03, 0.04), true, 384)
+	LevelBuild.box(node, Vector3(-8.5, 0.45, 2.05), Vector3(0.09, 0.9, 0.78), wood)
+	LevelBuild.box(node, Vector3(-8.5, 1.48, 2.05), Vector3(0.09, 1.10, 1.42), wood)
+	LevelBuild.box(node, Vector3(-8.56, 1.48, 2.05), Vector3(0.02, 0.94, 1.28),
+		LevelMaterials.plain(Color(0.60, 0.58, 0.53)), false)
+	LevelBuild.sign_text(node, "故 春日 キヨ 儀\n葬儀式場", Vector3(-8.58, 1.51, 2.05), -90.0,
+		0.145, Color(0.03, 0.03, 0.04), true, 384)
 
 	# 受付まわりの小物
 	b.add_prop(R, "ReceptionFlower", "flower_stand", Vector3(-6.3, 0.0, -3.3), 180.0,
@@ -165,12 +165,12 @@ static func _office(b: Building) -> void:
 		Vector3(0.33, 0.33, 0.07), Color(0.75, 0.73, 0.68), false, false)
 
 	# 電話番号の貼り紙(script.md E-3)。電話の上の壁に、読める大きさで。
-	LevelBuild.box(node, Vector3(-10.905, 1.44, 6.22), Vector3(0.02, 0.38, 0.50),
+	LevelBuild.box(node, Vector3(-10.905, 1.44, 6.22), Vector3(0.02, 0.44, 0.58),
 		LevelMaterials.plain(Color(0.30, 0.28, 0.24)), false, "", false)
-	LevelBuild.box(node, Vector3(-10.898, 1.44, 6.22), Vector3(0.012, 0.33, 0.45), paper, false, "", false)
+	LevelBuild.box(node, Vector3(-10.898, 1.44, 6.22), Vector3(0.012, 0.39, 0.52), paper, false, "", false)
 	var tel := LevelBuild.sign_text(node,
 		"短縮番号\n社長　　　　　0246\n春日 ひかり　3175\n春日(キヨ)宅　4419",
-		Vector3(-10.888, 1.44, 6.22), 90.0, 0.035, Color(0.09, 0.09, 0.11), true, 384)
+		Vector3(-10.888, 1.44, 6.445), 90.0, 0.033, Color(0.09, 0.09, 0.11), true, 384)
 	tel.autowrap_mode = TextServer.AUTOWRAP_OFF
 	tel.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 
@@ -234,17 +234,21 @@ static func _hall(b: Building) -> void:
 	var node := b.room_of(R)
 	var wood := LevelMaterials.get_mat("wall_wood", 1.0)
 
-	# 腰板。廊下の生活感はこれで出る。
-	for piece in [[-4.0, 5.3], [5.3, 7.5]]:
-		var w: float = piece[1] - piece[0]
-		LevelBuild.box(node, Vector3((piece[0] + piece[1]) * 0.5, 0.45, -1.02),
-			Vector3(w, 0.9, 0.03), wood, false, "", false)
-	for piece2 in [[-4.0, -2.68], [-1.72, 0.27], [1.13, 7.5]]:
+	# 腰板。開口部(廊下 L 字の合流部・バックヤードの出入口・各戸)は必ず切る。
+	# 貼りっぱなしにすると、床際を木の板が横切って「通れない」ように見える。
+	# 北面 z=-1.1: x 5.3〜7.5 は L 字の合流部なので貼らない
+	LevelBuild.box(node, Vector3(0.65, 0.45, -1.02), Vector3(9.3, 0.9, 0.03), wood, false, "", false)
+	# 南面 z=1.1: 控室の戸(-2.675〜-1.725)とトイレの戸(0.225〜1.175)を避ける
+	for piece2 in [[-4.0, -2.70], [-1.70, 0.20], [1.20, 7.5]]:
 		var w2: float = piece2[1] - piece2[0]
 		LevelBuild.box(node, Vector3((piece2[0] + piece2[1]) * 0.5, 0.45, 1.02),
 			Vector3(w2, 0.9, 0.03), wood, false, "", false)
-	# L 字の北側(突き当たりまで)
-	LevelBuild.box(node, Vector3(5.38, 0.45, -4.3), Vector3(0.03, 0.9, 6.4), wood, false, "", false)
+	# L 字の北枝。西面 x=5.3 はバックヤードの出入口(z -5.05〜-3.55)で切る
+	for piece3 in [[-7.5, -5.05], [-3.55, -1.1]]:
+		var d3: float = piece3[1] - piece3[0]
+		LevelBuild.box(node, Vector3(5.38, 0.45, (piece3[0] + piece3[1]) * 0.5),
+			Vector3(0.03, 0.9, d3), wood, false, "", false)
+	# 東面 x=7.5 は湯灌室側まで壁が続く
 	LevelBuild.box(node, Vector3(7.42, 0.45, -4.3), Vector3(0.03, 0.9, 6.4), wood, false, "", false)
 
 	b.add_prop(R, "FireExtinguisher", "fire_extinguisher", Vector3(-3.6, 0.0, 0.88), 0.0,
@@ -344,7 +348,7 @@ static func _hikaeshitsu(b: Building) -> void:
 	b.add_door(R, "Door_Oshiire", Vector3(-1.25, 0.0, 4.16), 0.0, {
 		"kind": Door.Kind.SLIDE_DOUBLE, "door_width": 1.5, "door_height": 1.80,
 		"door_thickness": 0.035, "build_frame": false,
-		"panel_tex": "wall_plaster", "panel_color": Color(1.02, 0.98, 0.86),
+		"panel_tex": "wall_plaster", "panel_color": Color(0.86, 0.83, 0.73),
 	})
 
 	# 障子窓(南の壁、開口 x = -3.0)。開けると駐車場が見える。
