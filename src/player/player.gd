@@ -447,7 +447,7 @@ func _update_interact(delta: float) -> void:
 ## 3) 壁・床・何も無い → 黙る(押すたびに文が出ると鬱陶しいため)
 func _report_no_response() -> void:
 	if focus != null and is_instance_valid(focus):
-		var t: String = focus.get_blocked_text() if focus.has_method("get_blocked_text") else ""
+		var t: String = focus.blocked_text_for_hud() if focus.has_method("blocked_text_for_hud") else (focus.get_blocked_text() if focus.has_method("get_blocked_text") else "")
 		_say_feedback(t if t != "" else blocked_default_text)
 		return
 	if _looking_at_object():

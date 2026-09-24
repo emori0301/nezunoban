@@ -46,6 +46,12 @@ func get_prompt() -> String:
 func _missing_item_prompt() -> String:
 	return prompt
 
+## HUD が表示に使う理由文。ゲート中は派生の上書きより優先してゲートの文を返す。
+func blocked_text_for_hud() -> String:
+	if _gated():
+		return gate_text
+	return get_blocked_text()
+
 ## 押しても反応しない理由の文。派生は状況に応じて上書きしてよい(例: 「鍵がかかっている。」「空だ。」)。
 func get_blocked_text() -> String:
 	if _gated():
