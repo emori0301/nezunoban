@@ -28,7 +28,7 @@ const SCHEDULE := [
 	["02:30", "ev_ushimitsu", "丑三つ時(3分)"],
 	["03:00", "ev_safe", "金庫の台帳(収集④)/ 廊下の人影"],
 	["03:20", "ev_freezer_empty", "冷凍庫が空 / 濡れた足跡 / 顔③ / 奥の袋(収集⑥)"],
-	["03:40", "ev_lid_slides", "棺の蓋が独りでにずれる"],
+	["03:30", "ev_lid_slides", "棺の蓋が独りでにずれる"],
 	["03:50", "ev_cat_crowd", "窓の外に猫の群れ"],
 	["04:00", "ev_finale", "全消灯 / 火車 / 灯し直し x3"],
 	["04:45", "ev_dawn_light", "夜明けの光 / 鴉"],
@@ -37,6 +37,7 @@ const SCHEDULE := [
 
 var _cat_visits_left: int = 0
 var _finale_relights: int = 0
+var _relight_fails: int = 0
 var _finale_running: bool = false
 var _hikaeshitsu_spot: Scares.Spot = null
 
@@ -112,7 +113,7 @@ func apply_past(m: int) -> void:
 			c2.call(&"set_face_state", 3)
 		scares.paw_prints()
 		dir.enable_note(dir.bag_note(), true)
-	if m > 400:
+	if m > 390:
 		var c3: Node = dir.sys(&"coffin")
 		if c3:
 			c3.call(&"set_lid_ajar", true)
@@ -391,7 +392,7 @@ func ev_son() -> void:
 	var son: Node = dir.npc(&"son")
 	if son and son.has_method(&"enter_from_genkan"):
 		son.call(&"set_active", true)
-		await son.call(&"enter_from_genkan", Vector3(-9.2, 0.0, 0.0))
+		await son.enter_from_genkan(Vector3(-9.2, 0.0, 0.0))
 		# teleport すると祭壇まわりの家具に挟まって以後動けなくなる(review M4)
 		await dir.face_off(son, false)
 	else:
@@ -442,7 +443,7 @@ func _son_allowed(son) -> void:
 	if coffin:
 		coffin.set(&"allow_open_window", true)
 		coffin.call(&"set_face_state", 2)
-		await coffin.call(&"show_face", 3.2, "son")
+		await coffin.show_face(3.2, "son")
 		coffin.set(&"allow_open_window", false)
 	Dread.add(2, &"coffin_window_opened")
 	Game.set_flag(&"son_opened_window", true)
@@ -720,6 +721,10 @@ func _push_lid_back(_p: Node3D) -> void:
 		coffin.call(&"set_lid_ajar", false)
 	Game.set_flag(&"lid_restored", true)
 	Tasks.complete(&"lid")
+	# 終盤に入ってから戻したときは、次の灯し直しの空振りを取り消す
+	var cnd: Node = dir.sys(&"candle")
+	if _finale_running and cnd and not Dread.is_doomed():
+		cnd.set(&"fail_next", false)
 	if _lid_spot and is_instance_valid(_lid_spot):
 		_lid_spot.queue_free()
 		_lid_spot = null
@@ -763,11 +768,8 @@ func ev_finale(quiet: bool = false) -> void:
 	# 終盤の用事はマッチだけにする。前の時間帯の線香・灯明のタスクは畳む(review N1)
 	for old_id in [&"incense", &"incense_stock", &"candle", &"dry_ice", &"last_incense"]:
 		Tasks.complete(old_id)
-	Tasks.complete(&"lid")
-	if _lid_spot and is_instance_valid(_lid_spot):
-		_lid_spot.queue_free()
-		_lid_spot = null
-	# 03:40 にずれた蓋を戻さなかった夜は、最初の灯し直しが空振りする。
+	# 蓋を戻す点は終盤でも残す。戻せば以降の灯し直しは通常どおりになる(review M3)。
+	# 03:30 にずれた蓋を戻さなかった夜は、最初の灯し直しが空振りする。
 	# (終盤は必ず蓋をずらすので is_lid_ajar では判定できない)
 	if Game.get_flag(&"lid_slid", false) and not Game.get_flag(&"lid_restored", false):
 		if cnd:
@@ -807,12 +809,12 @@ func on_relight(n: int) -> void:
 		k.call(&"retreat")
 	else:
 		dir.set_fallback_chase(false)
-	await Events.wait(14.0 / maxf(Clock.speed, 0.01))
+	await Events.wait(_relight_grace() / maxf(Clock.speed, 0.01))
 	if not _finale_running or Game.state == Game.State.ENDING:
 		return
 	var cnd: Node = dir.sys(&"candle")
 	if cnd:
-		# 3 回目は異変度が高ければ必ず失敗する
+		# 異変度が高い夜は灯し直しが通らない(3 回外すと火車に捕まる)
 		if n == 2 and (Dread.is_doomed() or Game.get_flag(&"cat_crossed_coffin", false)):
 			cnd.set(&"fail_next", true)
 		dir.quench(&"candle")
@@ -825,15 +827,35 @@ func on_relight(n: int) -> void:
 		dir.set_fallback_chase(true)
 
 
-## relight_failed を受ける
+## 灯し直しの猶予。外すたびに火車が一段近づく(review H1)。
+func _relight_grace() -> float:
+	return maxf(14.0 - 4.0 * float(_relight_fails), 4.0)
+
+
+## relight_failed を受ける。空振りは「続行」。即エンドにはしない。
+## 火車エンドになるのは Kasha の caught か、異変度 6 以上で 3 回外したときだけ。
 func on_relight_failed() -> void:
 	if not _finale_running:
 		return
+	_relight_fails += 1
 	dir.monologue(ScriptText.M_RELIGHT_FAIL)
-	scares.glitch(1.0)
-	Audio.play(&"kasha_screech", 0.0)
-	await Events.wait(2.2 / maxf(Clock.speed, 0.01))
-	dir.kasha_catches()
+	scares.glitch(0.8)
+	Audio.play(&"kasha_screech", -4.0)
+	# 火車が一段近づく
+	var k: Node = dir.npc(&"kasha")
+	if k and k.has_method(&"resume"):
+		k.call(&"resume")
+	else:
+		dir.set_fallback_chase(true)
+	Tasks.set_task(&"relight", ScriptText.TASK_RELIGHT)
+	var cnd: Node = dir.sys(&"candle")
+	if Dread.is_doomed() or Game.get_flag(&"cat_crossed_coffin", false):
+		if _relight_fails >= 3:
+			await Events.wait(2.2 / maxf(Clock.speed, 0.01))
+			dir.kasha_catches()
+			return
+		if cnd:
+			cnd.set(&"fail_next", true)   # 異変度が高い夜は次も通らない
 
 
 func _finish_finale() -> void:

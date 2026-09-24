@@ -161,11 +161,16 @@ func _recap(e: Node) -> void:
 	var images: Array = []
 	var lines: Array = []
 	for row in ScriptText.RECAP:
-		images.append(String(row[0]))
+		var tex: Texture2D = SystemUtil.load_texture(String(row[0]))
+		if tex == null:
+			push_warning("Endings: 回想の画像が無い %s" % row[0])
+		images.append(tex)
 		var need := int(row[2])
 		var read := bool(Game.get_flag(StringName("page_read_%d" % need), false))
 		lines.append(String(row[1]) if read else ScriptText.RECAP_UNREAD)
-	await e.call(&"show_recap", images, lines)
+	# await obj.call(...) はコルーチンを待てない(最初の await で null が返る)。
+	# 直に呼ぶこと。
+	await e.show_recap(images, lines)
 
 
 ## エンディング文のあとにクレジットを流す。
@@ -195,6 +200,7 @@ func _show_screen(id: StringName) -> void:
 	if hud and hud.has_method(&"set_fade"):
 		hud.set_fade(0.0)
 		hud.set_rec(false)
+	await _recap(e)                      # エンディング文の前に「真相」の回想(E-12/25)
 	await e.play(id, String(info[0]), info[1])
 	await _roll_credits(vp)
 	get_tree().reload_current_scene()

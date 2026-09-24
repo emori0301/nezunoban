@@ -65,6 +65,7 @@ var _applying_past: bool = false
 var _chase_on: bool = false
 var _vhs_boost: float = 0.0
 var _incense_out_count: int = 0
+var _incense_charged: bool = false
 var _pending_altar_figure: bool = false
 var _heart_t: float = 0.0
 
@@ -661,6 +662,7 @@ func _on_incense_out() -> void:
 	if Game.state == Game.State.ENDING:
 		return
 	monologue(ScriptText.M_INCENSE_OUT)
+	_incense_charged = true      # この 1 本ぶんの異変度はもう入っている(review M1)
 	if not _applying_past and Game.get_flag(&"intro_done", false):
 		_incense_out_count += 1
 		_incense_consequence(_incense_out_count)
@@ -711,6 +713,7 @@ func _altar_figure() -> void:
 
 
 func _on_incense_lit() -> void:
+	_incense_charged = false
 	Tasks.complete(&"incense")
 	Tasks.complete(&"last_incense")
 
@@ -788,8 +791,12 @@ func _on_hour(_hour: int) -> void:
 		return
 	if int(Clock.game_minutes) < 60:
 		return
+	# 消えた瞬間に incense_out で 1 点入っているので、同じ 1 本では二重に取らない
+	if _incense_charged:
+		return
 	var inc := sys(&"incense_stand")
 	if inc and not bool(inc.get(&"is_burning")):
+		_incense_charged = true
 		Dread.add(1, &"incense_neglect")
 
 
@@ -1409,13 +1416,15 @@ func _send_home(who) -> void:
 
 ## 式場から館の西側へ一息に歩かせると、経路はあるのに途中で詰まる。
 ## 廊下の合流点を経由させると通る(review M4)。
+## 注意: await obj.call(&"f") はコルーチンを待てない(最初の await で null が返る)。
+## NPC の歩行待ちは必ず who.go_to(...) の形で直に呼ぶこと。
 func walk_via_hall(who, dest: Vector3) -> void:
 	if who == null or not who.has_method(&"go_to"):
 		return
 	var n3 := who as Node3D
 	if n3 and n3.global_position.x > 7.0 and dest.x < 7.0:
-		await who.call(&"go_to", _snap_nav(POS_HALL_JUNCTION))
-	await who.call(&"go_to", _snap_nav(dest))
+		await who.go_to(_snap_nav(POS_HALL_JUNCTION))
+	await who.go_to(_snap_nav(dest))
 	# 折りたたみ椅子の列で挟まって動けなくなることがある(npc/level 側の課題)。
 	# 台本が止まらないよう、着けなかったときだけ位置を合わせる。
 	if n3 and n3.global_position.distance_to(dest) > 2.5 and who.has_method(&"teleport_to"):
@@ -1442,7 +1451,7 @@ func face_off(who, allow_teleport: bool = true) -> void:
 		away.y = 0.0
 	var target := _snap_nav(to + away.normalized() * TALK_DISTANCE)
 	if who.has_method(&"go_to") and npc3.global_position.distance_to(target) > 0.5:
-		await who.call(&"go_to", target)
+		await who.go_to(target)
 	# 歩いているあいだにプレイヤーが動いていることがあるので、現在位置から測り直す。
 	# このあと自力で歩いて帰る NPC(孫娘)は飛ばすと経路を作れなくなるので teleport しない。
 	if allow_teleport and npc3.global_position.distance_to(p.global_position) > TALK_DISTANCE + 1.5 \
@@ -1489,7 +1498,7 @@ func _walk(who, pos: Vector3) -> void:
 	if who == null or not who.has_method(&"go_to"):
 		await Events.wait(0.35 if Dialogue.auto_advance else 1.2)
 		return
-	await who.call(&"go_to", pos)
+	await who.go_to(pos)
 	# ナビが通らなかったときは位置だけ合わせる。
 	# (Spawn_Boss が受付台の裏の 0.7m の隙間にあり、ナビメッシュが届かない。npc/level に依頼済み)
 	var n3 := who as Node3D

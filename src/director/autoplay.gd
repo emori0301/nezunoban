@@ -214,7 +214,7 @@ const TASK_ORDER := [
 ## (`cat_entered` → `cat_crossed_coffin` の経路を QA で通すため)。
 const KASHA_IGNORE := [
 	&"incense", &"incense_stock", &"last_incense",
-	&"backdoor", &"window", &"cat",
+	&"backdoor", &"window", &"cat", &"lid",
 ]
 
 ## 代わりエンドの回では勝手口を開けたままにして、猫を入れてから追い払う。
