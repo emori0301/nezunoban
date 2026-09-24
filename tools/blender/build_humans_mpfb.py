@@ -32,7 +32,7 @@ import bmesh
 import addon_utils
 from mathutils import Vector, Matrix
 
-from common import (reset_scene, material, Builder, emit, dump_report, box_taper,
+from common import (sphere, reset_scene, material, Builder, emit, dump_report, box_taper,
                     tube, cyl, tr, Anim, set_scene_frames, TEX_DIR,
                     world_quat_from, add_chain_weights, add_rigid_weights,
                     bind_weights, box_mm)
@@ -660,10 +660,11 @@ def add_clothing(name, body, arm, spec, mats, reg):
 
     if style == "dress":
         # スカート: 腰から膝下 5cm まで
-        z_knee = z_foot + leg_h * 0.48
+        z_knee = z_foot + leg_h * spec.get("skirt_frac", 0.48)
+        flare = spec.get("skirt_flare", 0.12)
         skirt = cone_skirt("Skirt_" + name, body, arm, mats["skirt"],
                            z_hip + 0.01, z_knee - 0.05, rx, ry, cy,
-                           grow_top=1.10, grow_bot=1.10 + 0.12 / max(rx, 0.05),
+                           grow_top=1.10, grow_bot=1.10 + flare / max(rx, 0.05),
                            n=20, sections=4)
         out.append(skirt)
     else:
@@ -977,7 +978,45 @@ SPECS = {
         tex=dict(face="face_granddaughter", skin="skin_gd", torso="torso_dress",
                  leg="skin_gd", shoe="shoe_leather", hair="hair_long"),
     ),
+    "npc_kiyo": dict(
+        height=1.48, verts=950,
+        macro={"gender": 0.04, "age": 1.00, "muscle": 0.16, "weight": 0.44,
+               "height": 0.04, "proportions": 0.46, "cupsize": 0.18,
+               "firmness": 0.15},
+        jacket=0.007, trouser=0.0, hair_back=0.012, long_hair=False,
+        garment="dress", trousers=False, skirt_frac=0.10, skirt_flare=0.01,
+        bun=True,
+        tex=dict(face="face_kiyo", skin="skin_boss", torso="kimono",
+                 leg="kimono", shoe="white_cloth", hair="hair_white"),
+    ),
 }
+
+
+def add_bun(name, body, arm, reg, mat):
+    """結い上げた髪の団子。後頭部の上に小さな楕円体を置く。"""
+    me = body.data
+    ids = [vi for i in reg["head"] for vi in me.polygons[i].vertices]
+    if not ids:
+        return None
+    co = [me.vertices[i].co for i in ids]
+    zt = max(c.z for c in co)
+    zb = min(c.z for c in co)
+    cy0 = sum(c.y for c in co) / len(co)
+    yb = max(c.y for c in co)                      # 後頭部(+Y 側)
+    hh = zt - zb
+    b = Builder("Bun_" + name)
+    b.add(sphere(hh * 0.30, 10, 7, (0.0, yb + hh * 0.10, zt - hh * 0.20)), mat,
+          uvscale=5.0)
+    b.add(sphere(hh * 0.12, 8, 5, (0.0, yb + hh * 0.02, zt - hh * 0.46)), mat,
+          uvscale=8.0)
+    ob = b.build(shade_flat=False)
+    for pz in ob.data.polygons:
+        pz.use_smooth = True
+    g = {}
+    add_rigid_weights(g, range(len(ob.data.vertices)), GE["Head"])
+    bind_weights(ob, arm, g)
+    ob.matrix_parent_inverse = Matrix.Identity(4)
+    return ob
 
 
 def build_one(name):
@@ -1009,6 +1048,7 @@ def build_one(name):
     hair = add_hair_cap(name, body, arm, reg_full, m_hair, spec, m_strand)
     if hair is not None:
         decimate(hair, 330)
+    bun = add_bun(name, body, arm, reg_full, m_hair) if spec.get("bun") else None
     decimate(body, spec["verts"])
     reg, bounds = body_regions(body)
     face, face_rect = find_face(body, reg, bounds)
@@ -1041,7 +1081,8 @@ def build_one(name):
     set_scene_frames(180)
     build_anims(arm)
     BC.face_godot_forward(arm)
-    objs = [arm, body] + garments + ([hair] if hair is not None else [])
+    objs = [arm, body] + garments + ([hair] if hair is not None else []) \
+        + ([bun] if bun is not None else [])
     emit(name, objs, animations=True)
 
 

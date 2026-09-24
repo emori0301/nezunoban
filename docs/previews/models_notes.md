@@ -817,3 +817,99 @@ Hips を -0.143 下げる）を採用しました。前脚は胴の回転を打�
   デカールに使うときは `alpha_from_tex` 相当の設定が要ります
 - **ui / director**: `recap_*` は 512x288（16:9）です。全画面で出すなら
   そのまま引き伸ばせます
+
+---
+
+## 2026-09-25 人物モデルの回帰修正 と 写真のレンダリング化
+
+### 回帰の原因と対策
+
+`build_all.sh` を走らせると MPFB2 製の `npc_boss/son/granddaughter.glb` が
+筒モデルに戻っていました。原因は `build_chars.py` の `main()` が
+`build_npc_*()` を呼んでおり、MPFB より **先に** 走って同じ名前で上書きするためです。
+
+直したこと:
+
+1. **`build_chars.py` から人物 3 体の生成を完全に外しました。**
+   `build_human()` と `build_npc_boss/son/granddaughter()` を削除し、
+   `main()` は `cat` / `kasha` / `body_risen` だけになりました。
+   人物のアニメ定義 `anim_human_*` と `face_godot_forward()` は
+   `build_humans_mpfb.py` が import するので残してあります。
+2. **`build_all.sh` の MPFB2 判定が壊れていました。** 背景実行の終了コードで
+   見ていたため、MPFB2 が入っていても「未導入」と判定して人物を作り直さない
+   状態でした。標準出力の印(`MPFB_OK`)で判定するように直しました。
+   MPFB2 が無いときは人物に触れず、既存の glb をそのまま残します。
+3. **`check_in_godot.gd` に品質の下限を足しました。** `npc_*` が
+   `bones=53` かつ `verts>=3500`(キヨのみ 3000)を満たさないと
+   `REGRESSION` を出して `failures` に数えます。
+   わざと `cat` を対象に入れて `failures: 1` になることを確認済みです。
+
+`bash tools/blender/build_all.sh` を通した後のサイズ:
+
+| モデル | サイズ | Godot 頂点 | ボーン |
+| --- | --- | --- | --- |
+| `npc_boss.glb` | 1609 KB | 4477 | 53 |
+| `npc_son.glb` | 1583 KB | 4392 | 53 |
+| `npc_granddaughter.glb` | 1542 KB | 4097 | 53 |
+| `npc_kiyo.glb` | 1557 KB | 3808 | 53 |
+
+`failures: 0`。
+
+### `build_chars.py` が壊れていた件
+
+直す過程で、猫のセクション(`CAT_BONES` 〜 `build_cat`)が **丸ごと二重に**
+存在し、後ろの古い方が実際に使われていることが分かりました。
+前回のパッチが関数の境界をまたいで切り貼りしたためで、
+HEAD(`a43fbd9`)にも入っていました。壊れた方を削除し、
+実測で決めた `sit` を残った 1 つに入れ直しました。
+`RISEN_BONES` も巻き添えで消えていたので HEAD から戻しています。
+
+### キヨ(88 歳)
+
+家族写真と遺影のために MPFB2 で新しく作りました。`assets/models/npc_kiyo.glb`。
+
+- 身長 1.48 m、`age=1.00`、`gender=0.04`
+- 和装: `garment="dress"` に `skirt_frac=0.10`(足首まで)と
+  `skirt_flare=0.01`(広がらない)を足しました。生地は新規の `kimono.png`
+- 白髪の結い髪: 新規の `hair_white.png` + `add_bun()` で後頭部に団子
+- 顔は `face_kiyo.png`。`_photo_face()` に **表情の指定**を足しました
+  (`eyes_shut` / `mouth_open` / `smile`)
+- アニメは他の 3 体と同じ `idle` / `walk` / `sit` / `sit_floor` / `sleep`
+
+### 写真をレンダリングで作るようにしました
+
+`tools/blender/render_photos.py`(新規)。手描きをやめ、MPFB 製の人物を
+EEVEE で撮ってから写真として劣化させます。
+
+| 出力 | 中身 |
+| --- | --- |
+| `family_photo.png` 256x192 | 縁側に 4 人。キヨ / 息子 / 孫娘 / 4 人目。4 人目の顔は擦れて潰れている |
+| `family_photo_player.png` 256x192 | 同じ構図で 4 人目が黒い後ろ姿 |
+| `iei_photo.png` 256x256 | キヨの遺影。正面・白黒・微笑 |
+| `body_face_calm/mouth/eyes/turned.png` 256x256 | 棺の小窓越しのキヨの顔 |
+
+劣化は `degrade_photo()` に集約しています。にじみ → 縮小 → 退色 → 粒子 →
+シミ → 縁の焼け → 角の丸み → 減色。
+
+作る途中で当たった問題と対処:
+
+- **`import_glb()` はシーンの全メッシュを返す**ので、4 人目だけ黒くするつもりが
+  全員黒くなりました。読み込み前後の差分で新規オブジェクトだけを取るようにしました
+- **人物は +Y を向いて読み込まれます。** カメラは -Y 側なので 180 度回します
+- **鼻先や額が白く飛ぶ**のは面光源が近すぎて距離の減衰が効いていたためです。
+  光源を離して弱めました。Blender 5.2 の Principled には `Specular` 入力が無く、
+  鏡面を消すには `IOR=1.0` にします
+- **横を向かせると頭が画面外へ逃げる**(回転軸が足元)ので、
+  レンダリング後に明るい塊の重心を測って中央へ寄せています(`_recenter()`)
+- **顔テクスチャは正面投影**なので、振りを 15 度より大きくすると横が伸びて
+  板に見えます
+
+### 他担当への依頼
+
+- **全員**: `gen_textures.py` は `iei_photo` / `body_face_{calm,mouth,eyes,turned}` /
+  `family_photo{,_player}` を **もう作りません**。`render_photos.py` が正本です。
+  手描き版を足し戻すとレンダリング版を上書きしてしまいます
+- **npc / level**: `npc_kiyo.glb` が増えました。故人本人なので、
+  回想や脅かしに使えます。正面は他の人物と同じ -Z、原点は足元
+- **systems**: `body_face_*` は RGB のままです。`body_face_second` だけ
+  RGBA(顔の外を透明)なので、マテリアル設定が違います

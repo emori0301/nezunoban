@@ -829,7 +829,7 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
                 female=False, lips=None, sallow=0.0, sallow_col=None, jowl=0.0,
                 brow_w=1.0, eye=1.0, lip_full=1.0, blush=0.0, eye_red=0.0,
                 nose_big=0.0, shade=0.70, feat=1.0, contrast=1.0,
-                hair_top=None):
+                hair_top=None, eyes_shut=False, mouth_open=0.0, smile=0.0, out=128):
     """shade: 影の濃さ(小さいほど濃い)。feat: 目鼻口の陰影の強さ。
     contrast: 仕上げのコントラスト。640x360 + VHS で顔が潰れるときに上げる。"""
     """人物の顔。1 枚で頭の正面だけに貼る(128x128)。
@@ -914,6 +914,45 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
     for sgn in (-1, 1):
         ellipse(img, my + 2, 128 + sgn * mw * 0.92, 5, 7, sh, 0.42, soft=5)
 
+    # --- 表情の差し替え(遺体の顔を作るときに使う) ---
+    if eyes_shut:
+        for i, sgn in enumerate((-1, 1)):
+            ex = 128 + sgn * 46 + (2 if i else -1)
+            ey = 112 + (1 if i else 0)
+            ellipse(img, ey, ex, 12.5 * eye, 23.0 * eye, skin, 1.0, soft=3.0)
+            ellipse(img, ey - 4 * eye, ex, 8.0 * eye, 21.0 * eye, sh, 0.45, soft=6)
+            stroke(img, (ey + 6 * eye, ex - 20 * eye), (ey + 6 * eye, ex + 20 * eye),
+                   3.0, (0.24, 0.19, 0.17), min(1.0, 0.72 * feat), soft=2.2)
+            for k in range(4):                       # 瞼の皺
+                stroke(img, (ey - 2 - k * 3, ex - 17 * eye),
+                       (ey - 3 - k * 3, ex + 17 * eye), 1.4, sh, 0.20, soft=2.0)
+    if mouth_open > 0:
+        mo = 194
+        mwo = 34 * (0.88 + 0.22 * lip_full)
+        ellipse(img, mo + 4, 128, 12 * mouth_open, mwo * 0.66,
+                (0.10, 0.065, 0.060), 0.95, soft=2.6)
+        ellipse(img, mo - 3, 128, 4.5 * mouth_open, mwo * 0.56,
+                (0.48, 0.40, 0.38), 0.55, soft=3)     # 上の歯ぐき
+        ellipse(img, mo + 14 * mouth_open, 128, 6, mwo * 0.74, sh, 0.40, soft=8)
+
+    if smile > 0:                                    # 口角を上げ、目尻に皺
+        ms = 194
+        mws = 36 * (0.88 + 0.22 * lip_full)
+        for sgn in (-1, 1):
+            stroke(img, (ms, 128 + sgn * mws * 0.55),
+                   (ms - 7 * smile, 128 + sgn * mws * 1.02),
+                   2.6, (0.30, 0.18, 0.17), min(1.0, 0.55 * feat), soft=2.4)
+            ellipse(img, ms - 5 * smile, 128 + sgn * mws * 1.02, 5, 5,
+                    sh, 0.50 * smile, soft=4)
+            ellipse(img, ms + 9, 128 + sgn * mws * 0.5, 6, mws * 0.42,
+                    hl, 0.18 * smile, soft=7)
+            for k in range(3):                       # 目尻の笑い皺
+                stroke(img, (104 + k * 7, 128 + sgn * 66),
+                       (96 + k * 9, 128 + sgn * 88), 2.0, sh,
+                       0.34 * smile, soft=2.4)
+            ellipse(img, 124, 128 + sgn * 56, 15, 22, hl, 0.20 * smile, soft=16)
+        ellipse(img, ms - 3, 128, 5, mws * 0.80, sh, 0.22 * smile, soft=6)
+
     # --- 皺 ---
     for k in range(3):
         y = 52 + k * 14
@@ -980,6 +1019,43 @@ def _photo_face(skin, brow, seed, age=0.6, ruddy=0.0, stubble=0.0, bags=0.5,
     img = mul_gray(img, 0.93 + d * 0.08)
     img = mul_gray(img, stains(R, seed + 13, 3, 0.07, 30))
     return _degrade(img, seed, out=128, contrast=contrast)
+
+
+def _face_kiyo(seed, eyes_shut=False, mouth_open=0.0, out=128):
+    """キヨ(88 歳)。血の気が薄く、皺が深い。眉は細く白い。"""
+    return _photo_face((0.700, 0.598, 0.530), (0.560, 0.540, 0.520), seed,
+                       age=1.00, ruddy=0.05, stubble=0.0, bags=1.0,
+                       female=True, sallow=0.55, sallow_col=(0.62, 0.56, 0.42),
+                       jowl=0.50, brow_w=0.62, eye=0.78, lip_full=0.66,
+                       lips=(0.66, 0.50, 0.48),
+                       shade=0.64, feat=1.18, contrast=1.06,
+                       eyes_shut=eyes_shut, mouth_open=mouth_open, out=out)
+
+
+def t_face_kiyo():
+    return _face_kiyo(500)
+
+
+def t_face_kiyo_smile():
+    """遺影用。微笑んでいるが目はこちらを見ている。"""
+    return _photo_face((0.700, 0.598, 0.530), (0.560, 0.540, 0.520), 500,
+                       age=1.00, ruddy=0.05, bags=1.0, female=True,
+                       sallow=0.55, sallow_col=(0.62, 0.56, 0.42),
+                       jowl=0.50, brow_w=0.62, eye=0.78, lip_full=0.66,
+                       lips=(0.66, 0.50, 0.48), shade=0.64, feat=1.18,
+                       contrast=1.06, smile=1.0)
+
+
+def t_face_kiyo_calm():
+    return _face_kiyo(500, eyes_shut=True)
+
+
+def t_face_kiyo_mouth():
+    return _face_kiyo(500, eyes_shut=True, mouth_open=1.0)
+
+
+def t_face_kiyo_eyes():
+    return _face_kiyo(500, mouth_open=1.0)
 
 
 def t_face_boss():
@@ -1148,6 +1224,11 @@ def t_hair_salt():
     return _hair((0.150, 0.142, 0.134), 741, grey=0.40, scalp=0.08)
 
 
+def t_hair_white():
+    """キヨ(88 歳)。結い上げた白髪。"""
+    return _hair((0.760, 0.750, 0.735), 745, grey=0.88, scalp=0.05)
+
+
 def t_hair_long():
     """孫娘。黒い長髪。縦に流れる筋を出す。"""
     T = 128
@@ -1280,6 +1361,8 @@ def t_cloth_gray():      return _fabric((0.135, 0.135, 0.140), 871)
 def t_cloth_black():     return _fabric((0.070, 0.070, 0.082), 881, folds=0.13)
 def t_cloth_crimson():   return _fabric((0.175, 0.045, 0.058), 921)
 def t_cloth_tights():    return _fabric((0.095, 0.095, 0.105), 891, weave=0.03)
+def t_kimono():          return _fabric((0.300, 0.282, 0.262), 931, weave=0.07,
+                                        folds=0.16)   # キヨの和装(鼠色)
 
 
 def t_shoe_sneaker():
@@ -1895,6 +1978,10 @@ def t_recap_ledger():
     return _recap_finish(img, 643)
 
 
+# ここに無いもの:
+#   iei_photo / body_face_{calm,mouth,eyes,turned} / family_photo{,_player}
+#   → MPFB 製のキヨを Blender でレンダリングして作る。render_photos.py が正本。
+#     ここで手描き版を作ると、レンダリング版を上書きして品質が戻る。
 ALL = {
     # level が使う(シームレス)
     "floor_lino": t_floor_lino,
@@ -1944,11 +2031,6 @@ ALL = {
     "tile_white": t_tile_white,
     "porcelain": t_porcelain,
     # 顔・写真・文字もの(タイルしない)
-    "body_face_calm": t_body_face_calm,
-    "body_face_mouth": t_body_face_mouth,
-    "body_face_eyes": t_body_face_eyes,
-    "body_face_turned": t_body_face_turned,
-    "iei_photo": t_iei_photo,
     "iei_photo_player": t_iei_photo_player,
     "face_boss": t_face_boss,
     "torso_suit": t_torso_suit,
@@ -1988,9 +2070,14 @@ ALL = {
     "blood_handprint": t_blood_handprint,
     "blood_smear": t_blood_smear,
     # 写真・回想
-    "family_photo": t_family_photo,
-    "family_photo_player": t_family_photo_player,
     "body_face_second": t_body_face_second,
+    "hair_white": t_hair_white,
+    "kimono": t_kimono,
+    "face_kiyo": t_face_kiyo,
+    "face_kiyo_smile": t_face_kiyo_smile,
+    "face_kiyo_calm": t_face_kiyo_calm,
+    "face_kiyo_mouth": t_face_kiyo_mouth,
+    "face_kiyo_eyes": t_face_kiyo_eyes,
     "recap_truck": t_recap_truck,
     "recap_cats": t_recap_cats,
     "recap_ledger": t_recap_ledger,

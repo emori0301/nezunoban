@@ -14,6 +14,7 @@ var expect_anims := {
 	"npc_boss": ["idle", "walk", "sit", "sit_floor", "sleep"],
 	"npc_son": ["idle", "walk", "sit", "sit_floor", "sleep"],
 	"npc_granddaughter": ["idle", "walk", "sit", "sit_floor", "sleep"],
+	"npc_kiyo": ["idle", "walk", "sit", "sit_floor", "sleep"],
 	"body_risen": ["rise"],
 	"hanging_robe": ["sway", "drop"],
 	"lantern_rotating": ["spin"],
@@ -31,6 +32,16 @@ var expect_nodes := {
 	"radio": ["Dial"],
 }
 
+## 品質の下限。MPFB2 製の人物が筒モデルに戻る回帰を検出する。
+## build_chars.py が人物を上書きすると bones=13 / verts=1000 前後まで落ちる。
+var expect_min := {
+	"npc_boss": {"bones": 53, "verts": 3500},
+	"npc_son": {"bones": 53, "verts": 3500},
+	"npc_granddaughter": {"bones": 53, "verts": 3500},
+	"npc_kiyo": {"bones": 53, "verts": 3000},
+}
+
+var stats := {}
 var fail := 0
 
 
@@ -67,6 +78,26 @@ func _init() -> void:
 		else:
 			fail += 1
 			printerr("  MISS %-20s got=%s missing=%s" % [n, str(got), str(missing)])
+
+	print("\n=== quality floor (回帰検出) ===")
+	for n in expect_min.keys():
+		var want: Dictionary = expect_min[n]
+		if not stats.has(n):
+			fail += 1
+			printerr("  MISS %-20s glb が無い" % n)
+			continue
+		var got: Dictionary = stats[n]
+		var bad: Array = []
+		if int(got["bones"]) != int(want["bones"]):
+			bad.append("bones=%d (期待 %d)" % [got["bones"], want["bones"]])
+		if int(got["verts"]) < int(want["verts"]):
+			bad.append("verts=%d (下限 %d)" % [got["verts"], want["verts"]])
+		if bad.is_empty():
+			print("  OK   %-20s bones=%d verts=%d" % [n, got["bones"], got["verts"]])
+		else:
+			fail += 1
+			printerr("  REGRESSION %-14s %s  ← build_humans_mpfb.py で作り直すこと"
+				% [n, " / ".join(PackedStringArray(bad))])
 
 	print("\nfailures: %d" % fail)
 	quit(1 if fail > 0 else 0)
@@ -144,6 +175,7 @@ func _check(name: String) -> void:
 	_collect_aabb(root, Transform3D.IDENTITY, box)
 	var aabb: AABB = box[0]
 
+	stats[name] = {"verts": verts, "bones": bones}
 	print("%-22s verts=%-5d meshes=%s mats=%s bones=%-3d anims=%s size=%.2fx%.2fx%.2f" % [
 		name, verts, str(meshes), str(surfs), bones, str(anims),
 		aabb.size.x, aabb.size.y, aabb.size.z])
