@@ -720,6 +720,13 @@ func _push_lid_back(_p: Node3D) -> void:
 	var coffin: Node = dir.sys(&"coffin")
 	if coffin:
 		coffin.call(&"set_lid_ajar", false)
+	on_lid_reset()
+
+
+## 蓋が戻ったあとの処理。Coffin 本体の「蓋を戻す」(lid_reset)からも来る。
+func on_lid_reset() -> void:
+	if not Game.get_flag(&"lid_slid", false) or Game.get_flag(&"lid_restored", false):
+		return
 	Game.set_flag(&"lid_restored", true)
 	Tasks.complete(&"lid")
 	# 終盤に入ってから戻したときは、次の灯し直しの空振りを取り消す

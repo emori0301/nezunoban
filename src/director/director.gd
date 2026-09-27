@@ -632,6 +632,7 @@ func _connect_events() -> void:
 		Tasks.complete(&"radio")
 		timeline.on_radio_off())
 	Events.on(&"door_locked", func(d): _on_door_locked(d))
+	Events.on(&"lid_reset", func(_d): timeline.on_lid_reset())
 	Events.on(&"chase_started", func(_d): set_chase_audio(true))
 	Events.on(&"chase_ended", func(_d): set_chase_audio(false))
 	var mon := sys(&"monitor")
