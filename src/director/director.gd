@@ -66,6 +66,7 @@ var _chase_on: bool = false
 var _vhs_boost: float = 0.0
 var _incense_out_count: int = 0
 var _incense_charged: bool = false
+var _scripted_quench: bool = false   ## quench() の force_out 中だけ true
 var _pending_altar_figure: bool = false
 var _heart_t: float = 0.0
 
@@ -421,7 +422,9 @@ func quench(name: StringName) -> void:
 		return
 	var prev: int = int(n.get(&"dread_on_out"))
 	n.set(&"dread_on_out", 0)
+	_scripted_quench = true
 	n.call(&"force_out")
+	_scripted_quench = false
 	n.set(&"dread_on_out", prev)
 
 
@@ -675,8 +678,11 @@ func _on_incense_out() -> void:
 	if Game.state == Game.State.ENDING:
 		return
 	monologue(ScriptText.M_INCENSE_OUT)
-	_incense_charged = true      # この 1 本ぶんの異変度はもう入っている(review M1)
-	if not _applying_past and Game.get_flag(&"intro_done", false):
+	# 台本が消した分はプレイヤーの失敗ではない。異変度は入っていないので、
+	# 灯し直さなければ _on_hour の放置チェックで取る。消えた回数にも数えない。
+	if not _scripted_quench:
+		_incense_charged = true      # この 1 本ぶんの異変度はもう入っている(review M1)
+	if not _scripted_quench and not _applying_past and Game.get_flag(&"intro_done", false):
 		_incense_out_count += 1
 		_incense_consequence(_incense_out_count)
 	# 終盤は「マッチを取って灯明を灯す」が唯一の用事。線香のタスクを出すと
