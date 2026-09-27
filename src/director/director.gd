@@ -435,6 +435,9 @@ func _setup_static() -> void:
 	if h and h.has_method(&"set_rules"):
 		h.set_rules(ScriptText.rules())
 	Game.set_flag(&"incense_sticks", 10)
+	# 夜の始まりの供花は元気。21:25 の ev_flowers でしおれるのを変化として見せる。
+	for f in SystemsInstaller.find_all(&"flower_stand"):
+		f.call(&"set_wilted", false)
 	var inc := sys(&"incense_stand")
 	if inc:
 		inc.set(&"no_stock_line", ScriptText.M_INCENSE_NONE)
