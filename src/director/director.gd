@@ -1270,6 +1270,8 @@ func kasha_takes_son() -> void:
 	await Events.wait(1.4)
 	Audio.play(&"kasha_growl", -2.0)
 	_fallback_chase = false
+	# go_to_and_take で追跡状態が外れているので stop_chase は chase_ended を出さない
+	set_chase_audio(false)
 	timeline._finish_finale()
 	await Events.wait(2.0)
 	if int(Clock.game_minutes) < 475:
