@@ -38,12 +38,12 @@ func say(speaker: String, text: String) -> void:
 	if auto_advance:
 		if Game.debug:
 			print("[say] %s: %s" % [speaker, text])
-		await get_tree().create_timer(auto_line_seconds).timeout
+		await get_tree().create_timer(auto_line_seconds, false).timeout
 	elif ui and ui.has_method("show_line"):
 		await ui.show_line(speaker, text)
 	else:
 		print("[say] %s: %s" % [speaker, text])
-		await get_tree().create_timer(0.1).timeout
+		await get_tree().create_timer(0.1, false).timeout
 	_release()
 
 ## 連続で複数行。lines = [[speaker, text], ...]
@@ -57,12 +57,12 @@ func choose(prompt: String, options: Array) -> int:
 	if auto_advance:
 		if auto_chooser.is_valid():
 			result = int(auto_chooser.call(prompt, options))
-		await get_tree().create_timer(auto_line_seconds).timeout
+		await get_tree().create_timer(auto_line_seconds, false).timeout
 	elif ui and ui.has_method("show_choice"):
 		result = await ui.show_choice(prompt, options)
 	else:
 		print("[choose] %s %s -> 0" % [prompt, options])
-		await get_tree().create_timer(0.1).timeout
+		await get_tree().create_timer(0.1, false).timeout
 	_release()
 	return result
 
@@ -70,12 +70,12 @@ func choose(prompt: String, options: Array) -> int:
 func note(title: String, body: String) -> void:
 	await _acquire()
 	if auto_advance:
-		await get_tree().create_timer(auto_line_seconds).timeout
+		await get_tree().create_timer(auto_line_seconds, false).timeout
 	elif ui and ui.has_method("show_note"):
 		await ui.show_note(title, body)
 	else:
 		print("[note] %s\n%s" % [title, body])
-		await get_tree().create_timer(0.1).timeout
+		await get_tree().create_timer(0.1, false).timeout
 	_release()
 
 ## 数字入力(金庫のダイヤル、電話の番号)。キャンセルは "" を返す。UI は HUD の show_code_input(title, length) -> String。
