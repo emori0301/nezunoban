@@ -385,21 +385,28 @@ func monologue(text: String) -> void:
 
 
 ## 線香の減りの速さ。時刻が進むほど短くなる(21:00 1.0 → 00:00 1.2 → 02:00 1.5)。
-## extra は窓が開いている間などの一時的な上乗せ。
+## 式場の窓が開いている間は +3.0(毎分ここで計算し直すので、倍率は窓の状態から決める)。
 func incense_pace() -> float:
 	var m := int(Clock.game_minutes)
+	var pace := 1.0
 	if m >= 300:
-		return 1.5
-	if m >= 180:
-		return 1.2
-	return 1.0
+		pace = 1.5
+	elif m >= 180:
+		pace = 1.2
+	var b := building()
+	var w: WindowPane = b.get_window_pane(&"Window_Shikijo") if b else null
+	if w and w.is_open:
+		pace += WINDOW_INCENSE_EXTRA
+	return pace
+
+const WINDOW_INCENSE_EXTRA := 3.0
 
 
-func apply_incense_pace(extra: float = 0.0) -> void:
+func apply_incense_pace() -> void:
 	var inc := sys(&"incense_stand")
 	if inc == null:
 		return
-	inc.set(&"burn_multiplier", incense_pace() + extra)
+	inc.set(&"burn_multiplier", incense_pace())
 
 
 func matches_pickup() -> Node:
@@ -809,6 +816,8 @@ func _on_hour(_hour: int) -> void:
 
 ## 障子を 23:00 以降に開けると、駐車場の猫が一斉にこちらを向く(E-4)
 func _on_window_opened(d: Dictionary) -> void:
+	if StringName(d.get("window", "")) == &"Window_Shikijo":
+		apply_incense_pace()
 	if not shoji_armed:
 		return
 	if StringName(d.get("window", "")) == &"Window_Hikaeshitsu":

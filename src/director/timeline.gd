@@ -147,7 +147,7 @@ func ev_window() -> void:
 	var inc: Node = dir.sys(&"incense_stand")
 	if inc:
 		inc.call(&"set_wind", Vector3(-0.8, 0, -0.5))
-	dir.apply_incense_pace(3.0)
+	dir.apply_incense_pace()
 	dir.monologue(ScriptText.M_WINDOW)
 	Tasks.set_task(&"window", ScriptText.TASK_WINDOW)
 
