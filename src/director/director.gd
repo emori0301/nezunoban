@@ -953,9 +953,6 @@ func _on_room(room: StringName) -> void:
 		&"Room_Hall":
 			if int(Clock.game_minutes) >= 360:
 				scares.blood_handprints_step()
-		&"Room_Hikaeshitsu":
-			if int(Clock.game_minutes) >= 120:
-				pass
 		&"Room_Shikijo":
 			scares.whisper_from_coffin()
 			if Dread.value >= 3:
