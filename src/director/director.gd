@@ -640,7 +640,10 @@ func _connect_events() -> void:
 	Events.on(&"safe_wrong", func(d): _on_safe_wrong(int(d.get("count", 1))))
 	Events.on(&"breaker_lever", func(d): _on_breaker_lever(d))
 	Events.on(&"phone_dialed", func(d): _on_phone_dialed(String(d.get("number", ""))))
-	Events.on(&"radio_on", func(_d): Tasks.set_task(&"radio", ScriptText.TASK_RADIO))
+	Events.on(&"radio_on", func(_d):
+		# 01:35 に勝手につく前は、プレイヤーが点けただけなので用事にしない
+		if timeline._radio_stage >= 1:
+			Tasks.set_task(&"radio", ScriptText.TASK_RADIO))
 	Events.on(&"radio_off", func(_d):
 		Tasks.complete(&"radio")
 		timeline.on_radio_off())

@@ -658,6 +658,8 @@ func ev_radio() -> void:
 	_radio_stage = 1
 	r.call(&"play_voice", &"radio_talk")
 	r.call(&"turn_on")
+	# 先にプレイヤーが点けていた場合は radio_on が出ないので、ここで用事を出す
+	Tasks.set_task(&"radio", ScriptText.TASK_RADIO)
 	dir.monologue(ScriptText.M_RADIO_1)
 
 
