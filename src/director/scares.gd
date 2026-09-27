@@ -993,6 +993,17 @@ func clear_eyes() -> void:
 
 # ---------------------------------------------------------- E-10 窓の外の猫の群れ
 
+var _crowd: Array[Node3D] = []
+
+## 04:00 の全消灯で群れも消す(E-10)
+func clear_cat_crowd() -> void:
+	for c in _crowd:
+		if is_instance_valid(c):
+			free_visual(c)
+			_spawned.erase(c)
+	_crowd.clear()
+
+
 func cat_crowd() -> bool:
 	var b := building()
 	if b == null or not b.has_method(&"window_outside_spots"):
@@ -1003,6 +1014,7 @@ func cat_crowd() -> bool:
 		var wp: Node3D = b.get_window_pane(w) if b.has_method(&"get_window_pane") else null
 		for pos in spots:
 			var p3 := spawn_prop("cat", pos, 0.0, Vector3(0.18, 0.36, 0.7), Color(0.05, 0.05, 0.06))
+			_crowd.append(p3)
 			if wp:
 				p3.rotation_degrees.y = yaw_to(pos, wp.global_position)
 			var ap := p3.find_child("AnimationPlayer", true, false) as AnimationPlayer

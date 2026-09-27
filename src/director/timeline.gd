@@ -759,6 +759,7 @@ func ev_finale(quiet: bool = false) -> void:
 			b.call(&"set_emergency_lights", true)   # 緑の非常灯は点けたままにする
 	scares.set_moonlight(true)            # 窓からの月明かり(真っ暗だと歩けない)
 	scares.clear_eyes()
+	scares.clear_cat_crowd()
 	if inc:
 		dir.quench(&"incense_stand")
 	if cnd:
