@@ -37,8 +37,11 @@ func _can_interact(_player: Node3D) -> bool:
 	return door != null and not door.is_open
 
 
+## enabled = false のとき(台本が鍵を預かっている間など)は blocked_text を出す。
 func get_blocked_text() -> String:
-	return "扉が開いている"
+	if door and door.is_open:
+		return "扉が開いている"
+	return blocked_text
 
 
 func _interact(_player: Node3D) -> void:

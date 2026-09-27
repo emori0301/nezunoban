@@ -580,7 +580,7 @@ func _apply_state_body(m: int) -> void:
 	Game.set_flag(&"has_clipboard", true)
 	Game.set_flag(&"intro_done", true)
 	set_gate(false)
-	if m >= 180:
+	if m > 150:                  # 23:30 の停電(ev_blackout)で鍵が戻る
 		release_genkan()
 	else:
 		lock_genkan()
@@ -1452,7 +1452,8 @@ func allow_door(door_name: StringName, on: bool = true) -> void:
 		allow(b.get_door(door_name), on)
 
 
-## 玄関は社長が鍵を持っている。00:00 の停電まで外へは出られない。
+## 玄関は社長が鍵を持っている。23:30 の停電まで外へは出られない。
+## 枠脇の締り金具(Door が作る "Lock")も止めておかないと、内側から開けられてしまう。
 func lock_genkan() -> void:
 	var b := building()
 	var d: Door = b.get_door(&"Door_Genkan") if b else null
@@ -1463,16 +1464,24 @@ func lock_genkan() -> void:
 		d.lock()
 	else:
 		d.set_locked(true)
+	var lk := d.get_node_or_null(^"Lock") as Interactable
+	if lk:
+		lk.enabled = false
+		lk.blocked_text = ScriptText.GENKAN_LOCKED
 
 
-## 00:00 以降。鍵は開けられるようになる。
+## 23:30 の停電以降。鍵は開けられるようになる。
 func release_genkan() -> void:
 	var b := building()
 	var d: Door = b.get_door(&"Door_Genkan") if b else null
 	if d == null:
 		return
 	d.locked_prompt = "鍵がかかっている"
-	if d.find_child("DoorLock", true, false) == null:
+	var lk := d.get_node_or_null(^"Lock") as Interactable
+	if lk:
+		lk.enabled = true        # 金具があればプレイヤーに開けさせる
+		lk.blocked_text = ""
+	else:
 		d.unlock()               # 締り金具が無い扉なら director が開けておく
 
 
