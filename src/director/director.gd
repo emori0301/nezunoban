@@ -1355,8 +1355,8 @@ func play_intro() -> void:
 	if h and h.has_method(&"toggle_clipboard") and not Dialogue.auto_advance:
 		h.toggle_clipboard()
 		await Events.wait(3.4)
-		if h.has_method(&"toggle_clipboard"):
-			h.toggle_clipboard()
+		if h.has_method(&"close_clipboard"):
+			h.close_clipboard()      # 先に E / Tab で閉じられていても開き直さない
 
 	# --- 式場(線香とロウソク) ---
 	await _walk(boss, POS_SHIKIJO_COFFIN)

@@ -1119,6 +1119,10 @@ func toggle_clipboard() -> void:
 		Audio.play(&"paper_rustle", -10.0)
 	_clip.visible = _clip_open
 
+## 外から閉じる専用。toggle と違い、プレイヤーが先に閉じていても開き直さない。
+func close_clipboard() -> void:
+	_close_clipboard()
+
 ## 字幕・選択肢・手紙を出すときは必ずクリップボードを畳む(重なって読めなくなるため)
 func _close_clipboard() -> void:
 	if not _clip_open:
